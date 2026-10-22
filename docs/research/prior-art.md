@@ -1,0 +1,113 @@
+# Prior art: visual IaC tools, and where Truss fits
+
+Ticket: 01-prior-art (resolved; see the Truss v1 map, #8). Researched 2026-10-22 against official docs, pricing pages, and first-party repos and issue trackers. The numbers in brackets point to the Sources list at the end.
+
+## TL;DR
+
+- **No mature tool goes from a visual canvas to AWS CDK.** AWS's own visual editor emits CloudFormation/SAM. Brainboard emits Terraform. Cloudcraft dropped code export entirely. The CDK-specific tools that exist (cdk-dia, PDK cdk-graph) only go code → picture, which is the reverse of Truss's direction. The one canvas-to-CDK project found is a zero-star repo created this month.
+- **AWS Infrastructure Composer is being wound down.** The standalone console stops accepting new customers on 2026-10-29 and shuts down on 2026-12-07. Only the VS Code Toolkit integration survives [2].
+- **Round-trip is where every tool struggles.** Composer reformats templates and strips comments just by opening them [9][10][11]. Brainboard's Code Edition is Alpha, drops comments, and reorders attributes [13].
+
+## 1. AWS Infrastructure Composer (formerly Application Composer)
+
+| Aspect | Finding |
+|---|---|
+| Generates | CloudFormation and AWS SAM templates. It supports "all AWS services that are supported by AWS CloudFormation" [1]. The docs and FAQ never mention CDK [1][5]. |
+| Nodes | "Cards". An **enhanced component card** is a curated bundle of several CFN resources shown as one card. A **standard card** is exactly one CFN resource, and any CFN resource type can be dropped on the canvas [3]. Step Functions opens Workflow Studio inside the canvas [1]. |
+| Connections | Only enhanced cards have ports. Dragging port to port either wires the resources or says the configuration isn't supported. A connection provisions **IAM policies (via SAM policy templates), environment variables, and event sources** [4]. Connections between standard cards can't be drawn. Composer detects them from the template and shows them as dotted lines [4]. Lines mean "event-driven relationships" [4]. |
+| Round-trip | Yes, for CFN/SAM. It imports existing templates and "automatically syncs changes between the visual canvas and your template code" [1]. In VS Code it opens any template in place [2][6]. |
+| Code edits after generation | The canvas and the template are live-synced, and the template is the source of truth. In practice, opening a file rewrites it: comments, blank lines, and trailing newlines get stripped, and the file is not marked dirty [9][10]. Parameters were dropped and `!Ref`/`!Sub` values mangled in the properties panel. AWS reported fixes in April 2024 [11]. There's still no way to turn off reformatting, so the only mitigation is a backup in an `.aws-composer` folder [10]. |
+| Where / licensing | Proprietary and free: "no additional charge" [5]. It has no public API or SDK [2]. The VS Code host (aws-toolkit-vscode) is Apache-2.0 [7], but the Composer webview is AWS-served and not OSS (a user asked in [8] whether the CDN bundle can be embedded). |
+| Status | **End of support.** No new customers from 2026-10-29. The standalone console shuts down 2026-12-07. The CloudFormation console embed is being replaced, and the "Export to Infrastructure Composer" buttons in the Lambda and Step Functions consoles are being removed. VS Code Toolkit keeps the full experience [2]. |
+| Known complaints | Destructive reformatting and comment loss on open [9][10]. Parameters, mappings, and conditions handled poorly; intrinsics mangled [11]. No CDK path. CDK users had to ask separately for Workflow Studio support [8]. |
+
+## 2. Brainboard
+
+| Aspect | Finding |
+|---|---|
+| Generates | Terraform (OpenTofu is named as a resource source). Code is generated "automatically as you design" [12]. No CDK [12]. |
+| Nodes | Terraform/OpenTofu resources and modules, including public and private registry modules [12][15]. |
+| Connections | Two kinds. **Visual connectors** are drawing-only. **Relationship connectors** are drawn automatically when a resource property references another resource. Deleting a line can "keep reference" (removes only the line) or "remove the reference" (also removes the config) [14]. This makes the drawing and the semantics separate layers. |
+| Round-trip | Partial. Its cloud import scans a provider account and generates the design, Terraform code, and a **state file** [12]. Git integration can push code and "pull the code" for migration [16]. No continuous two-way Git sync is documented [16]. |
+| Code edits after generation | **Code Edition (Alpha)**: on save, the HCL is parsed and converted to Brainboard's internal model, the diagram is updated, and the files are regenerated. Code-added resources get appended to the diagram and need manual placement. **Comments are not preserved.** Attribute order may change. Only GUI-supported Terraform features are guaranteed to survive. You can't rename in code. `providers.tf` and `backend.tf` aren't editable [13]. |
+| Licensing | Proprietary SaaS. Free tier: $0 with unlimited designs and code generation. Pro: $99/user/month, adding Git integration, versioning, and CI/CD. Enterprise: custom, with a self-hosted runner as an add-on [17]. The platform is not OSS; only "open source plugins" are mentioned [17]. |
+| Known complaints | No public issue tracker was found. The documented limitations above (the Alpha editor that loses comments and reorders code) are the first-party evidence [13]. |
+
+## 3. Cloudcraft (Datadog)
+
+| Aspect | Finding |
+|---|---|
+| Generates | **Diagrams only.** The "Export to Terraform" feature was removed because it "relied on a third-party provider, which limited our ability to support and improve its capabilities" [18]. |
+| Nodes / connections | Diagram components with 3D/isometric rendering for AWS and Azure [19]. There is no IaC semantics behind them [18]. |
+| Round-trip | Imports from a **live cloud account**, not from code. **Live** diagrams refresh from the account and allow only filtering and grouping. Editing one converts it to a **Snapshot**, and going back to Live discards the edits [20]. |
+| Code edits | Not applicable: there's no code. |
+| Licensing | Proprietary. It's now "free in Datadog" with unlimited users and diagrams for any Datadog subscription [21]. |
+| Known complaints | Code export was removed [18]. Live diagrams can't be edited without leaving Live [20]. |
+
+## 4. CDK-specific and adjacent tools
+
+| Tool | Direction | Notes | License / status |
+|---|---|---|---|
+| **cdk-dia** [22] | CDK → diagram | Runs after `cdk synth` and renders Graphviz PNG, with experimental interactive HTML (Cytoscape). It collapses L2 constructs by default. A `CdkDiaDecorator` (TS/JS only) can expand or ignore constructs. Open issues cover layout and connection quality, garbled names, and crashes [23]. | MIT, ~970 stars, active [7] |
+| **AWS PDK cdk-graph + diagram plugin** [24] | CDK → diagram | A plugin that runs during synth and writes DOT/SVG/PNG to `cdk.out`. It has filter presets, focus on a node, and granularity themes; a draw.io provider was only "in early design" [24]. | Apache-2.0. **"The AWS PDK is no longer supported"**; users are pointed to the Nx Plugin for AWS [25] |
+| **awslabs/diagram-as-code** [26] | YAML/CFN → diagram | YAML DSL to PNG, with beta CFN-template input. No IaC generation [26]. | Apache-2.0, ~1.6k stars [7] |
+| **Former2** [27] | Live account → code | Browser-based. It scans an account through the SDK and emits CFN, Terraform, Troposphere, **CDK v1/v2 TypeScript (Cfn primitives = L1 only)**, CDKTF, Pulumi, and a draw.io diagram. Credentials stay in browser memory, and it can be self-hosted [27]. | MIT, ~2.4k stars [7] |
+| **Klotho** [28] | Annotated app code → Pulumi + diagram PNG | No visual editor and no CDK [28]. | Apache-2.0 [7] |
+| **aws-cdk-visual-builder ("InfraCanvas/CDKCanvas")** [29] | Canvas → CDK TS scaffold | Browser-only, with a small palette. The author calls the output a "starting point" [29]. | No license, 0 stars, created 2026-10-01 [7] |
+
+No other canvas-to-CDK designer was found, OSS or commercial.
+
+## 5. Patterns across the field
+
+1. **Node granularity.** Composer mixes curated multi-resource cards with one-to-one raw resource cards [3]. cdk-dia and cdk-graph collapse L2s by default and let you expand them [22][24]. Nobody offers expandable *construct-tree Layers* (L3 → L2 → L1) as an editing surface. Visualizers do it read-only.
+2. **Connections carry semantics.** Composer's edges *generate* IAM, env vars, and events [4]. Brainboard's relationship edges *are* property references [14]. Both treat drawing-only lines as second-class.
+3. **Round-trip is the hard part, and the template is always the source of truth.** Both tools that try it (Composer, Brainboard) regenerate code from an internal model, which loses comments, ordering, and unsupported constructs [9][10][11][13]. Import of unknown constructs degrades to a raw card [3] or is "not guaranteed" [13].
+4. **Live-account import is a separate axis** (Cloudcraft, Brainboard, Former2). It produces L1-level output at best [27].
+
+## 6. Gaps a CDK-native, OSS, built-for-Import tool could fill
+
+1. **CDK as the output.** Nothing generates idiomatic L2/L3 CDK TypeScript from a canvas. Composer, the main AWS option, generates CFN/SAM and is retreating to VS Code-only [1][2]. Former2 emits only L1 primitives [27].
+2. **OSS and local-first.** Composer's webview is proprietary and AWS-hosted with no API [2][8]. Brainboard and Cloudcraft are SaaS [17][21]. Nothing comparable is Apache-2.0 and runs offline in the browser.
+3. **Construct-tree Layers as an editing model.** Visualizers already show that the collapse/expand-L2 idea is useful [22][24], but only read-only, and the major one (PDK) is unsupported [25].
+4. **Edges that mean CDK idioms.** For example, a connection becomes `table.grantReadWriteData(fn)` or `fn.addEventSource(...)`: Composer's IAM/env/event idea [4] rendered as CDK grant and integration methods instead of raw policy JSON.
+5. **Non-destructive Import (v2).** The top complaint is the tools rewriting user files [9][10][11][13]. Implications for v1: keep Exports deterministic and stable-ordered, and keep a Design file that maps each Node to a construct path/ID, so a later Import can match code to Nodes without reformatting anything. Treat unrecognised constructs as opaque Nodes, never drop them (compare Composer's standard-card fallback [3]).
+6. **A Design separate from the drawing.** Brainboard's split between "visual" and "relationship" connectors [14] and Cloudcraft's Live/Snapshot split [20] both suggest keeping layout (positions, annotations) separate from semantics (constructs, props, references) in the Design file.
+7. **Picking up displaced Composer users.** With the standalone console sunsetting [2], there's an opening for a browser-based designer, ideally one that also renders `cdk synth` output.
+
+## Sources
+
+1. AWS, *What is AWS Infrastructure Composer?* https://docs.aws.amazon.com/infrastructure-composer/latest/dg/what-is-composer.html
+2. AWS, *AWS Infrastructure Composer end of support* https://docs.aws.amazon.com/infrastructure-composer/latest/dg/infrastructure-composer-end-of-support.html
+3. AWS, *Configure and modify cards in Infrastructure Composer* https://docs.aws.amazon.com/infrastructure-composer/latest/dg/using-composer-cards.html
+4. AWS, *Card connections in Infrastructure Composer* https://docs.aws.amazon.com/infrastructure-composer/latest/dg/using-composer-connecting.html
+5. AWS, *Application/Infrastructure Composer FAQ* https://aws.amazon.com/application-composer/faq/
+6. AWS, *Working with AWS Infrastructure Composer in the Toolkit* https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/appcomposer-overview.html
+7. GitHub REST API repo metadata (license, stars, last push) fetched 2026-10-22 for aws/aws-toolkit-vscode, pistazie/cdk-dia, aws/aws-pdk, awslabs/diagram-as-code, iann0036/former2, klothoplatform/klotho, gnauhuhsaij/aws-cdk-visual-builder
+8. aws-toolkit-vscode issues #8072 (embedding the Composer CDN bundle) https://github.com/aws/aws-toolkit-vscode/issues/8072 and #6349 (Workflow Studio for CDK users) https://github.com/aws/aws-toolkit-vscode/issues/6349
+9. aws-toolkit-vscode #4132, *Keep comments after round-trip through AppComposer* https://github.com/aws/aws-toolkit-vscode/issues/4132
+10. aws-toolkit-vscode #5272, *Application Composer updates template.yaml just by opening it* https://github.com/aws/aws-toolkit-vscode/issues/5272
+11. aws-toolkit-vscode #4410, *Application Composer Issues* https://github.com/aws/aws-toolkit-vscode/issues/4410
+12. Brainboard docs home https://docs.brainboard.co/
+13. Brainboard, *Code Panel / Code Edition* https://docs.brainboard.co/cloud-design/code-edition.md
+14. Brainboard, *Connectors* https://docs.brainboard.co/cloud-design/design-area/connectors.md
+15. Brainboard, *Terraform modules* https://docs.brainboard.co/data/terraform-opentofu/terraform-modules.md
+16. Brainboard, *Git configuration* https://docs.brainboard.co/settings/integrations/git-configuration.md
+17. Brainboard pricing https://www.brainboard.co/pricing
+18. Datadog, *Why can't I export my diagram to Terraform?* https://docs.datadoghq.com/cloudcraft/faq/why-cant-export-diagram-to-terraform/
+19. Datadog, *Cloudcraft (Standalone)* https://docs.datadoghq.com/cloudcraft/
+20. Datadog, *Live vs Snapshot Diagrams* https://docs.datadoghq.com/cloudcraft/getting-started/live-vs-snapshot-diagrams/
+21. Cloudcraft pricing https://cloudcraft.co/pricing
+22. cdk-dia README https://github.com/pistazie/cdk-dia
+23. cdk-dia open issues (e.g. #24 positioning and connections, #39 garbled names, #46 unique-id crash) https://github.com/pistazie/cdk-dia/issues
+24. AWS PDK, *cdk-graph diagram plugin* https://aws.github.io/aws-pdk/developer_guides/cdk-graph-plugin-diagram/index.html
+25. AWS PDK README (no-longer-supported notice) https://github.com/aws/aws-pdk
+26. awslabs/diagram-as-code README https://github.com/awslabs/diagram-as-code
+27. Former2 README https://github.com/iann0036/former2
+28. Klotho README https://github.com/klothoplatform/klotho
+29. gnauhuhsaij/aws-cdk-visual-builder https://github.com/gnauhuhsaij/aws-cdk-visual-builder
+
+## Caveats
+
+- No first-party complaint tracker exists for Brainboard or Cloudcraft. Their complaints here come only from their own documented limitations.
+- Cloudcraft's standalone tier prices weren't on the current pricing page, which now leads with "free in Datadog". Third-party price listings were not used.
+- The search for commercial canvas-to-CDK products was a web search, so a small proprietary product could have been missed.
