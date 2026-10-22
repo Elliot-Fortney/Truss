@@ -12,6 +12,26 @@ _Avoid_: Diagram (when meaning the saved document), project, model
 One box on the canvas, corresponding to exactly one CDK construct.
 _Avoid_: Service, shape, component, resource (unless it is literally an L1 resource)
 
+**Connection**:
+An edge between two Nodes that always becomes code: a Reference, Grant, Integration or Network Connection. Its arrow follows data or request flow, not code direction.
+_Avoid_: Link, wire, line, relationship
+
+**Reference**:
+A Connection where one Node's prop points at another Node, e.g. a Function placed in a VPC. Containment is a Reference, never nesting.
+_Avoid_: Containment, parent
+
+**Grant**:
+A Connection that gives one Node IAM permissions on another.
+_Avoid_: Permission edge, policy
+
+**Integration**:
+A Connection that routes events or invocations from one Node to another, e.g. a Queue triggering a Function.
+_Avoid_: Trigger, event edge
+
+**Network Connection**:
+A Connection that opens network access between two Nodes.
+_Avoid_: Security group rule, firewall edge
+
 **Layer**:
 A level of the CDK construct tree. Expanding a Node reveals the child Nodes its construct creates (L3 → L2 → L1).
 _Avoid_: Level of detail, zoom level
