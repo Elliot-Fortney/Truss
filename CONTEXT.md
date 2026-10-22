@@ -16,6 +16,18 @@ _Avoid_: Service, shape, component, resource (unless it is literally an L1 resou
 A level of the CDK construct tree. Expanding a Node reveals the child Nodes its construct creates (L3 → L2 → L1).
 _Avoid_: Level of detail, zoom level
 
+**Computed Layer**:
+A Layer derived from the Node's actual props by instantiating the Design locally, never from a static example. Its child Nodes are read-only.
+_Avoid_: Live Layer, example Layer
+
+**Catalog**:
+The set of constructs a Design can use, generated from one pinned `aws-cdk-lib` version.
+_Avoid_: Palette (the UI that lists it), registry, library
+
+**Overlay**:
+Hand-written presentation data for one construct in the Catalog: tier, display name, featured props, fixtures and Connection hints.
+_Avoid_: Plugin, extension, config
+
 **Export**:
 Turning a Design into CDK code the user takes away.
 _Avoid_: Compile, build, deploy
