@@ -56,8 +56,17 @@ _Avoid_: Compile, build, deploy
 An Export that produces a complete, deployable CDK app (entry point, stack, project config). The default.
 _Avoid_: Full project, template
 
-**Stack-only Export**:
-An Export that produces only the stack file, for dropping into an existing CDK app.
+**Construct-only Export**:
+An Export that produces only the Generated File, for dropping into a stack in an existing CDK app.
+_Avoid_: Stack-only Export
+
+**Generated File**:
+The file Truss owns and rewrites whole on every Export. It defines one construct holding every Node of the Design.
+_Avoid_: Protected file, managed file, output
+
+**Extension File**:
+The stack file that uses the Generated File's construct, where users add their own code. Truss writes it once and never touches it again.
+_Avoid_: User file, custom file
 
 **Import**:
 Turning existing CDK code into a Design. The reverse of Export; planned for v2.
