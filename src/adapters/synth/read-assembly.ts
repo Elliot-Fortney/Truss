@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Assembly, Frame, ResourceRef, StackInfo, TreeNode } from '../../core/assembly.ts';
+import type { Annotation, Assembly, Frame, ResourceRef, StackInfo, TreeNode } from '../../core/assembly.ts';
 
 interface RawTreeNode {
   id: string;
@@ -61,16 +61,17 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
   const stacks: StackInfo[] = [];
   const creation: Record<string, Frame[]> = {};
   const resourceRefs: ResourceRef[] = [];
-  collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs);
-  return { schemaVersion: String(manifest.version), tree, stacks, creation, resourceRefs };
+  const annotations: Annotation[] = [];
+  collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs, annotations);
+  return { schemaVersion: String(manifest.version), tree, stacks, creation, resourceRefs, annotations };
 }
 
 /** Adds the stacks of one assembly directory, then those of the nested assembly each Stage writes. */
-function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creation: Record<string, Frame[]>, resourceRefs: ResourceRef[]): void {
+function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creation: Record<string, Frame[]>, resourceRefs: ResourceRef[], annotations: Annotation[]): void {
   const manifest = readJson(join(dir, 'manifest.json'));
   for (const [id, artifact] of Object.entries<RawArtifact>(manifest.artifacts ?? {})) {
     if (artifact.type === 'cdk:cloud-assembly' && artifact.properties?.directoryName) {
-      collectStacks(join(dir, artifact.properties.directoryName), appDir, stacks, creation, resourceRefs);
+      collectStacks(join(dir, artifact.properties.directoryName), appDir, stacks, creation, resourceRefs, annotations);
       continue;
     }
     if (artifact.type !== 'aws:cloudformation:stack') continue;
@@ -80,6 +81,10 @@ function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creatio
     if (!artifact.additionalMetadataFile) continue;
     const metadata = readJson(join(dir, artifact.additionalMetadataFile)) as Record<string, { type: string; data: unknown }[]>;
     for (const [path, entries] of Object.entries(metadata)) {
+      for (const e of entries) {
+        const level = /^aws:cdk:(error|warning|info)$/.exec(e.type)?.[1] as Annotation['level'] | undefined;
+        if (level && typeof e.data === 'string') annotations.push({ path: path.replace(/^\//, ''), level, message: e.data });
+      }
       const entry = entries.find((e) => e.type === 'aws:cdk:creationStack');
       if (!entry || !Array.isArray(entry.data)) continue;
       const frames = parseCreationStack(entry.data as string[], appDir);

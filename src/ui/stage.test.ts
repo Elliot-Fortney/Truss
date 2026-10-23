@@ -35,6 +35,7 @@ describe('showStage', () => {
     stages,
     stacks: [stack('Pipeline'), stack('Dev/Core', { stageId: 'Dev' }), stack('Dev/Core/Worker', { stageId: 'Dev', parentId: 'Dev/Core' }), stack('Prod/Core', { stageId: 'Prod' })],
     nodes: [node('Pipeline/a', 'Pipeline'), node('Dev/Core/b', 'Dev/Core'), node('Dev/Core/Worker/c', 'Dev/Core/Worker'), node('Prod/Core/d', 'Prod/Core')],
+    problems: [],
   };
 
   it('keeps the Stacks of the chosen Stage and those outside every Stage, with their Nodes', () => {

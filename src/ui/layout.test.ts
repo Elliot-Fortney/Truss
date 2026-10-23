@@ -19,6 +19,7 @@ const view = (nodes: NodeView[], stackIds: string[], nested: Record<string, stri
   stages: [],
   stacks: stackIds.map((id) => ({ id, label: id, env: 'env-agnostic', ...(nested[id] ? { parentId: nested[id] } : {}) })),
   nodes,
+  problems: [],
 });
 
 describe('layoutView', () => {

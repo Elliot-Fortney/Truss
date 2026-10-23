@@ -138,6 +138,32 @@ describe('readAssembly', () => {
     }
   });
 
+  it('reads the error, warning and info annotations of each construct', () => {
+    const root = mkdtempSync(join(tmpdir(), 'truss-assembly-'));
+    try {
+      write(root, 'tree.json', { tree: { id: 'App', path: '', children: {} } });
+      write(root, 'manifest.json', {
+        version: '55.0.0',
+        artifacts: { Web: { type: 'aws:cloudformation:stack', displayName: 'Web', additionalMetadataFile: 'Web.metadata.json' } },
+      });
+      write(root, 'Web.metadata.json', {
+        '/Web/Queue': [
+          { type: 'aws:cdk:error', data: 'no good' },
+          { type: 'aws:cdk:warning', data: 'careful' },
+          { type: 'aws:cdk:info', data: 'fyi' },
+          { type: 'aws:cdk:logicalId', data: 'Queue123' },
+        ],
+      });
+      expect(readAssembly(root, root).annotations).toEqual([
+        { path: 'Web/Queue', level: 'error', message: 'no good' },
+        { path: 'Web/Queue', level: 'warning', message: 'careful' },
+        { path: 'Web/Queue', level: 'info', message: 'fyi' },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('reads no references from a Stack with no template file', () => {
     const root = mkdtempSync(join(tmpdir(), 'truss-assembly-'));
     try {

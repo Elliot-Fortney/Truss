@@ -285,6 +285,144 @@ describe('the Draft', () => {
     });
   });
 
+  describe('Problems', () => {
+    const withRefs = (assembly: ReturnType<typeof readFixtureAssembly>, ...pairs: [string, string][]) => ({ ...assembly, resourceRefs: [...assembly.resourceRefs, ...pairs.map(([from, to]) => ({ from, to }))] });
+    const annotated = (level: 'error' | 'warning' | 'info', message: string, path = 'ShopStack/Orders') => ({ path, level, message });
+    /** A rig whose app on disk is good, and whose Draft synths to whatever `draft` says. */
+    const rigWith = (draft: (overlay: FileSet) => SynthResult, base: SynthResult = good()) => {
+      const synth = new FakeSynth();
+      synth.result = (overlay) => (overlay ? draft(overlay) : base);
+      return rig({ synth });
+    };
+    // The line of `versioned: true` in lib/shop-stack.ts, inside the Uploads `new`.
+    const trace = (line: number) => `Error: boom\n    at new Bucket (/app/lib/shop-stack.ts:${line}:7)`;
+
+    it('traces a synth error to the Node whose new it points into, and to the line in the code on disk', async () => {
+      const r = await rigWith(() => ({ ok: false, error: { message: 'boom', output: trace(12) } }));
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await vi.waitFor(() => expect(r.session.view().error).toMatchObject({ kind: 'draft' }));
+      expect(r.session.view().problems).toEqual([expect.objectContaining({ source: 'synth', path: UPLOADS, draft: true, blocking: true, location: { file: SHOP, line: 12, col: 7 } })]);
+    });
+
+    it('traces to file:line when the frame is in no Node', async () => {
+      const r = await rigWith(() => ({ ok: false, error: { message: 'boom', output: trace(3) } }));
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await vi.waitFor(() => expect(r.session.view().error).toMatchObject({ kind: 'draft' }));
+      const [found] = r.session.view().problems;
+      expect(found).toMatchObject({ source: 'synth', location: { file: SHOP, line: 3 } });
+      expect(found?.path).toBeUndefined();
+    });
+
+    it('flags the edits staged since the last good synth as suspect, and carries the error and Undo on a single one', async () => {
+      const synth = new FakeSynth();
+      const r = await rig({ synth });
+      await set(r, 'ShopStack/Orders', 'fifo', bool(true));
+      await settled(r);
+      synth.result = (overlay) => (overlay ? { ok: false, error: { message: 'bad prop' } } : good());
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await vi.waitFor(() => expect(r.session.view().error?.kind).toBe('draft'));
+      expect(r.session.view().draft?.items).toEqual([
+        expect.not.objectContaining({ suspect: true }),
+        expect.objectContaining({ id: UPLOADS, suspect: true, error: 'bad prop', undoable: true }),
+      ]);
+
+      // Undo takes the suspect out, the Draft synths again, and no flag is left.
+      synth.result = () => good();
+      await send(r, 'undo');
+      await settled(r);
+      expect(r.session.view().error).toBeUndefined();
+      expect(r.session.view().draft?.items.some((i) => i.suspect)).toBe(false);
+    });
+
+    it('flags several suspects without naming one, and clears the flags on the next good synth', async () => {
+      const synth = new FakeSynth();
+      const r = await rig({ synth });
+      synth.result = (overlay) => (overlay ? { ok: false, error: { message: 'bad' } } : good());
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await vi.waitFor(() => expect(r.session.view().error?.kind).toBe('draft'));
+      await set(r, 'ShopStack/Orders', 'fifo', bool(true));
+      await vi.waitFor(() => expect(r.session.view().synthing).toBe(false));
+      const items = r.session.view().draft!.items;
+      expect(items.map((i) => i.suspect)).toEqual([true, true]);
+      expect(items.some((i) => i.error || i.undoable)).toBe(false);
+
+      synth.result = () => good();
+      await set(r, UPLOADS, 'bucketName', { kind: 'string', value: 'x' });
+      await settled(r);
+      expect(r.session.view().draft?.items.some((i) => i.suspect)).toBe(false);
+    });
+
+    it('blocks Save on an error annotation the Draft adds, and badges nothing for the one the app already had', async () => {
+      const base = readFixtureAssembly('straight-line');
+      base.annotations = [annotated('error', 'old error', 'ShopStack/Catalog')];
+      const r = await rigWith(() => ({ ok: true, assembly: { ...base, annotations: [...base.annotations!, annotated('error', 'queue is wrong')] } }), { ok: true, assembly: base });
+      expect(r.session.view().problems).toEqual([expect.objectContaining({ message: 'old error', draft: false, blocking: false })]);
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      expect(r.session.view().problems.map((p) => [p.message, p.draft, p.blocking])).toEqual([
+        ['old error', false, false],
+        ['queue is wrong', true, true],
+      ]);
+      expect(r.session.view().draft?.problems).toEqual(['queue is wrong']);
+      expect(refusal(await send(r, 'save'))).toMatch(/can't be saved.*queue is wrong/);
+    });
+
+    it('does not block Save on a warning', async () => {
+      const r = await rigWith(() => ({ ok: true, assembly: { ...readFixtureAssembly('straight-line'), annotations: [annotated('warning', 'careful')] } }));
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      expect(r.session.view().problems).toEqual([expect.objectContaining({ severity: 'warning', draft: true, blocking: false })]);
+      expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+    });
+
+    it('names the resources of a cycle the Draft closes, blocks Save, and only reports one the app had', async () => {
+      const had = withRefs(readFixtureAssembly('straight-line'), ['ShopStack/Orders/Resource', 'ShopStack/Uploads/Resource'], ['ShopStack/Uploads/Resource', 'ShopStack/Orders/Resource']);
+      const closes = withRefs(had, ['ShopStack/Catalog/Resource', 'ShopStack/Catalog/Role'], ['ShopStack/Catalog/Role', 'ShopStack/Catalog/Resource']);
+      const r = await rigWith(() => ({ ok: true, assembly: closes }), { ok: true, assembly: had });
+      expect(r.session.view().problems).toEqual([expect.objectContaining({ source: 'cycle', draft: false, blocking: false })]);
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      const cycles = r.session.view().problems.filter((p) => p.source === 'cycle');
+      expect(cycles.map((p) => [p.draft, p.blocking]).sort()).toEqual([[false, false], [true, true]]);
+      expect(cycles.find((p) => p.draft)!.message).toBe('Dependency cycle: ShopStack/Catalog/Resource → ShopStack/Catalog/Role → ShopStack/Catalog/Resource');
+      expect(refusal(await send(r, 'save'))).toMatch(/Dependency cycle/);
+    });
+
+    it('shows a TypeScript diagnostic the Draft adds as a Problem on its Node', async () => {
+      const source = new TsSource();
+      source.diagnostics = (_dir, files) => (files.get(SHOP)!.includes('versioned: false') ? [{ file: SHOP, line: 12, code: 2322, message: 'Type is not assignable' }] : []);
+      const r = await rig({ source });
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      expect(r.session.view().problems).toEqual([expect.objectContaining({ source: 'typescript', path: UPLOADS, blocking: true, message: expect.stringContaining('TypeScript 2322') })]);
+    });
+
+    it('calls a failed check of the planned edit a bug in Truss, and gives a report with only the changed lines', async () => {
+      const synth = new FakeSynth();
+      synth.result = (overlay) => {
+        if (!overlay) return good();
+        const assembly = readFixtureAssembly('straight-line');
+        const stack = assembly.tree.children.find((c) => c.path === 'ShopStack')!;
+        stack.children = stack.children.filter((c) => c.path !== 'ShopStack/Orders');
+        return { ok: true, assembly };
+      };
+      const r = await rig({ synth });
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      expect(r.session.view().problems[0]).toMatchObject({ source: 'truss', trussBug: true, blocking: true });
+      const report = r.session.view().draft?.report ?? '';
+      expect(report).toContain('versioned → false');
+      expect(report).toContain('+      versioned: false,');
+      expect(report).not.toContain('visibilityTimeout');
+    });
+
+    it('lists what is on a construct, info included, in its property panel', async () => {
+      const r = await rigWith(() => good(), { ok: true, assembly: { ...readFixtureAssembly('straight-line'), annotations: [annotated('info', 'FYI')] } });
+      const reply = await r.session.handle({ type: 'panel', requestId: 'p', id: 'ShopStack/Orders' });
+      expect(reply.type === 'panel' ? reply.panel.problems : undefined).toEqual([{ severity: 'info', message: 'FYI', draft: false }]);
+    });
+  });
+
   describe('Save', () => {
     it('writes the shadow copy’s text byte for byte, clears the Draft and synths what was written', async () => {
       const r = await rig();

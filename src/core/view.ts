@@ -2,6 +2,7 @@ import type { FileDiff } from './diff.ts';
 import type { Assembly, EditorRequest, ResourceRef, SynthError, TreeNode } from './assembly.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
+import type { Problem } from './problems.ts';
 import { iconFor } from './icons.ts';
 import { serviceName } from './services.ts';
 import { isStackPlumbing, NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
@@ -87,6 +88,12 @@ export interface DraftItemView {
   label: string;
   /** What the edit does, e.g. `versioned → true`. */
   summary: string;
+  /** The edit was staged since the app last synthed with the Draft, so it may be what broke it. */
+  suspect?: true;
+  /** For the one suspect there is, what broke: the error to read next to Undo. */
+  error?: string;
+  /** Undo takes this edit out, which is all the one suspect needs. */
+  undoable?: true;
 }
 
 /** The Draft (CONTEXT.md): the canvas edits not yet saved, and what Save would write. */
@@ -100,6 +107,8 @@ export interface DraftView {
   problems: string[];
   /** Edits dropped because the code changed under them, and why. */
   notices: string[];
+  /** For a bug in Truss's own edit: the intents, the planned diff and the assembly diff, to file with the issue. No code beyond the changed lines. */
+  report?: string;
 }
 
 /** Everything the browser draws. The server pushes the whole of it, tagged with a version. */
@@ -120,6 +129,8 @@ export interface View {
   /** Parents come before the Stacks nested in them. */
   stacks: StackBoxView[];
   nodes: NodeView[];
+  /** Everything Truss found wrong with the Design on screen, in the order to list it. */
+  problems: Problem[];
   /** Absent when there is nothing in the Draft and nothing to say about it. */
   draft?: DraftView;
   /** Why no edit can be made to the Draft, when that is so: the app can't be synthed with a Draft applied (ADR 0007). */

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ISSUE_TRACKER_URL, type Problem } from '../core/problems.ts';
 import type { DraftView } from '../core/view.ts';
 
 /** One line of a unified diff, coloured by what it does. */
@@ -7,12 +8,38 @@ function DiffLine({ line }: { line: string }) {
   return <div className={`diff-line ${kind}`}>{line === '' ? ' ' : line}</div>;
 }
 
-function Problems({ problems }: { problems: readonly string[] }) {
-  if (problems.length === 0) return null;
+/** Each check that stops Save, linked to the Problems panel. A bug in Truss says so and offers the report to file. */
+function Blockers({ blockers, report, onShow }: { blockers: readonly Problem[]; report: string | undefined; onShow(id: string): void }) {
+  const [copied, setCopied] = useState(false);
+  if (blockers.length === 0) return null;
   return (
-    <ul className="draft-problems" role="alert">
-      {problems.map((p) => (
-        <li key={p}>{p}</li>
+    <ul className="draft-problems" role="alert" aria-label="Save is blocked">
+      {blockers.map((p) => (
+        <li key={p.id}>
+          {p.message}{' '}
+          <button type="button" className="link" onClick={() => onShow(p.id)}>
+            Show in Problems
+          </button>
+          {p.trussBug ? (
+            <div className="truss-bug">
+              This is a bug in Truss, not in your code.{' '}
+              {report ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(report).then(() => setCopied(true), () => setCopied(false));
+                  }}
+                >
+                  {copied ? 'Copied' : 'Copy report'}
+                </button>
+              ) : null}{' '}
+              <a href={ISSUE_TRACKER_URL} target="_blank" rel="noreferrer">
+                Report it
+              </a>
+              . The report holds only the edits and the lines they change.
+            </div>
+          ) : null}
+        </li>
       ))}
     </ul>
   );
@@ -44,25 +71,28 @@ function Review({ draft }: { draft: DraftView }) {
 export function DraftBar({
   draft,
   busy,
-  canSave,
+  blockers,
   held,
   onUndo,
   onRedo,
   onSave,
   onDiscard,
+  onShowProblem,
 }: {
   draft: DraftView;
   /** Truss is synthing the Draft or saving it. */
   busy: boolean;
-  /** Whether the Draft has no Problem that stops Save. */
-  canSave: boolean;
+  /** The Problems that stop Save, if any. */
+  blockers: readonly Problem[];
   /** The app doesn't synth, so the Draft is kept as it was and only Discard can change it. */
   held: boolean;
   onUndo(): void;
   onRedo(): void;
   onSave(): void;
   onDiscard(): void;
+  onShowProblem(id: string): void;
 }) {
+  const canSave = blockers.length === 0 && !held;
   const [reviewing, setReviewing] = useState(false);
   const count = draft.items.length;
   return (
@@ -98,11 +128,18 @@ export function DraftBar({
           {draft.items.map((item, i) => (
             <li key={`${item.id}:${i}`}>
               <strong>{item.label}</strong> <code>{item.summary}</code>
+              {item.suspect ? <span className="suspect" title="Staged since the app last synthed with the Draft"> suspect</span> : null}
+              {item.error ? <div className="suspect-error">{item.error}</div> : null}
+              {item.undoable ? (
+                <button type="button" onClick={onUndo}>
+                  Undo this edit
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
       ) : null}
-      <Problems problems={draft.problems} />
+      <Blockers blockers={blockers} report={draft.report} onShow={onShowProblem} />
       {reviewing && count > 0 ? <Review draft={draft} /> : null}
     </div>
   );

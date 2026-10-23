@@ -2,12 +2,15 @@ import { applyNodeChanges, Background, Controls, Handle, Position, ReactFlow, us
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import type { PropValue } from '../core/intents.ts';
+import { badgesFor, isBadged, type Badge, type Problem } from '../core/problems.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
 import { DraftBar } from './draft-bar.tsx';
 import { layoutView } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
 import { Palette } from './palette.tsx';
+import { ProblemsPanel } from './problems-panel.tsx';
+import { jumpTarget } from './problems-view.ts';
 import { PropertyPanel, type PanelState } from './property-panel.tsx';
 import { chooseStage, rememberStage, rememberedStage, showStage } from './stage.ts';
 import { usePanel } from './use-panel.ts';
@@ -18,6 +21,7 @@ interface StackData extends Record<string, unknown> {
   label: string;
   env: string;
   changed?: boolean;
+  badge?: Badge;
 }
 interface TrussNodeData extends Record<string, unknown> {
   label: string;
@@ -28,6 +32,8 @@ interface TrussNodeData extends Record<string, unknown> {
   lock?: string;
   /** The Draft changes this Node's code. */
   changed?: boolean;
+  /** Problems on this Node, or beneath it where the Layer is closed. */
+  badge?: Badge;
   external?: boolean;
   hoisted?: boolean;
   /** The Node has a Layer to open. */
@@ -44,7 +50,22 @@ interface LayerNodeData extends Record<string, unknown> {
   icon: string;
   expandable: boolean;
   expanded: boolean;
+  badge?: Badge;
   onToggle(id: string): void;
+}
+
+/** What a badge says: errors win the colour, warnings the Draft introduced follow. */
+function ProblemBadge({ badge }: { badge: Badge | undefined }) {
+  if (!badge || (badge.errors === 0 && badge.warnings === 0)) return null;
+  const error = badge.errors > 0;
+  const title = [badge.errors > 0 ? `${badge.errors} ${badge.errors === 1 ? 'error' : 'errors'}` : '', badge.warnings > 0 ? `${badge.warnings} ${badge.warnings === 1 ? 'warning' : 'warnings'}` : ''].filter(Boolean).join(', ');
+  return (
+    <span className={`problem-badge ${error ? 'error' : 'warning'}`} title={title} role="img" aria-label={title}>
+      {badge.errors > 0 ? `✕ ${badge.errors}` : ''}
+      {error && badge.warnings > 0 ? ' · ' : ''}
+      {badge.warnings > 0 ? `▲ ${badge.warnings}` : ''}
+    </span>
+  );
 }
 
 function StackBox({ data }: NodeProps<Node<StackData>>) {
@@ -54,6 +75,7 @@ function StackBox({ data }: NodeProps<Node<StackData>>) {
         <strong>{data.label}</strong>
         <span>{data.env}</span>
         {data.changed ? <span className="changed-badge">changed</span> : null}
+        <ProblemBadge badge={data.badge} />
       </div>
     </div>
   );
@@ -126,6 +148,7 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
           changed
         </span>
       ) : null}
+      <ProblemBadge badge={data.badge} />
     </div>
   );
 }
@@ -142,6 +165,7 @@ function LayerNode({ id, data }: NodeProps<Node<LayerNodeData>>) {
         </div>
         {data.expandable ? <ExpandToggle id={id} label={data.label} expanded={data.expanded} onToggle={data.onToggle} /> : null}
       </div>
+      <ProblemBadge badge={data.badge} />
     </div>
   );
 }
@@ -154,8 +178,15 @@ const nodeTypes = { stack: StackBox, truss: TrussNode, layer: LayerNode };
 /** The class a construct was made from, without its package: `aws-cdk-lib.aws_s3.CfnBucket` is `CfnBucket`. */
 const shortClass = (fqn: string) => fqn.split('.').at(-1) ?? fqn;
 
-function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: string) => void): Node[] {
-  const layout = layoutView(view, expanded);
+type Layout = ReturnType<typeof layoutView>;
+
+/** The construct paths that are drawn: Stack boxes, Nodes, and the children of the Nodes that are open. */
+function drawnIds(layout: Layout): Set<string> {
+  return new Set([...layout.stacks.map((s) => s.id), ...layout.nodes.map((n) => n.id), ...layout.layers.map((l) => l.id)]);
+}
+
+function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, onToggle: (id: string) => void): Node[] {
+  const badges = badgesFor(view.problems, drawnIds(layout));
   const stacksById = new Map(view.stacks.map((s) => [s.id, s]));
   const boxesById = new Map(layout.stacks.map((b) => [b.id, b]));
   const nodesById = new Map(view.nodes.map((n) => [n.id, n]));
@@ -171,7 +202,7 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
       ...(parent ? { parentId: stackNodeId(parent.id) } : {}),
       position: { x: box.x - (parent?.x ?? 0), y: box.y - (parent?.y ?? 0) },
       style: { width: box.width, height: box.height },
-      data: { label: stack.label, env: stack.env, ...(stack.changed ? { changed: true } : {}) } satisfies StackData,
+      data: { label: stack.label, env: stack.env, ...(stack.changed ? { changed: true } : {}), ...(badges.has(stack.id) ? { badge: badges.get(stack.id)! } : {}) } satisfies StackData,
       // Selecting a Stack opens its panel; it can't be dragged.
       draggable: false,
     };
@@ -194,6 +225,7 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
         ...(n.note ? { note: n.note } : {}),
         ...(n.lock ? { lock: n.lock } : {}),
         ...(n.changed ? { changed: true } : {}),
+        ...(badges.has(n.id) ? { badge: badges.get(n.id)! } : {}),
         ...(n.external ? { external: true } : {}),
         ...(n.hoisted ? { hoisted: true } : {}),
         expandable,
@@ -219,6 +251,7 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
         icon: c.icon,
         expandable: hasChildren.has(c.id),
         expanded: hasChildren.has(c.id) && expanded.has(c.id),
+        ...(badges.has(c.id) ? { badge: badges.get(c.id)! } : {}),
         onToggle,
       } satisfies LayerNodeData,
     };
@@ -374,11 +407,14 @@ export function App() {
       }),
     [],
   );
-  const flowNodes = useMemo(() => (shown ? toFlowNodes(shown, expanded, toggle) : []), [shown, expanded, toggle]);
+  const layout = useMemo(() => (shown ? layoutView(shown, expanded) : undefined), [shown, expanded]);
+  const flowNodes = useMemo(() => (shown && layout ? toFlowNodes(shown, layout, expanded, toggle) : []), [shown, layout, expanded, toggle]);
   const flowEdges = useMemo(() => (shown ? toFlowEdges(shown) : []), [shown]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [problemsOpen, setProblemsOpen] = useState(false);
+  const [linkedProblem, setLinkedProblem] = useState<string>();
   // Opening a Node must not move the viewport, so only the Nodes and boxes of the Design decide when to fit it again.
   const fitKey = flowNodes
     .filter((n) => n.type !== 'layer')
@@ -415,6 +451,29 @@ export function App() {
     },
     [nodes, request],
   );
+
+  /** Selects what a Problem is on, bubbling to the nearest drawn construct as its badge does. */
+  const jumpTo = useCallback(
+    (problem: Problem) => {
+      const target = layout && jumpTarget(problem, drawnIds(layout));
+      if (target === undefined) return;
+      const id = layout!.stacks.some((s) => s.id === target) ? stackNodeId(target) : target;
+      setSelectedId(id);
+      selectedRef.current = id;
+      setNodes((current) => current.map((n) => ({ ...n, selected: n.id === id })));
+    },
+    [layout],
+  );
+  /** Where in the code a Problem is: its own place, else the code of the Node it is on. */
+  const locate = useCallback(
+    (problem: Problem): SourceLocation | undefined => problem.location ?? view?.nodes.find((n) => n.id === problem.path)?.source,
+    [view],
+  );
+  const showProblem = useCallback((id: string) => {
+    setProblemsOpen(true);
+    setLinkedProblem(id);
+    requestAnimationFrame(() => document.getElementById(`problem-${id}`)?.scrollIntoView({ block: 'nearest' }));
+  }, []);
 
   const selected = shown?.nodes.find((n) => n.id === selectedId);
   const openStack = shown?.stacks.find((s) => stackNodeId(s.id) === selectedId);
@@ -550,7 +609,14 @@ export function App() {
           <Controls showInteractive={false} />
         </ReactFlow>
         <Palette search={search} />
-        {draft ? <DraftBar draft={draft} busy={view.synthing || saving} canSave={draft.problems.length === 0 && !error} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} /> : null}
+        {problemsOpen ? (
+          <ProblemsPanel problems={view.problems} output={error?.output} highlighted={linkedProblem} onJump={jumpTo} locate={locate} onOpen={openInEditor} onClose={() => setProblemsOpen(false)} />
+        ) : (
+          <button type="button" className="problems-toggle" onClick={() => setProblemsOpen(true)}>
+            Problems · {view.problems.filter(isBadged).length}
+          </button>
+        )}
+        {draft ? <DraftBar draft={draft} busy={view.synthing || saving} blockers={view.problems.filter((p) => p.blocking)} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} onShowProblem={showProblem} /> : null}
         {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onOpen={openInEditor} /> : null}
         {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}

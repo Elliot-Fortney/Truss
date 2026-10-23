@@ -131,3 +131,24 @@ input.prop-input[type='text'] { width: 100%; }
 .diff-line.del { background: color-mix(in srgb, #d1242f 22%, transparent); }
 .diff-line.hunk { color: var(--accent); }
 .diff-line.meta { color: var(--muted); }
+
+.problem-badge { position: absolute; top: -8px; left: 8px; padding: 0 6px; border: 1px solid var(--error-fg); border-radius: 8px; background: var(--card); font-size: 11px; font-weight: 600; }
+.problem-badge.error { color: var(--error-fg); border-color: var(--error-fg); }
+.problem-badge.warning { color: var(--accent); border-color: var(--accent); }
+.stack-header .problem-badge { position: static; align-self: flex-start; }
+.problems-toggle { position: absolute; z-index: 10; left: 12px; top: 12px; font-size: 12px; }
+.problems-panel { position: absolute; z-index: 12; left: 12px; top: 12px; width: 420px; max-height: 50%; overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 12px; }
+.problems-head { display: flex; align-items: center; gap: 8px; }
+.problems-head [aria-pressed="true"] { border-color: var(--accent); }
+.problems-list { margin: 6px 0 0; padding: 0; list-style: none; }
+.problem { display: flex; gap: 6px; padding: 4px; border-radius: 6px; }
+.problem.highlighted { outline: 2px solid var(--accent); }
+.problem.error .problem-mark { color: var(--error-fg); }
+.problem.warning .problem-mark { color: var(--accent); }
+.problem-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 11px; }
+.problems-panel pre { max-height: 200px; overflow: auto; white-space: pre-wrap; }
+button.link { padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.suspect { color: var(--error-fg); font-size: 11px; }
+.suspect-error, .truss-bug { color: var(--error-fg); font-size: 11px; }
+.panel-problems { margin: 0 0 8px; padding-left: 18px; font-size: 12px; }
+.panel-problems .error { color: var(--error-fg); }

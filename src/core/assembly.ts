@@ -35,6 +35,14 @@ export interface ResourceRef {
   to: string;
 }
 
+/** A message the app's constructs attached with `Annotations.of(x).addError(…)`, `addWarning` or `addInfo`. */
+export interface Annotation {
+  /** The construct path it was attached to. */
+  path: string;
+  level: 'error' | 'warning' | 'info';
+  message: string;
+}
+
 export interface Assembly {
   /** Cloud assembly manifest version. */
   schemaVersion: string;
@@ -44,6 +52,8 @@ export interface Assembly {
   creation: Record<string, Frame[]>;
   /** What the L1 resources of each Stack's template point at, which says which construct needed which. */
   resourceRefs: ResourceRef[];
+  /** The annotations the app's constructs carry. Absent in an assembly recorded before Truss read them. */
+  annotations?: Annotation[];
 }
 
 export type SynthResult =

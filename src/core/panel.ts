@@ -49,6 +49,8 @@ export interface PanelView {
   /** Set when the props are passed as a variable or a call: Truss can't tell prop by prop, so every prop is read-only. */
   propsSource?: string;
   source?: { file: string; line: number; col: number };
+  /** What Truss found on this construct, of every severity: info shows nowhere else. */
+  problems?: Array<{ severity: 'error' | 'warning' | 'info'; message: string; draft: boolean }>;
 }
 
 const sourceOf = ({ span }: NodeFacts) => ({ file: span.file, line: span.start.line, col: span.start.col });

@@ -85,7 +85,7 @@ The canvas edits not yet saved to the app's code. Truss shows the Design as it w
 _Avoid_: Staged changes, changeset, pending edits
 
 **Problem**:
-An error or warning Truss shows on a Design, from synth, type-checking, CDK annotations or a dependency cycle. Errors introduced by the Draft block Save.
+An error or warning Truss shows on a Design, from synth, type-checking, CDK annotations or a dependency cycle (or, rarely, a check that the edit Truss planned is the edit the Draft means, which is a bug in Truss, not in the user's code). Errors introduced by the Draft block Save.
 _Avoid_: Issue, diagnostic, lint, finding
 
 **Sidecar**:

@@ -54,6 +54,15 @@ export function PropertyPanel({ state, onSet }: { state: PanelState; onSet(prop:
   return (
     <section className="props" aria-label="Properties">
       {panel.summary ? <p className="prop-doc">{panel.summary}</p> : null}
+      {panel.problems?.length ? (
+        <ul className="panel-problems" aria-label="Problems">
+          {panel.problems.map((p) => (
+            <li key={`${p.severity}:${p.message}`} className={p.severity}>
+              {p.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {notice ? <p className="lock-reason">{notice}</p> : null}
       {panel.rows.length === 0 && panel.more.length === 0 ? <p className="lock-reason">No props are passed in your code.</p> : null}
       <PropList rows={panel.rows} unset={unsetText(panel)} onSet={onSet} />
