@@ -9,6 +9,7 @@ import { TsSource } from './adapters/source/ts-source.ts';
 import { ToolkitSynth } from './adapters/synth/toolkit-synth.ts';
 import type { Asset } from './adapters/server/server.ts';
 import { parseCliArgs } from './cli/args.ts';
+import { editorCommand, type EditorTarget } from './cli/editor.ts';
 import { findAppDir } from './cli/find-app.ts';
 import { run } from './cli/run.ts';
 
@@ -34,15 +35,24 @@ function loadUi(dir: string): Record<string, Asset> {
   return assets;
 }
 
+function launch(cmd: string, args: string[]): void {
+  spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => undefined).unref();
+}
+
 function openBrowser(url: string): void {
   const [cmd, args]: [string, string[]] =
     process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
-  spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => undefined).unref();
+  launch(cmd, args);
+}
+
+function openInEditor(target: EditorTarget): void {
+  const { cmd, args } = editorCommand(process.env, process.platform, target);
+  launch(cmd, args);
 }
 
 async function main(): Promise<void> {
   const args = parseCliArgs(process.argv.slice(2));
-  const synth = new ToolkitSynth();
+  const synth = new ToolkitSynth(args.synthTimeout !== undefined ? { timeoutMs: args.synthTimeout * 1000 } : {});
   const running = await run(args, {
     cwd: process.cwd(),
     findApp: findAppDir,
@@ -52,6 +62,7 @@ async function main(): Promise<void> {
     token: randomBytes(24).toString('base64url'),
     ui: loadUi(fileURLToPath(new URL('./ui', import.meta.url))),
     open: openBrowser,
+    openInEditor,
     log: (line) => console.log(line),
   });
 
