@@ -70,8 +70,14 @@ export class ToolkitSynth implements Synth {
         const how = child.signalCode ? `signal ${child.signalCode}` : `code ${child.exitCode ?? 'unknown'}`;
         settle({ ok: false, error: { message: `synth process exited with ${how}`, output: log } });
       };
-      child.on('disconnect', () => ((disconnected = true), settleIfCrashed()));
-      child.on('close', () => ((closed = true), settleIfCrashed()));
+      child.on('disconnect', () => {
+        disconnected = true;
+        settleIfCrashed();
+      });
+      child.on('close', () => {
+        closed = true;
+        settleIfCrashed();
+      });
 
       if (opts.signal?.aborted) return onAbort();
       opts.signal?.addEventListener('abort', onAbort);

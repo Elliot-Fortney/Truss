@@ -1,4 +1,4 @@
-import type { Assembly, SynthError, TreeNode } from './assembly.ts';
+import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import type { Facts } from './facts.ts';
 
 /** A Stack drawn as a group box. */
@@ -79,4 +79,9 @@ export function buildView(facts: Facts, assembly: Assembly): ViewBody {
   visit(assembly.tree, undefined, false);
 
   return { stacks, nodes };
+}
+
+/** What the browser sends: the only message there is. */
+export interface OpenInEditorMessage extends EditorRequest {
+  type: 'open-in-editor';
 }

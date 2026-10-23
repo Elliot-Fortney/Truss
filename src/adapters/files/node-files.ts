@@ -8,24 +8,35 @@ const SKIP_DIRS = new Set(['node_modules', 'cdk.out', 'dist', '.git']);
 /** Files that can change the Design: sources, and the JSON that configures or locks the app. */
 const WATCHED = /\.(?:[cm]?[jt]sx?|json)$/;
 const DEFAULT_DEBOUNCE_MS = 150;
+/** A steady stream of writes (an install, a big checkout) is still reported this often. */
+const DEFAULT_MAX_WAIT_MS = 2000;
 
 /** The Files port over the real disk. */
 export class NodeFiles implements Files {
   private readonly debounceMs: number;
+  private readonly maxWaitMs: number;
 
   constructor(
     private readonly appDir: string,
-    opts: { debounceMs?: number } = {},
+    opts: { debounceMs?: number; maxWaitMs?: number } = {},
   ) {
     this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+    this.maxWaitMs = opts.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
   }
 
   watch(onChange: () => void): () => void {
     let timer: NodeJS.Timeout | undefined;
+    let firstAt = 0;
+    const fire = () => {
+      timer = undefined;
+      onChange();
+    };
     const watcher = watch(this.appDir, { recursive: true }, (_event, filename) => {
       if (!filename || !isWatched(filename)) return;
+      const now = Date.now();
+      if (timer === undefined) firstAt = now;
       clearTimeout(timer);
-      timer = setTimeout(onChange, this.debounceMs);
+      timer = setTimeout(fire, Math.max(0, Math.min(this.debounceMs, firstAt + this.maxWaitMs - now)));
     });
     // A folder deleted under the watcher must not crash Truss.
     watcher.on('error', () => undefined);
@@ -55,5 +66,6 @@ export class NodeFiles implements Files {
 function isWatched(filename: string): boolean {
   const parts = filename.split(/[\\/]/);
   if (parts.slice(0, -1).some((dir) => SKIP_DIRS.has(dir))) return false;
-  return WATCHED.test(parts.at(-1) ?? '') && !parts.at(-1)!.startsWith('.');
+  const name = parts.at(-1) ?? '';
+  return WATCHED.test(name) && !name.startsWith('.');
 }

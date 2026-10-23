@@ -1,10 +1,7 @@
 import { basename } from 'node:path';
+import type { EditorRequest } from '../core/assembly.ts';
 
-export interface EditorTarget {
-  file: string;
-  line?: number;
-  col?: number;
-}
+export type EditorTarget = EditorRequest;
 
 type Goto = (file: string, line: number, col: number) => string[];
 const colonSuffix: Goto = (file, line, col) => [`${file}:${line}:${col}`];

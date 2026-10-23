@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
-import type { View } from '../core/view.ts';
+import type { OpenInEditorMessage, View } from '../core/view.ts';
 import { applyPush } from './versions.ts';
 
 export type Connection = 'connecting' | 'open' | 'closed';
@@ -35,7 +35,7 @@ export function useView(): {
 
   /** Asks Truss to show a place in the app's code in the user's editor. */
   const openInEditor = useCallback((at: SourceLocation) => {
-    if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at }));
+    if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
   }, []);
 
   return { view, connection, openInEditor };

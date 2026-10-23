@@ -49,6 +49,9 @@ export interface SourceLocation {
   col: number;
 }
 
+/** A request to show a place in the app's code in the user's editor; the position is optional. */
+export type EditorRequest = Pick<SourceLocation, 'file'> & Partial<Omit<SourceLocation, 'file'>>;
+
 export interface SynthError {
   message: string;
   /** Raw stdout/stderr from the app, for display. */

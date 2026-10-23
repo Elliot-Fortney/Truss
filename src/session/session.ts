@@ -14,6 +14,9 @@ export interface SessionDeps {
  * Holds the state for one app and is the only layer that calls the ports. The browser is a view
  * over it: every state change is pushed as the whole View, tagged with a version that only goes up.
  */
+/** After this many stale results in a row the next one is shown anyway; the run behind it still follows. */
+const MAX_STALE_IN_A_ROW = 2;
+
 export class Session {
   private current: View = { version: 0, synthing: true, hasDesign: false, stacks: [], nodes: [] };
   private listeners = new Set<(view: View) => void>();
@@ -23,6 +26,8 @@ export class Session {
   private cycle: Promise<void> | undefined;
   /** Set when the files changed during a run, so that run's result is stale and one more run is due. */
   private waiting = false;
+  /** Results dropped as stale in a row, so continuous edits can't keep the Design from ever updating. */
+  private staleInARow = 0;
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -80,14 +85,24 @@ export class Session {
     this.push({ synthing: true });
     try {
       const [result, files] = await Promise.all([this.deps.synth.synth(this.deps.appDir), this.deps.files.read()]);
-      if (this.waiting || this.stopped) return; // Stale: the next run reads newer files.
+      if (this.stopped || this.isStale()) return;
       if (!result.ok) return this.fail(result.error);
       const facts = this.deps.source.analyse(files, result.assembly);
       this.push({ synthing: false, hasDesign: true, error: undefined, ...buildView(facts, result.assembly) });
     } catch (err) {
-      if (this.waiting || this.stopped) return;
+      if (this.stopped || this.isStale()) return;
       this.fail({ message: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  /** Stale means the files changed during the run, so the next run reads newer ones; but only so many in a row. */
+  private isStale(): boolean {
+    if (this.waiting && this.staleInARow < MAX_STALE_IN_A_ROW) {
+      this.staleInARow++;
+      return true;
+    }
+    this.staleInARow = 0;
+    return false;
   }
 
   /** Shows the error. The last good Design, if there is one, stays so the user keeps their bearings. */

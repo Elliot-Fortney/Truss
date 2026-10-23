@@ -2,20 +2,13 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
+import type { EditorRequest } from '../../core/assembly.ts';
 import type { View } from '../../core/view.ts';
 
 /** What the server needs from the session: the current View and a feed of new ones. */
 export interface ViewSource {
   view(): View;
   subscribe(listener: (view: View) => void): () => void;
-}
-
-/** A request from the page to show a place in the app's code in the user's editor. */
-export interface OpenInEditor {
-  /** Relative to the app folder. */
-  file: string;
-  line?: number;
-  col?: number;
 }
 
 export interface Asset {
@@ -28,7 +21,7 @@ export interface ServerOptions {
   /** The random per-run secret the WebSocket upgrade requires. */
   token: string;
   /** Called when the page asks to open a place in the code. Never trusted: the handler checks the path. */
-  onOpenInEditor?: (request: OpenInEditor) => void;
+  onOpenInEditor?: (request: EditorRequest) => void;
   /** Static UI files by URL path. */
   ui?: Record<string, Asset>;
   /** An explicit port (`--port`). Fails when it is taken. */
@@ -155,7 +148,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 }
 
 /** The only message the page sends. Anything that isn't exactly that shape is dropped. */
-function parseOpenInEditor(text: string): OpenInEditor | undefined {
+function parseOpenInEditor(text: string): EditorRequest | undefined {
   let msg: unknown;
   try {
     msg = JSON.parse(text);

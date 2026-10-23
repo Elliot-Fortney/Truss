@@ -38,10 +38,8 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
     token: deps.token,
     ui: deps.ui,
     onOpenInEditor: ({ file, ...at }) => {
-      // The page is only trusted to name a file in the app, never one outside it.
-      const rel = relative(appDir, join(appDir, file));
-      if (isAbsolute(file) || /^\.\.(?:[\\/]|$)/.test(rel) || isAbsolute(rel)) return;
-      deps.openInEditor({ file: join(appDir, rel), ...at });
+      const inside = resolveInside(appDir, file);
+      if (inside) deps.openInEditor({ file: inside, ...at });
     },
     ...(args.port !== undefined ? { port: args.port } : {}),
   });
@@ -61,4 +59,12 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
       await server.close();
     },
   };
+}
+
+/** The absolute path of `file` under `dir`, or undefined when it names something outside it. The page is never trusted with more. */
+function resolveInside(dir: string, file: string): string | undefined {
+  if (isAbsolute(file)) return undefined;
+  const full = join(dir, file);
+  const rel = relative(dir, full);
+  return /^\.\.(?:[\\/]|$)/.test(rel) || isAbsolute(rel) ? undefined : full;
 }

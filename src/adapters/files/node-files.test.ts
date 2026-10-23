@@ -63,6 +63,21 @@ describe('NodeFiles.watch', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  it('still reports while writes keep coming faster than the debounce', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'truss-watch-'));
+    dirs.push(dir);
+    const onChange = vi.fn();
+    stops.push(new NodeFiles(dir, { debounceMs: 300, maxWaitMs: 500 }).watch(onChange));
+    await settle(400);
+    onChange.mockClear();
+    const end = Date.now() + 1200;
+    for (let i = 0; Date.now() < end; i++) {
+      writeFileSync(join(dir, 'a.ts'), `v${i}`);
+      await settle(100);
+    }
+    expect(onChange).toHaveBeenCalled();
+  });
+
   it('ignores dependencies, build output, git internals and files that cannot change the Design', async () => {
     const { dir, onChange } = await watched();
     writeFileSync(join(dir, 'node_modules/x/index.ts'), 'dep');

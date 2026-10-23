@@ -209,6 +209,23 @@ describe('Session', () => {
       expect(pushed.filter((v) => v.hasDesign)).toHaveLength(1);
     });
 
+    it('still shows a result when edits keep arriving, so the Design is never starved', async () => {
+      const files = new FakeFiles(readFixtureFiles('straight-line'));
+      const synth = new ScriptedSynth();
+      const session = make({ files, synth });
+      void session.start();
+      await flush();
+
+      // An edit lands during every run. The first two results are dropped, the third is shown.
+      for (let run = 0; run < 3; run++) {
+        files.change();
+        synth.calls[run]!.settle(good());
+        await flush();
+        expect(session.view().hasDesign).toBe(run === 2);
+      }
+      expect(synth.calls).toHaveLength(4);
+    });
+
     it('reads the files for the waiting synth after the change, not before', async () => {
       const files = new FakeFiles(readFixtureFiles('straight-line'));
       const synth = new ScriptedSynth();
