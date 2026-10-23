@@ -16,7 +16,7 @@ describe('TsSource.analyse on the straight-line fixture', () => {
       pathsOnSpan: 1,
       binding: 'none',
       enclosingClass: { name: 'ShopStack', kind: 'stack' },
-      props: { form: 'object', props: [{ name: 'versioned', kind: 'literal', text: 'true' }] },
+      props: { form: 'object', props: [{ name: 'versioned', kind: 'literal', text: 'true', value: true }] },
     });
     expect(facts.nodes['ShopStack/Orders']).toMatchObject({ className: 'sqs.Queue', literalId: 'Orders' });
     expect(facts.nodes['ShopStack/Catalog']).toMatchObject({ className: 'dynamodb.Table', literalId: 'Catalog' });
@@ -119,8 +119,8 @@ describe('TsSource.analyse on the shapes fixture', () => {
     expect(at('Shapes/Plain').props).toEqual({
       form: 'object',
       props: [
-        { name: 'displayName', kind: 'literal', text: "'Plain'" },
-        { name: 'fifo', kind: 'literal', text: 'false' },
+        { name: 'displayName', kind: 'literal', text: "'Plain'", value: 'Plain' },
+        { name: 'fifo', kind: 'literal', text: 'false', value: false },
       ],
     });
     expect(at('Shapes/Bound').props).toEqual({

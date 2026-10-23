@@ -2,7 +2,8 @@ import type { Assembly, SynthError, SynthResult } from '../core/assembly.ts';
 import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { Facts } from '../core/facts.ts';
 import type { CatalogLoad, FileSet, Files, Source, Synth } from '../core/ports.ts';
-import type { ClientMessage, EditMessage, Reply } from '../core/protocol.ts';
+import { buildPanel } from '../core/panel.ts';
+import type { ClientMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { locateError } from '../core/synth-error.ts';
 import { buildView, type View } from '../core/view.ts';
@@ -90,7 +91,15 @@ export class Session {
     if (message.type === 'search') {
       return Promise.resolve({ type: 'results', requestId: message.requestId, hits: this.searchCatalog(message.query) });
     }
+    // Likewise a panel only reads the Design on screen.
+    if (message.type === 'panel') return Promise.resolve(this.panel(message));
     return this.serialised(() => this.apply(message));
+  }
+
+  /** The property panel of a Node or Stack of the Design on screen. */
+  private panel({ requestId, id }: PanelMessage): Reply {
+    const panel = this.snapshot && buildPanel(id, this.current, this.snapshot.facts, this.catalog);
+    return panel ? { type: 'panel', requestId, panel } : { type: 'refused', requestId, reason: `No Node or Stack at ${id}` };
   }
 
   /**

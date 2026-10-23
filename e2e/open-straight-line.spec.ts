@@ -402,3 +402,41 @@ test('a resource a construct creates outside its own subtree is drawn at Stack s
     await truss.exited;
   }
 });
+
+test('selecting a Node lists its props, literals as values and expressions as greyed source, and a Stack header opens the Stack\'s props', async ({ page }) => {
+  const truss = await startTruss();
+  try {
+    await page.goto(truss.url);
+    const props = page.getByRole('region', { name: 'Properties' });
+    await expect(page.locator('.truss-node', { hasText: 'Uploads' })).toBeVisible({ timeout: 60_000 });
+
+    await page.locator('.truss-node', { hasText: 'Uploads' }).click();
+    const versioned = props.locator('.prop-row', { has: page.getByText('versioned', { exact: true }) });
+    await expect(versioned.locator('.prop-value.literal')).toHaveText('true');
+    await expect(versioned).toContainText('boolean');
+
+    // Props the code doesn't set are one click away, with their CDK default as text.
+    await expect(props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) })).toHaveCount(0);
+    await props.getByRole('button', { name: /more props?$/ }).click();
+    await expect(props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) })).toContainText('Default:');
+
+    // An expression is shown as the source it is written as, not as a value.
+    await page.locator('.truss-node', { hasText: 'Orders' }).click();
+    await expect(props.locator('.prop-value.source')).toHaveText('cdk.Duration.seconds(30)');
+
+    // A struct is not a literal either: it is source text, and its docs come from the Catalog.
+    await page.locator('.truss-node', { hasText: 'Catalog' }).click();
+    const partitionKey = props.locator('.prop-row', { has: page.getByText('partitionKey', { exact: true }) });
+    await expect(partitionKey.locator('.prop-value.source')).toContainText("name: 'sku'");
+    await expect(partitionKey).toContainText('Partition key attribute definition.');
+
+    await page.locator('.stack-header', { hasText: 'ShopStack' }).click();
+    await expect(page.getByRole('heading', { name: 'ShopStack' })).toBeVisible();
+    for (const name of ['env', 'terminationProtection', 'description']) {
+      await expect(props.locator('.prop-name', { hasText: new RegExp(`^${name}$`) })).toBeVisible();
+    }
+  } finally {
+    truss.child.kill('SIGINT');
+    expect(await truss.exited).toBe(0);
+  }
+});

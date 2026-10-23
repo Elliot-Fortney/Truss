@@ -28,6 +28,8 @@ export interface PropFacts {
   kind: 'literal' | 'expression';
   /** The prop's value exactly as written. */
   text: string;
+  /** What a literal prop evaluates to: the string without its quotes, the number, the boolean or `null`. Absent for an expression. */
+  value?: string | number | boolean | null;
 }
 
 /** The props argument: an object literal Truss can read prop by prop, or anything else (a variable, a call). */

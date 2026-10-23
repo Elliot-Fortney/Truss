@@ -1,4 +1,5 @@
 import type { SearchHit } from './catalog.ts';
+import type { PanelView } from './panel.ts';
 
 /** A change to one Node, named by its construct path. */
 export type EditMessage =
@@ -9,8 +10,11 @@ export type EditMessage =
 /** The palette's search of the Catalog. An empty `query` lists the featured constructs first. */
 export type SearchMessage = { type: 'search'; requestId: string; query: string };
 
+/** The property panel of one Node or Stack, named by its construct path. */
+export type PanelMessage = { type: 'panel'; requestId: string; id: string };
+
 /** Messages the browser sends. Each carries a client request ID that the reply echoes. */
-export type ClientMessage = EditMessage | SearchMessage;
+export type ClientMessage = EditMessage | SearchMessage | PanelMessage;
 
 /** A request as the caller writes it; the transport adds the request ID. */
 export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ? Omit<M, 'requestId'> : never) : never;
@@ -19,7 +23,8 @@ export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ?
 export type Reply =
   | { type: 'ack'; requestId: string }
   | { type: 'refused'; requestId: string; reason: string }
-  | { type: 'results'; requestId: string; hits: SearchHit[] };
+  | { type: 'results'; requestId: string; hits: SearchHit[] }
+  | { type: 'panel'; requestId: string; panel: PanelView };
 
 export const MAX_NOTE_LENGTH = 10_000;
 /** Bounds the work of one search: no construct name or CloudFormation type comes near this long. */
@@ -62,6 +67,8 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
       if (note.length > MAX_NOTE_LENGTH) return refuse(`A note can be at most ${MAX_NOTE_LENGTH} characters`);
       return { ok: true, message: { type: 'note', requestId, id, note } };
     }
+    case 'panel':
+      return { ok: true, message: { type: 'panel', requestId, id } };
     default:
       return refuse(`Unknown request type ${String(raw['type'])}`);
   }

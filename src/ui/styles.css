@@ -55,7 +55,7 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .truss-node { position: relative; }
 .node-note { position: absolute; top: -8px; right: 8px; padding: 0 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--accent); font-size: 11px; }
 .banner.notice { top: 44px; color: var(--error-fg); background: var(--error-bg); }
-.note-panel { position: absolute; z-index: 10; right: 12px; bottom: 12px; width: 280px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.note-panel { position: absolute; z-index: 10; right: 12px; bottom: 12px; width: 320px; max-height: calc(55% - 24px); overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .note-panel h2 { margin: 0 0 8px; font-size: 14px; }
 .note-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .note-panel textarea { resize: vertical; font: inherit; font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
@@ -91,3 +91,16 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .layer-facts { margin: 0; font-size: 12px; }
 .layer-facts dt { color: var(--muted); margin-top: 6px; }
 .layer-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.props { margin-bottom: 8px; }
+.prop-list { margin: 0; padding: 0; list-style: none; }
+.prop-row { padding: 6px 0; border-top: 1px solid var(--border); font-size: 12px; }
+.prop-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.prop-name { font-weight: 600; }
+.prop-badge { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 10px; }
+.prop-type { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.prop-value { margin-top: 2px; overflow-wrap: anywhere; }
+.prop-value.source { display: block; color: var(--muted); font-style: italic; }
+.prop-value.unset { color: var(--muted); }
+.prop-doc { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+.prop-more { margin-top: 6px; font: inherit; font-size: 12px; cursor: pointer; }

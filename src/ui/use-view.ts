@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import type { SearchHit } from '../core/catalog.ts';
+import type { PanelView } from '../core/panel.ts';
 import type { ClientRequest, Reply } from '../core/protocol.ts';
 import type { OpenInEditorMessage, View } from '../core/view.ts';
 import { applyPush } from './versions.ts';
@@ -10,6 +11,8 @@ export type Connection = 'connecting' | 'open' | 'closed';
 export type Outcome = { ok: true } | { ok: false; reason: string };
 
 export type SearchOutcome = { ok: true; hits: SearchHit[] } | { ok: false; reason: string };
+
+export type PanelOutcome = { ok: true; panel: PanelView } | { ok: false; reason: string };
 
 const DISCONNECTED: Reply = { type: 'refused', requestId: '', reason: 'Disconnected from Truss.' };
 
@@ -21,6 +24,8 @@ export function useView(): {
   send(request: ClientRequest): Promise<Outcome>;
   /** Searches the Catalog by name, service or CloudFormation type. Never rejects. */
   search(query: string): Promise<SearchOutcome>;
+  /** Asks for the property panel of a Node or Stack. Never rejects. */
+  panel(id: string): Promise<PanelOutcome>;
   openInEditor(at: SourceLocation): void;
 } {
   const [view, setView] = useState<View>();
@@ -87,10 +92,19 @@ export function useView(): {
     [ask],
   );
 
+  const panel = useCallback(
+    async (id: string): Promise<PanelOutcome> => {
+      const reply = await ask({ type: 'panel', id });
+      if (reply.type === 'panel') return { ok: true, panel: reply.panel };
+      return { ok: false, reason: reply.type === 'refused' ? reply.reason : 'Unexpected reply to a panel request.' };
+    },
+    [ask],
+  );
+
   /** Asks Truss to show a place in the app's code in the user's editor. */
   const openInEditor = useCallback((at: SourceLocation) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
   }, []);
 
-  return { view, connection, send, search, openInEditor };
+  return { view, connection, send, search, panel, openInEditor };
 }

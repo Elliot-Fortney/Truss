@@ -301,7 +301,13 @@ function propsOf(sf: ts.SourceFile, arg: ts.Expression): PropsFacts {
     // A spread has no name of its own, so its source text stands in for one.
     const name = ts.isSpreadAssignment(p) ? p.getText(sf) : p.name ? p.name.getText(sf) : p.getText(sf);
     const value = ts.isPropertyAssignment(p) ? p.initializer : undefined;
-    return { name, kind: value && isLiteral(value) ? 'literal' : 'expression', text: value ? value.getText(sf) : p.getText(sf) };
+    const literal = value ? literalValue(value) : undefined;
+    return {
+      name,
+      kind: literal ? 'literal' : 'expression',
+      text: value ? value.getText(sf) : p.getText(sf),
+      ...(literal ? { value: literal.value } : {}),
+    };
   });
   return { form: 'object', props };
 }
@@ -310,15 +316,15 @@ function isStringLike(n: ts.Node): n is ts.StringLiteral | ts.NoSubstitutionTemp
   return ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n);
 }
 
-function isLiteral(n: ts.Expression): boolean {
-  return (
-    isStringLike(n) ||
-    ts.isNumericLiteral(n) ||
-    n.kind === ts.SyntaxKind.TrueKeyword ||
-    n.kind === ts.SyntaxKind.FalseKeyword ||
-    n.kind === ts.SyntaxKind.NullKeyword ||
-    (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand))
-  );
+/** What a literal evaluates to, boxed so that `null` and `false` aren't mistaken for "not a literal". */
+function literalValue(n: ts.Expression): { value: string | number | boolean | null } | undefined {
+  if (isStringLike(n)) return { value: n.text };
+  if (ts.isNumericLiteral(n)) return { value: Number(n.text) };
+  if (n.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
+  if (n.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
+  if (n.kind === ts.SyntaxKind.NullKeyword) return { value: null };
+  if (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand)) return { value: -Number(n.operand.text) };
+  return undefined;
 }
 
 /** `const q = new Queue(...)`, `this.q = new Queue(...)` or a class property initializer, through any parentheses or `as`. */

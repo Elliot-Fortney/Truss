@@ -2,11 +2,13 @@ import { applyNodeChanges, Background, Controls, Handle, Position, ReactFlow, us
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
-import type { LayerChildView, NodeView, View, ViewError } from '../core/view.ts';
+import type { LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
 import { layoutView } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
 import { Palette } from './palette.tsx';
+import { PropertyPanel, type PanelState } from './property-panel.tsx';
 import { chooseStage, rememberStage, rememberedStage, showStage } from './stage.ts';
+import { usePanel } from './use-panel.ts';
 import { useView } from './use-view.ts';
 import { namesShownAt } from './zoom.ts';
 
@@ -133,6 +135,9 @@ function LayerNode({ id, data }: NodeProps<Node<LayerNodeData>>) {
   );
 }
 
+/** A Stack box's id on the canvas, which can't clash with the construct path of a Node. */
+const stackNodeId = (path: string) => `stack:${path}`;
+
 const nodeTypes = { stack: StackBox, truss: TrussNode, layer: LayerNode };
 
 /** The class a construct was made from, without its package: `aws-cdk-lib.aws_s3.CfnBucket` is `CfnBucket`. */
@@ -150,14 +155,14 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
     // React Flow places a child relative to its parent, and a nested box is laid out in canvas coordinates.
     const parent = boxesById.get(box.parentId ?? '');
     return {
-      id: `stack:${box.id}`,
+      id: stackNodeId(box.id),
       type: 'stack',
-      ...(parent ? { parentId: `stack:${parent.id}` } : {}),
+      ...(parent ? { parentId: stackNodeId(parent.id) } : {}),
       position: { x: box.x - (parent?.x ?? 0), y: box.y - (parent?.y ?? 0) },
       style: { width: box.width, height: box.height },
-      data: { label: stack.label, env: stack.env },
+      data: { label: stack.label, env: stack.env } satisfies StackData,
+      // Selecting a Stack opens its panel; it can't be dragged.
       draggable: false,
-      selectable: false,
     };
   });
   const nodes: Node[] = layout.nodes.map((pos) => {
@@ -166,7 +171,7 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
     return {
       id: n.id,
       type: 'truss',
-      parentId: `stack:${n.stackId}`,
+      parentId: stackNodeId(n.stackId),
       position: { x: pos.x, y: pos.y },
       style: { width: pos.width, height: pos.height },
       // A hoisted Node is the library's, not the app's: its position is the Sidecar's to keep, but nothing else about it is editable.
@@ -248,7 +253,7 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, paused, onSave, onOpen }: { node: NodeView; nodes: readonly NodeView[]; paused: boolean; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, props, paused, onSave, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
   const causers = (node.causedBy ?? []).map((id) => nodes.find((n) => n.id === id)?.label ?? id);
   return (
     <aside className="note-panel">
@@ -260,6 +265,8 @@ function NodePanel({ node, nodes, paused, onSave, onOpen }: { node: NodeView; no
           Open in editor
         </button>
       ) : null}
+      {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
+      <PropertyPanel key={node.id} state={props} />
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
@@ -274,6 +281,23 @@ function NodePanel({ node, nodes, paused, onSave, onOpen }: { node: NodeView; no
           }}
         />
       </label>
+    </aside>
+  );
+}
+
+/** The panel of a Stack box: its own props, which are the only settings of it Truss shows. */
+function StackPanel({ stack, props, onOpen }: { stack: StackBoxView; props: PanelState; onOpen(at: SourceLocation): void }) {
+  const source = props.status === 'ready' ? props.panel.source : undefined;
+  return (
+    <aside className="note-panel">
+      <h2>{stack.label}</h2>
+      <p className="lock-reason">Stack · {stack.env}</p>
+      {source ? (
+        <button type="button" className="open-in-editor" onClick={() => onOpen(source)}>
+          Open in editor
+        </button>
+      ) : null}
+      <PropertyPanel key={stack.id} state={props} />
     </aside>
   );
 }
@@ -322,7 +346,7 @@ function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceL
 }
 
 export function App() {
-  const { view, connection, send, search, openInEditor } = useView();
+  const { view, connection, send, search, panel, openInEditor } = useView();
   // The picked Stage is only a preference of this browser; with none picked, or a gone one, the first Stage shows.
   const [pickedStage, setPickedStage] = useState(rememberedStage);
   const stageId = view ? chooseStage(view.stages, pickedStage) : undefined;
@@ -376,6 +400,8 @@ export function App() {
   );
 
   const selected = shown?.nodes.find((n) => n.id === selectedId);
+  const openStack = shown?.stacks.find((s) => stackNodeId(s.id) === selectedId);
+  const panelState = usePanel(selected?.id ?? openStack?.id, view?.version, panel);
   const selectedLayer = useMemo(() => {
     for (const node of shown?.nodes ?? []) {
       const child = node.children?.find((c) => c.id === selectedId);
@@ -442,7 +468,7 @@ export function App() {
           nodes={nodes}
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
-          onSelectionChange={({ nodes: picked }) => setSelectedId(picked.find((n) => n.type === 'truss' || n.type === 'layer')?.id)}
+          onSelectionChange={({ nodes: picked }) => setSelectedId((picked.find((n) => n.type === 'truss' || n.type === 'layer') ?? picked.find((n) => n.type === 'stack'))?.id)}
           edges={flowEdges}
           nodeTypes={nodeTypes}
           nodesConnectable={false}
@@ -457,7 +483,8 @@ export function App() {
           <Controls showInteractive={false} />
         </ReactFlow>
         <Palette search={search} />
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
+        {openStack ? <StackPanel stack={openStack} props={panelState} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
       </div>
     </div>
