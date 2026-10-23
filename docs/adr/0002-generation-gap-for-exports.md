@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0005
+---
+
 # Exports use a generation gap: a Generated File plus an Extension File
 
 Users edit exported code and then re-export, so Truss splits ownership. The **Generated File** holds one `Construct` subclass (e.g. `OrdersTruss`) that exposes every Node as a `public readonly` member. Truss rewrites it whole on every Export. The **Extension File** is a stack that creates that construct and holds the user's own code. Truss writes it once and never touches it again. This keeps the Generated File in the rigid, analysable shape that v2 Import needs, and still gives users a real place for code Truss can't model.

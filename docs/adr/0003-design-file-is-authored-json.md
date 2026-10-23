@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0005
+---
+
 # The Design file is Truss-owned JSON holding only what the user authored
 
 Truss saves a Design as `*.truss.json`: a custom JSON schema, published as a JSON Schema, that stores only what the user authored. That means placed Nodes, their sparse props, Connections, layout and Export state. Layers are never stored; they are always computed. A TypeScript Design file seems natural for an infrastructure-as-code tool, but Truss already produces TypeScript: the Generated File is the reviewable code. The Design file is what Truss reads back to restore the canvas, and reading TS back is Import.

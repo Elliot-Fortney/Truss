@@ -5,7 +5,7 @@ Truss is a visual editor for AWS infrastructure: users draw their architecture o
 ## Language
 
 **Design**:
-The document a user builds on the canvas: the full set of Nodes and Connections describing one piece of infrastructure.
+One CDK app as Truss shows and edits it: everything the app synthesizes, as Nodes and Connections. It is derived from the app's code, which is the source of truth.
 _Avoid_: Diagram (when meaning the saved document), project, model
 
 **Node**:
@@ -13,11 +13,11 @@ One box on the canvas, corresponding to exactly one CDK construct.
 _Avoid_: Service, shape, component, resource (unless it is literally an L1 resource)
 
 **Construct ID**:
-The literal ID a Node, or the Design as a whole, gets in the exported code. It is unique within its Design. Users see and edit it, and it decides the deployed resource's identity, so changing it replaces the resource. It is not the Node's identity inside Truss.
+The literal ID a Node's construct gets in the app's code. Together with its parents it forms the construct path, which is also the Node's identity in Truss. Changing it replaces the deployed resource.
 _Avoid_: Name, label, Node ID (when meaning the code ID)
 
 **Preview**:
-The picture of a Design (placed Nodes and Connections, Layers collapsed) that Truss writes next to it on every save, for review in PRs and READMEs. It's derived and never read back.
+The picture of a Design (placed Nodes and Connections, Layers collapsed) that Truss writes next to the Sidecar whenever either changes, for review in PRs and READMEs. It's derived and never read back.
 _Avoid_: Thumbnail, screenshot, image Export
 
 **Connection**:
@@ -56,26 +56,19 @@ _Avoid_: Palette (the UI that lists it), registry, library
 Hand-written presentation data for one construct in the Catalog: tier, display name, featured props, fixtures and Connection hints.
 _Avoid_: Plugin, extension, config
 
-**Export**:
-Turning a Design into CDK code the user takes away.
-_Avoid_: Compile, build, deploy
-
 **Scaffold**:
-An Export that produces a complete, deployable CDK app (entry point, stack, project config). The default.
-_Avoid_: Full project, template
+The minimal CDK app Truss writes when a user starts in an empty folder. From then on it is an app like any other.
+_Avoid_: Template, new project
 
-**Construct-only Export**:
-An Export that produces only the Generated File, for dropping into a stack in an existing CDK app.
-_Avoid_: Stack-only Export
+**Sidecar**:
+The one committed file per app where Truss keeps what code can't express: Node positions and notes, keyed by construct path.
+_Avoid_: Design file, layout file, project file
 
-**Generated File**:
-The file Truss owns and rewrites whole on every Export. It defines one construct holding every Node of the Design.
-_Avoid_: Protected file, managed file, output
+## Retired terms
 
-**Extension File**:
-The stack file that uses the Generated File's construct, where users add their own code. Truss writes it once and never touches it again.
-_Avoid_: User file, custom file
+Retired by ADR 0005 (the app's code is the source of truth). Don't use these for new work.
 
-**Import**:
-Turning existing CDK code into a Design. The reverse of Export; planned for v2.
-_Avoid_: Reverse-engineer, sync
+- **Export**, **Construct-only Export**: there's no separate step; every canvas edit is a code edit, and opening an existing app replaces Construct-only Export.
+- **Generated File**, **Extension File**: the generation gap (ADR 0002) is gone; Truss edits the user's own files.
+- **Import**: opening an app *is* reading its code.
+- **Design file** (`*.truss.json`): replaced by the Sidecar.
