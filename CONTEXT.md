@@ -57,7 +57,7 @@ A Layer derived from the Node's actual props by instantiating the Design locally
 _Avoid_: Live Layer, example Layer
 
 **Catalog**:
-The set of constructs a Design can use, generated from one pinned `aws-cdk-lib` version.
+The set of constructs a Design can use, generated from the app's own installed `aws-cdk-lib`, so it always matches the version the app synths with.
 _Avoid_: Palette (the UI that lists it), registry, library
 
 **Overlay**:
