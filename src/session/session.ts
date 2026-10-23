@@ -1,7 +1,7 @@
 import type { Assembly, SourceLocation, SynthError, SynthResult } from '../core/assembly.ts';
 import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
-import { applyChanges, unifiedDiff, type FileDiff, type TextChange } from '../core/diff.ts';
-import { judgeEdit, newDiagnostics, targetPaths } from '../core/edit-check.ts';
+import { unifiedDiff, type FileDiff, type TextChange } from '../core/diff.ts';
+import { targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import { describeIntent, emptyDraft, redo, stage, undo, type Draft, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
@@ -10,6 +10,8 @@ import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } fr
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { annotationProblems, buildReport, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
 import { locateError } from '../core/synth-error.ts';
+import { commit } from './commit.ts';
+import { checkEditOn, planEdit, type Base, type Planned } from './edit-check.ts';
 import { buildView, type DraftView, type View } from '../core/view.ts';
 
 export interface SessionDeps {
@@ -35,16 +37,6 @@ export interface SessionDeps {
  */
 /** After this many stale results in a row the next one is shown anyway; the run behind it still follows. */
 const MAX_STALE_IN_A_ROW = 2;
-
-/** The app as it is on disk, which the Draft's intents are planned against. */
-interface Base {
-  files: FileSet;
-  facts: Facts;
-  assembly: Assembly;
-}
-
-/** The Draft's intents turned into text. */
-type Planned = { ok: true; changes: Record<string, TextChange[]>; overlay: FileSet; merged: FileSet } | { ok: false; intent: number; reason: string };
 
 export class Session {
   private current: View = { version: 0, synthing: true, hasDesign: false, stages: [], stacks: [], nodes: [], problems: [] };
@@ -299,31 +291,22 @@ export class Session {
     this.found = [
       ...annotationProblems(result.assembly, shown.base.assembly),
       ...cycleProblems(result.assembly, shown.base.assembly),
-      ...this.typeScriptProblems(shown, files),
-      ...judgeEdit({ files: shown.base.files, changes: shown.changes, facts: shown.base.facts, intents: shown.intents, before: shown.base.assembly, after: result.assembly }).map(
-        (message): Problem => ({ id: `truss:${message}`, severity: 'error', source: 'truss', message, draft: true, blocking: true, trussBug: true }),
-      ),
+      ...this.editProblems(shown, files, result),
     ];
     this.push({ synthing: false, hasDesign: true, error: undefined, ...this.body(), ...this.draftFields() });
   }
 
-  /** The TypeScript diagnostics the Draft adds to the files it touches. A type-check that can't run is a Problem too, since the Draft can't be vouched for. */
-  private typeScriptProblems(shown: { changes: Record<string, TextChange[]>; base: Base }, merged: FileSet): Problem[] {
-    const touched = Object.keys(shown.changes);
-    const { appDir } = this.deps;
-    try {
-      const key = touched.join('\0');
-      if (!this.baseDiagnostics.has(key)) this.baseDiagnostics.set(key, this.deps.source.diagnostics(appDir, shown.base.files, touched));
-      const added = newDiagnostics(this.baseDiagnostics.get(key)!, this.deps.source.diagnostics(appDir, merged, touched));
-      return added.map((d) => {
-        const at = this.traceToBase({ file: d.file, line: d.line, col: 1 }, { ...shown, merged });
-        const message = `${d.file}:${d.line}: TypeScript ${d.code}: ${d.message}`;
-        return { id: `typescript:${message}`, severity: 'error', source: 'typescript', message, ...(at.path ? { path: at.path } : {}), location: { file: d.file, line: d.line, col: 1 }, draft: true, blocking: true };
-      });
-    } catch (err) {
-      const message = `Couldn't type-check the Draft: ${err instanceof Error ? err.message : String(err)}`;
-      return [{ id: `typescript:${message}`, severity: 'error', source: 'typescript', message, draft: true, blocking: true }];
-    }
+  /** What the shared edit check finds wrong with the shown Draft: the TypeScript diagnostics it adds, and the ways it is not the edit the intents mean. */
+  private editProblems(shown: { intents: readonly Intent[]; changes: Record<string, TextChange[]>; base: Base }, merged: FileSet, result: SynthResult): Problem[] {
+    const checked = checkEditOn(this.deps, shown.base, shown.intents, result, this.baseDiagnostics);
+    return checked.failures.map((f): Problem => {
+      if (f.kind === 'typescript') {
+        const d = f.diagnostic;
+        const at = d ? this.traceToBase({ file: d.file, line: d.line, col: 1 }, { ...shown, merged }) : undefined;
+        return { id: `typescript:${f.message}`, severity: 'error', source: 'typescript', message: f.message, ...(at?.path ? { path: at.path } : {}), ...(d ? { location: { file: d.file, line: d.line, col: 1 } } : {}), draft: true, blocking: true };
+      }
+      return { id: `truss:${f.message}`, severity: 'error', source: 'truss', message: f.message, draft: true, blocking: true, trussBug: true };
+    });
   }
 
   /** Where a place in the Draft's text is in the code on disk, and the Node it is in (the text of the Draft has different line numbers inside the code it changes). */
@@ -402,10 +385,7 @@ export class Session {
   /** Plans the Draft's intents on the base. Undefined with no base to plan on. */
   private planned(): Planned | undefined {
     if (!this.base) return undefined;
-    const plan = this.deps.source.plan(this.base.files, this.base.facts, this.draft.intents);
-    if (!plan.ok) return plan;
-    const overlay: FileSet = new Map(Object.entries(plan.changes).map(([file, changes]) => [file, applyChanges(this.base!.files.get(file)!, changes)]));
-    return { ok: true, changes: plan.changes, overlay, merged: new Map([...this.base.files, ...overlay]) };
+    return planEdit(this.deps.source, this.base, this.draft.intents);
   }
 
   /** Stale means the files changed during the run, so the next run reads newer ones; but only so many in a row. */
@@ -559,25 +539,12 @@ export class Session {
     const planned = this.planned();
     if (!planned?.ok) return refuse(planned ? planned.reason : 'There is no Design to save.');
 
-    const touched = Object.keys(planned.changes);
-    const failures = this.found.filter((p) => p.blocking).map((p) => p.message);
+    const checked = checkEditOn(this.deps, base, this.draft.intents, { ok: true, assembly: this.snapshot.assembly }, this.baseDiagnostics);
+    const failures = [...this.found.filter((p) => p.blocking && p.source !== 'typescript' && p.source !== 'truss').map((p) => p.message), ...checked.failures.map((f) => f.message)];
     if (failures.length > 0) return refuse(`The Draft can't be saved: ${failures.join('; ')}`);
 
-    // Every touched file must still be the text the Draft was planned on.
-    const onDisk = await this.deps.files.read();
-    const changed = touched.filter((file) => onDisk.get(file) !== base.files.get(file));
-    if (changed.length > 0) return refuse(`${changed.join(', ')} changed on disk since Truss last read it. Nothing was saved; Truss is reading the new code.`);
-
-    const written: string[] = [];
-    try {
-      for (const file of touched) {
-        await this.deps.files.writeText(file, planned.overlay.get(file)!);
-        written.push(file);
-      }
-    } catch (err) {
-      for (const file of written) await this.deps.files.writeText(file, base.files.get(file)!).catch(() => undefined);
-      return refuse(`Couldn't write ${touched.join(', ')}; nothing was saved: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    const written = await commit(this.deps.files, planned.overlay, base.files);
+    if (!written.ok) return refuse(written.reason);
 
     this.draft = emptyDraft;
     this.notices = [];
