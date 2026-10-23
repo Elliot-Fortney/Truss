@@ -4,6 +4,7 @@ import type { SourceLocation } from '../core/assembly.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { NodeView, View, ViewError } from '../core/view.ts';
 import { layoutView, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
+import { chooseStage, rememberStage, rememberedStage, showStage } from './stage.ts';
 import { useView } from './use-view.ts';
 
 interface StackData extends Record<string, unknown> {
@@ -16,6 +17,7 @@ interface TrussNodeData extends Record<string, unknown> {
   fqn: string;
   note?: string;
   lock?: string;
+  external?: boolean;
 }
 
 function StackBox({ data }: NodeProps<Node<StackData>>) {
@@ -49,7 +51,7 @@ function LockIcon() {
 
 function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
   return (
-    <div className="truss-node" title={data.fqn}>
+    <div className={data.external ? 'truss-node external' : 'truss-node'} title={data.external ? `${data.fqn} · refers to an existing resource` : data.fqn}>
       <GenericIcon />
       <div className="node-text">
         <div className="node-label">{data.label}</div>
@@ -75,10 +77,13 @@ function toFlowNodes(view: View): Node[] {
   const layout = layoutView(view);
   const stackNodes: Node[] = layout.stacks.map((box) => {
     const stack = view.stacks.find((s) => s.id === box.id)!;
+    // React Flow places a child relative to its parent, and a nested box is laid out in canvas coordinates.
+    const parent = layout.stacks.find((b) => b.id === box.parentId);
     return {
       id: `stack:${box.id}`,
       type: 'stack',
-      position: { x: box.x, y: box.y },
+      ...(parent ? { parentId: `stack:${parent.id}` } : {}),
+      position: { x: box.x - (parent?.x ?? 0), y: box.y - (parent?.y ?? 0) },
       style: { width: box.width, height: box.height },
       data: { label: stack.label, env: stack.env },
       draggable: false,
@@ -93,11 +98,38 @@ function toFlowNodes(view: View): Node[] {
       parentId: `stack:${n.stackId}`,
       position: { x: pos.x, y: pos.y },
       style: { width: NODE_WIDTH, height: NODE_HEIGHT },
-      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, ...(n.note ? { note: n.note } : {}), ...(n.lock ? { lock: n.lock } : {}) },
+      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, ...(n.note ? { note: n.note } : {}), ...(n.lock ? { lock: n.lock } : {}), ...(n.external ? { external: true } : {}) },
     };
   });
   // React Flow needs a parent to come before its children.
   return [...stackNodes, ...nodes];
+}
+
+/** Where a React Flow node sits on the canvas: its own position plus those of the boxes it is nested in. */
+function canvasPosition(node: Node, all: Node[]): { x: number; y: number } {
+  let { x, y } = node.position;
+  for (let parent = all.find((n) => n.id === node.parentId); parent; parent = all.find((n) => n.id === parent!.parentId)) {
+    x += parent.position.x;
+    y += parent.position.y;
+  }
+  return { x, y };
+}
+
+function StagePicker({ stages, value, onChange }: { stages: View['stages']; value: string | undefined; onChange(id: string): void }) {
+  return (
+    <div className="stage-bar">
+      <label>
+        Stage
+        <select value={value} onChange={(e) => onChange(e.target.value)}>
+          {stages.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
 }
 
 function NodePanel({ node, onSave, onOpen }: { node: NodeView; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
@@ -142,7 +174,11 @@ function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceL
 
 export function App() {
   const { view, connection, send, openInEditor } = useView();
-  const flowNodes = useMemo(() => (view ? toFlowNodes(view) : []), [view]);
+  // The picked Stage is only a preference of this browser; with none picked, or a gone one, the first Stage shows.
+  const [pickedStage, setPickedStage] = useState(rememberedStage);
+  const stageId = view ? chooseStage(view.stages, pickedStage) : undefined;
+  const shown = useMemo(() => (view ? showStage(view, stageId) : undefined), [view, stageId]);
+  const flowNodes = useMemo(() => (shown ? toFlowNodes(shown) : []), [shown]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -167,14 +203,14 @@ export function App() {
       // React Flow reports a Node relative to its Stack box; the Sidecar keeps canvas coordinates.
       // A multi-select drag moves every selected Node, so every one is saved.
       for (const node of dragged) {
-        const box = nodes.find((n) => n.id === node.parentId);
-        void request({ type: 'move', id: node.id, x: node.position.x + (box?.position.x ?? 0), y: node.position.y + (box?.position.y ?? 0) });
+        const { x, y } = canvasPosition(node, nodes);
+        void request({ type: 'move', id: node.id, x, y });
       }
     },
     [nodes, request],
   );
 
-  const selected = view?.nodes.find((n) => n.id === selectedId);
+  const selected = shown?.nodes.find((n) => n.id === selectedId);
 
   if (!view) {
     return <div className="page-message">{connection === 'closed' ? 'Disconnected from Truss.' : 'Connecting…'}</div>;
@@ -193,50 +229,62 @@ export function App() {
     );
   }
   return (
-    // With an error here the Design is the last good one: dimmed, and not editable until synth works again.
-    <div className={error ? 'canvas dimmed' : 'canvas'}>
-      {view.synthing ? <div className="synthing">synthing…</div> : null}
-      <div className="banners">
-        {connection === 'closed' ? <div className="banner">Disconnected from Truss.</div> : null}
-        {error ? (
-          <div className="banner error-banner" role="alert">
-            <strong>Your app no longer synths. Showing the last good Design.</strong>
-            <span>{error.message}</span>
-            <ErrorLocation error={error} onOpen={openInEditor} />
-            {error.output ? (
-              <details>
-                <summary>Synth output</summary>
-                <pre>{error.output}</pre>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
-        {notice ? (
-          <div className="banner notice" role="alert">
-            {notice}
-          </div>
-        ) : null}
+    <div className="app">
+      {view.stages.length > 0 ? (
+        <StagePicker
+          stages={view.stages}
+          value={stageId}
+          onChange={(id) => {
+            setPickedStage(id);
+            rememberStage(id);
+          }}
+        />
+      ) : null}
+      {/* With an error here the Design is the last good one: dimmed, and not editable until synth works again. */}
+      <div className={error ? 'canvas dimmed' : 'canvas'}>
+        {view.synthing ? <div className="synthing">synthing…</div> : null}
+        <div className="banners">
+          {connection === 'closed' ? <div className="banner">Disconnected from Truss.</div> : null}
+          {error ? (
+            <div className="banner error-banner" role="alert">
+              <strong>Your app no longer synths. Showing the last good Design.</strong>
+              <span>{error.message}</span>
+              <ErrorLocation error={error} onOpen={openInEditor} />
+              {error.output ? (
+                <details>
+                  <summary>Synth output</summary>
+                  <pre>{error.output}</pre>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+          {notice ? (
+            <div className="banner notice" role="alert">
+              {notice}
+            </div>
+          ) : null}
+        </div>
+        <ReactFlow
+          // fitView only runs on mount, so re-mount when the set of boxes changes (the first push has none).
+          key={fitKey}
+          nodes={nodes}
+          onNodesChange={onNodesChange}
+          onNodeDragStop={onNodeDragStop}
+          onSelectionChange={({ nodes: picked }) => setSelectedId(picked.find((n) => n.type === 'truss')?.id)}
+          edges={[]}
+          nodeTypes={nodeTypes}
+          nodesConnectable={false}
+          // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
+          deleteKeyCode={null}
+          fitView
+          minZoom={0.1}
+          proOptions={{ hideAttribution: false }}
+        >
+          <Background />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+        {selected ? <NodePanel node={selected} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
       </div>
-      <ReactFlow
-        // fitView only runs on mount, so re-mount when the set of boxes changes (the first push has none).
-        key={fitKey}
-        nodes={nodes}
-        onNodesChange={onNodesChange}
-        onNodeDragStop={onNodeDragStop}
-        onSelectionChange={({ nodes: picked }) => setSelectedId(picked.find((n) => n.type === 'truss')?.id)}
-        edges={[]}
-        nodeTypes={nodeTypes}
-        nodesConnectable={false}
-        // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
-        deleteKeyCode={null}
-        fitView
-        minZoom={0.1}
-        proOptions={{ hideAttribution: false }}
-      >
-        <Background />
-        <Controls showInteractive={false} />
-      </ReactFlow>
-      {selected ? <NodePanel node={selected} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
     </div>
   );
 }

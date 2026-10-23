@@ -14,7 +14,10 @@ interface RawTreeNode {
 interface RawArtifact {
   type: string;
   environment?: string;
+  /** The construct path of a stack. A stack's artifact ID can differ from it, as it does inside a Stage. */
+  displayName?: string;
   additionalMetadataFile?: string;
+  properties?: { directoryName?: string };
 }
 
 // `fn (file:line:col)` or, for anonymous frames, a bare `file:line:col`. `file` may be a file:// URL.
@@ -57,16 +60,23 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
 
   const stacks: StackInfo[] = [];
   const creation: Record<string, Frame[]> = {};
-  const artifacts = Object.entries<RawArtifact>(manifest.artifacts ?? {});
-  for (const [id, artifact] of artifacts) {
+  collectStacks(assemblyDir, appDir, stacks, creation);
+  return { schemaVersion: String(manifest.version), tree, stacks, creation };
+}
+
+/** Adds the stacks of one assembly directory, then those of the nested assembly each Stage writes. */
+function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creation: Record<string, Frame[]>): void {
+  const manifest = readJson(join(dir, 'manifest.json'));
+  for (const [id, artifact] of Object.entries<RawArtifact>(manifest.artifacts ?? {})) {
+    if (artifact.type === 'cdk:cloud-assembly' && artifact.properties?.directoryName) {
+      collectStacks(join(dir, artifact.properties.directoryName), appDir, stacks, creation);
+      continue;
+    }
     if (artifact.type !== 'aws:cloudformation:stack') continue;
     const env = artifact.environment && artifact.environment !== AGNOSTIC_ENV ? artifact.environment : undefined;
-    stacks.push({ path: id, ...(env ? { env } : {}) });
+    stacks.push({ path: artifact.displayName ?? id, ...(env ? { env } : {}) });
     if (!artifact.additionalMetadataFile) continue;
-    const metadata = readJson(join(assemblyDir, artifact.additionalMetadataFile)) as Record<
-      string,
-      { type: string; data: unknown }[]
-    >;
+    const metadata = readJson(join(dir, artifact.additionalMetadataFile)) as Record<string, { type: string; data: unknown }[]>;
     for (const [path, entries] of Object.entries(metadata)) {
       const entry = entries.find((e) => e.type === 'aws:cdk:creationStack');
       if (!entry || !Array.isArray(entry.data)) continue;
@@ -74,5 +84,4 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
       if (frames.length) creation[path.replace(/^\//, '')] = frames;
     }
   }
-  return { schemaVersion: String(manifest.version), tree, stacks, creation };
 }

@@ -93,7 +93,7 @@ describe('TsSource.analyse on the shapes fixture', () => {
 
   it('finds the `new` of an app-defined construct class, which synth gives no stack of its own', () => {
     expect(at('Shapes/Api')).toMatchObject({
-      span: { file: 'lib/shapes-stack.ts', start: { line: 47, col: 5 } },
+      span: { file: 'lib/shapes-stack.ts', start: { line: 50, col: 5 } },
       className: 'ApiService',
       literalId: 'Api',
       enclosingClass: { name: 'ShapesStack', kind: 'stack' },
@@ -157,6 +157,57 @@ describe('TsSource.analyse on the shapes fixture', () => {
   });
 });
 
+describe('TsSource.analyse on the shapes fixture: classes, nested stacks, Stages and imports', () => {
+  const facts = new TsSource().analyse(readFixtureFiles('shapes'), readFixtureAssembly('shapes'));
+  const at = (path: string) => facts.nodes[path]!;
+
+  it('finds the `new` of a class of the app\'s own that extends a CDK construct, not the constructor it runs', () => {
+    expect(at('Shapes/Docs')).toMatchObject({
+      span: { file: 'lib/shapes-stack.ts', start: { line: 60, col: 5 } },
+      className: 'MyBucket',
+      literalId: 'Docs',
+      enclosingClass: { name: 'ShapesStack', kind: 'stack' },
+      pathsOnSpan: 1,
+    });
+  });
+
+  it('does the same when that class calls `super` itself', () => {
+    expect(at('Shapes/Audit2')).toMatchObject({ className: 'AuditedTopic', literalId: 'Audit2', span: { start: { line: 61 } } });
+  });
+
+  it('gives a nested stack its own facts at its `new`, without the construct that wraps its resource in the parent', () => {
+    expect(at('Shapes/Nested')).toMatchObject({ className: 'InnerStack', literalId: 'Nested', pathsOnSpan: 1 });
+    expect(facts.nodes['Shapes/Nested.NestedStack']).toBeUndefined();
+  });
+
+  it('puts what a nested stack creates inside the nested stack\'s class', () => {
+    expect(at('Shapes/Nested/InnerQueue')).toMatchObject({
+      span: { file: 'lib/inner-stack.ts', start: { line: 9, col: 5 } },
+      className: 'sqs.Queue',
+      enclosingClass: { name: 'InnerStack', kind: 'stack' },
+      pathsOnSpan: 1,
+    });
+  });
+
+  it('counts the instances of a Stage created twice on every span inside it', () => {
+    expect(at('StageDev/Core/Events').pathsOnSpan).toBe(2);
+    expect(at('StageProd/Core/Events').span).toEqual(at('StageDev/Core/Events').span);
+    expect(at('StageDev/Core/Events').enclosingClass).toEqual({ name: 'AppStage', kind: 'stage' });
+  });
+
+  it('finds a `fromXxx` call as an external Node at the call', () => {
+    expect(at('Shapes/Existing')).toEqual({
+      span: { file: 'lib/shapes-stack.ts', start: { line: 65, col: 5 }, end: { line: 65, col: 66 } },
+      className: 's3.Bucket.fromBucketName',
+      literalId: 'Existing',
+      pathsOnSpan: 1,
+      binding: 'none',
+      enclosingClass: { name: 'ShapesStack', kind: 'stack' },
+      external: true,
+    });
+  });
+});
+
 describe('the view of the shapes fixture', () => {
   const assembly = readFixtureAssembly('shapes');
   const facts = new TsSource().analyse(readFixtureFiles('shapes'), assembly);
@@ -182,8 +233,38 @@ describe('the view of the shapes fixture', () => {
       'Shapes/Api': 'editable',
       'Shapes/Orders': 'Its Construct ID is not a string literal',
       'Shapes/FromVariable': 'editable',
+      'Shapes/Docs': 'editable',
+      'Shapes/Audit2': 'editable',
+      'Shapes/Existing': 'editable',
+      'Shapes/Nested/InnerQueue': 'editable',
       'Dev/Alerts': 'editable',
       'Prod/Alerts': 'editable',
+      'StageDev/Core/Events': 'editable',
+      'StageProd/Core/Events': 'editable',
     });
+  });
+
+  it('shows the Stages in the order the app creates them, and a nested stack as a box in its parent', () => {
+    const view = buildView(facts, assembly, emptySidecar());
+    expect(view.stages).toEqual([
+      { id: 'StageDev', label: 'StageDev' },
+      { id: 'StageProd', label: 'StageProd' },
+    ]);
+    expect(view.stacks.map((s) => [s.id, s.parentId, s.stageId])).toEqual([
+      ['Shapes', undefined, undefined],
+      ['Shapes/Nested', 'Shapes', undefined],
+      ['Dev', undefined, undefined],
+      ['Prod', undefined, undefined],
+      ['StageDev/Core', undefined, 'StageDev'],
+      ['StageProd/Core', undefined, 'StageProd'],
+    ]);
+  });
+
+  it('marks the `fromXxx` Node as external and names the user classes by class and base type', () => {
+    const nodes = Object.fromEntries(buildView(facts, assembly, emptySidecar()).nodes.map((n) => [n.id, n]));
+    expect(nodes['Shapes/Existing']).toMatchObject({ external: true, label: 'Existing', subtitle: 'Bucket.fromBucketName' });
+    expect(nodes['Shapes/Docs']?.subtitle).toBe('MyBucket · S3 Bucket');
+    expect(nodes['Shapes/Audit2']?.subtitle).toBe('AuditedTopic · SNS Topic');
+    expect(nodes['Shapes/Api']?.subtitle).toBe('ApiService');
   });
 });

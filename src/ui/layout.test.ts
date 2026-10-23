@@ -12,11 +12,12 @@ const node = (id: string, stackId: string): NodeView => ({
   source: { file: 'a.ts', line: 1, col: 1 },
 });
 
-const view = (nodes: NodeView[], stackIds: string[]): View => ({
+const view = (nodes: NodeView[], stackIds: string[], nested: Record<string, string> = {}): View => ({
   version: 1,
   synthing: false,
   hasDesign: true,
-  stacks: stackIds.map((id) => ({ id, label: id, env: 'env-agnostic' })),
+  stages: [],
+  stacks: stackIds.map((id) => ({ id, label: id, env: 'env-agnostic', ...(nested[id] ? { parentId: nested[id] } : {}) })),
   nodes,
 });
 
@@ -96,5 +97,64 @@ describe('layoutView with saved positions', () => {
     const before = layoutView(view(base, ['A', 'B']));
     const after = layoutView(view(base.map((n) => (n.id === 'A/one' ? { ...n, position: { x: 900, y: 10 } } : n)), ['A', 'B']));
     expect(at(after, 'A/two')).toEqual(at(before, 'A/two'));
+  });
+});
+
+describe('layoutView with nested stacks', () => {
+  const nodes = [node('P/own', 'P'), node('P/child/a', 'P/child'), node('P/child/b', 'P/child'), node('P/other/c', 'P/other'), node('Q/d', 'Q')];
+  const layout = layoutView(view(nodes, ['P', 'P/child', 'P/other', 'Q'], { 'P/child': 'P', 'P/other': 'P' }));
+  const box = (id: string) => layout.stacks.find((s) => s.id === id)!;
+  const rect = (b: { x: number; y: number; width: number; height: number }) => ({ left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height });
+  const apart = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+
+  it('draws a nested stack\'s box inside its parent\'s, below the parent\'s header and clear of its edge', () => {
+    for (const id of ['P/child', 'P/other']) {
+      const inner = rect(box(id));
+      const outer = rect(box('P'));
+      expect(inner.left).toBeGreaterThanOrEqual(outer.left + STACK_PADDING);
+      expect(inner.top).toBeGreaterThanOrEqual(outer.top + STACK_HEADER);
+      expect(inner.right).toBeLessThanOrEqual(outer.right - STACK_PADDING);
+      expect(inner.bottom).toBeLessThanOrEqual(outer.bottom - STACK_PADDING);
+    }
+  });
+
+  it('keeps a nested stack clear of its parent\'s own Nodes and of its sibling', () => {
+    const own = layout.nodes.find((n) => n.id === 'P/own')!;
+    const ownRect = rect({ x: box('P').x + own.x, y: box('P').y + own.y, width: NODE_WIDTH, height: NODE_HEIGHT });
+    expect(apart(ownRect, rect(box('P/child')))).toBe(true);
+    expect(apart(ownRect, rect(box('P/other')))).toBe(true);
+    expect(apart(rect(box('P/child')), rect(box('P/other')))).toBe(true);
+  });
+
+  it('places a nested stack\'s Nodes inside its own box', () => {
+    for (const n of layout.nodes.filter((x) => x.id.startsWith('P/child/'))) {
+      const b = box('P/child');
+      expect(n.x).toBeGreaterThanOrEqual(STACK_PADDING);
+      expect(n.y).toBeGreaterThanOrEqual(STACK_HEADER);
+      expect(n.x + NODE_WIDTH).toBeLessThanOrEqual(b.width);
+      expect(n.y + NODE_HEIGHT).toBeLessThanOrEqual(b.height);
+    }
+  });
+
+  it('keeps the next top-level Stack clear of the parent with everything nested in it', () => {
+    expect(apart(rect(box('P')), rect(box('Q')))).toBe(true);
+    expect(box('Q').x).toBeGreaterThanOrEqual(box('P').x + box('P').width);
+  });
+
+  it('names the parent of each nested box, and lists it after the parent', () => {
+    expect(layout.stacks.map((s) => [s.id, s.parentId])).toEqual([
+      ['P', undefined],
+      ['P/child', 'P'],
+      ['P/other', 'P'],
+      ['Q', undefined],
+    ]);
+  });
+
+  it('wraps a parent that has no Nodes of its own around its nested stacks', () => {
+    const l = layoutView(view([node('P/child/a', 'P/child')], ['P', 'P/child'], { 'P/child': 'P' }));
+    const [p, c] = l.stacks;
+    expect(c!.x).toBeGreaterThanOrEqual(p!.x + STACK_PADDING);
+    expect(c!.y).toBeGreaterThanOrEqual(p!.y + STACK_HEADER);
+    expect(c!.x + c!.width).toBeLessThanOrEqual(p!.x + p!.width - STACK_PADDING);
   });
 });

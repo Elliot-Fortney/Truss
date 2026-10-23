@@ -1,6 +1,6 @@
 import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import { nodeEditability } from './editability.ts';
-import type { Facts } from './facts.ts';
+import type { Facts, NodeFacts } from './facts.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
 /** A Stack drawn as a group box. */
@@ -9,6 +9,17 @@ export interface StackBoxView {
   label: string;
   /** `us-east-1 · 123456789012`, or `env-agnostic`. */
   env: string;
+  /** The Stack this one is nested in, which draws it as a box inside its own. */
+  parentId?: string;
+  /** The Stage the Stack belongs to. Absent for a Stack outside every Stage, which is always shown. */
+  stageId?: string;
+}
+
+/** A Stage, which the canvas shows one at a time. */
+export interface StageView {
+  /** The Stage's construct path. */
+  id: string;
+  label: string;
 }
 
 export interface NodeView {
@@ -21,6 +32,8 @@ export interface NodeView {
   subtitle: string;
   fqn: string;
   icon: string;
+  /** The Node is a `fromXxx` resource the app refers to but doesn't create. */
+  external?: true;
   source: { file: string; line: number; col: number };
   /** Why Truss can't edit this Node, when it can't. Absent means editable. */
   lock?: string;
@@ -46,44 +59,105 @@ export interface View {
   error?: ViewError;
   /** True once a synth has succeeded, so `stacks` and `nodes` are a Design rather than empty. */
   hasDesign: boolean;
+  /** In the order the app creates them. Empty for an app without Stages, which has no picker. */
+  stages: StageView[];
+  /** Parents come before the Stacks nested in them. */
   stacks: StackBoxView[];
   nodes: NodeView[];
 }
 
 /** The part of a View that is derived from the app. */
-export type ViewBody = Pick<View, 'stacks' | 'nodes'>;
+export type ViewBody = Pick<View, 'stages' | 'stacks' | 'nodes'>;
 
 const GENERIC_ICON = 'generic';
+/** What the construct tree calls a nested stack, which synth writes no stack artifact for, and a Stage. */
+const NESTED_STACK_FQN = 'aws-cdk-lib.NestedStack';
+const STAGE_FQN = 'aws-cdk-lib.Stage';
 
 function envLabel(env: string | undefined): string {
   const m = env && /^aws:\/\/([^/]+)\/(.+)$/.exec(env);
   return m ? `${m[2]} · ${m[1]}` : 'env-agnostic';
 }
 
+const lastSegment = (s: string) => s.split(/[./]/).at(-1) ?? s;
+
+/** How an AWS service is written, where capitalising its module name wouldn't do. */
+const SERVICE_NAMES: Record<string, string> = {
+  apigateway: 'API Gateway',
+  apigatewayv2: 'API Gateway',
+  cloudfront: 'CloudFront',
+  dynamodb: 'DynamoDB',
+  ec2: 'EC2',
+  ecs: 'ECS',
+  efs: 'EFS',
+  eks: 'EKS',
+  events: 'EventBridge',
+  iam: 'IAM',
+  kms: 'KMS',
+  lambda: 'Lambda',
+  rds: 'RDS',
+  s3: 'S3',
+  secretsmanager: 'Secrets Manager',
+  sns: 'SNS',
+  sqs: 'SQS',
+  stepfunctions: 'Step Functions',
+};
+
+/** `aws-cdk-lib.aws_s3.Bucket` as "S3 Bucket"; undefined for a type that names no service, such as `constructs.Construct`. */
+function typeLabel(fqn: string): string | undefined {
+  const m = /\.aws_([a-z0-9_]+)\.([A-Za-z0-9]+)$/.exec(fqn);
+  if (!m) return undefined;
+  const service = m[1]!;
+  const name = SERVICE_NAMES[service] ?? service.replace(/(^|_)([a-z])/g, (_, sep: string, c: string) => `${sep ? ' ' : ''}${c.toUpperCase()}`);
+  return `${name} ${m[2]}`;
+}
+
+/** The line under a Node's name: the class as written and, for a class of the app's own, the type it builds on. */
+function subtitleOf(facts: NodeFacts, fqn: string): string {
+  if (facts.external) return facts.className.split('.').slice(-2).join('.');
+  const written = lastSegment(facts.className);
+  if (written === lastSegment(fqn)) return written;
+  const base = typeLabel(fqn);
+  return base ? `${written} · ${base}` : written;
+}
+
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
 export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): ViewBody {
-  const stacks: StackBoxView[] = assembly.stacks.map((s) => ({
-    id: s.path,
-    label: s.path.split('/').at(-1) ?? s.path,
-    env: envLabel(s.env),
-  }));
-  const stackPaths = new Set(stacks.map((s) => s.id));
-
+  const envs = new Map(assembly.stacks.map((s) => [s.path, s.env]));
+  const stages: StageView[] = [];
+  const stacks: StackBoxView[] = [];
   const nodes: NodeView[] = [];
-  const visit = (tree: TreeNode, stackId: string | undefined, insideNode: boolean) => {
-    const isStack = stackPaths.has(tree.path);
+
+  const visit = (tree: TreeNode, stack: StackBoxView | undefined, stageId: string | undefined, insideNode: boolean) => {
+    if (tree.fqn === STAGE_FQN && stageId === undefined) {
+      // A Stage inside a Stage is part of the outer one: the canvas has one picker, not a tree of them.
+      stages.push({ id: tree.path, label: tree.id });
+      stageId = tree.path;
+    }
+    const isStack = envs.has(tree.path) || tree.fqn === NESTED_STACK_FQN;
     const nodeFacts = facts.nodes[tree.path];
-    if (isStack) stackId = tree.path;
-    else if (stackId && nodeFacts && !insideNode) {
+    if (isStack) {
+      // A nested stack is not in the manifest, and lives where its parent does.
+      const env = envs.has(tree.path) ? envs.get(tree.path) : envs.get(stack?.id ?? '');
+      stack = {
+        id: tree.path,
+        label: tree.id,
+        env: envLabel(env),
+        ...(stack ? { parentId: stack.id } : {}),
+        ...(stageId ? { stageId } : {}),
+      };
+      stacks.push(stack);
+    } else if (stack && nodeFacts && !insideNode) {
       const saved = sidecar.nodes[tree.path];
       const editability = nodeEditability(tree.path, nodeFacts);
       nodes.push({
         id: tree.path,
-        stackId,
+        stackId: stack.id,
         label: nodeFacts.literalId ?? tree.id,
-        subtitle: nodeFacts.className.split('.').at(-1) ?? nodeFacts.className,
+        subtitle: subtitleOf(nodeFacts, tree.fqn),
         fqn: tree.fqn,
         icon: GENERIC_ICON,
+        ...(nodeFacts.external ? { external: true as const } : {}),
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
         ...(editability.editable ? {} : { lock: editability.reason }),
         ...(saved?.position ? { position: saved.position } : {}),
@@ -91,11 +165,15 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
       });
       insideNode = true;
     }
-    for (const child of tree.children) visit(child, stackId, insideNode);
+    // Next to a nested stack its parent holds a construct wrapping the resource that points at it: plumbing, not the app's.
+    const nested = new Set(tree.children.filter((c) => c.fqn === NESTED_STACK_FQN).map((c) => `${c.id}.NestedStack`));
+    for (const child of tree.children) {
+      if (!nested.has(child.id)) visit(child, stack, stageId, insideNode);
+    }
   };
-  visit(assembly.tree, undefined, false);
+  visit(assembly.tree, undefined, undefined, false);
 
-  return { stacks, nodes };
+  return { stages, stacks, nodes };
 }
 
 /** What the browser sends: the only message there is. */

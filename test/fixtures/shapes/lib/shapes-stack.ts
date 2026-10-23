@@ -5,6 +5,9 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { Construct } from 'constructs';
 import { ApiService } from './api-service';
+import { AuditedTopic } from './audited-topic';
+import { InnerStack } from './inner-stack';
+import { MyBucket } from './my-bucket';
 
 const tableProps: dynamodb.TableProps = {
   partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
@@ -52,6 +55,14 @@ export class ShapesStack extends cdk.Stack {
 
     // Props given as a variable.
     new dynamodb.Table(this, 'FromVariable', tableProps);
+
+    // Classes of the app's own that extend a CDK construct, and a nested stack.
+    new MyBucket(this, 'Docs');
+    new AuditedTopic(this, 'Audit2');
+    new InnerStack(this, 'Nested');
+
+    // A resource the app refers to but does not create.
+    s3.Bucket.fromBucketName(this, 'Existing', 'existing-bucket');
 
     bound.node.addMetadata('keep', this.audit.bucketName + wrapped.topicArn + this.initialised.topicArn);
   }

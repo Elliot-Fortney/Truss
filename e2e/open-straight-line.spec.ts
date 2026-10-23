@@ -202,7 +202,7 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await page.goto(truss.url);
     const loop = page.locator('.truss-node', { hasText: 'LoopOne' });
     await expect(loop).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator('.truss-node')).toHaveCount(20);
+    await expect(page.locator('.truss-node')).toHaveCount(25);
     // 4 loop Nodes, 2 helper Nodes and 1 whose ID is a variable.
     await expect(page.locator('.node-lock')).toHaveCount(7);
     await expect(loop.locator('.node-lock')).toHaveAttribute('title', 'Created in a loop');
@@ -214,12 +214,57 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await loop.click();
     await expect(page.locator('.lock-reason')).toHaveText('Read-only: Created in a loop');
     await page.getByRole('button', { name: 'Open in editor' }).click();
-    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/^--goto .*\/lib\/shapes-stack\.ts:38:7$/);
+    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/^--goto .*\/lib\/shapes-stack\.ts:41:7$/);
 
     // An editable Node opens in the editor too, and says nothing about a lock.
     await page.locator('.truss-node', { hasText: 'Plain' }).click();
     await expect(page.locator('.lock-reason')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open in editor' })).toBeVisible();
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('Stages show one at a time, nested stacks sit in their parent, imports are dashed and user classes name their base type', async ({ page }) => {
+  const dir = copyApp(resolve(root, 'test/fixtures/shapes'));
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    const picker = page.getByLabel('Stage');
+    await expect(picker).toBeVisible({ timeout: 60_000 });
+    await expect(picker.locator('option')).toHaveText(['StageDev', 'StageProd']);
+
+    // The first Stage in synth order is open; the Stacks outside every Stage are there too.
+    await expect(picker).toHaveValue('StageDev');
+    await expect(page.locator('.stack-header strong', { hasText: /^Core$/ })).toHaveCount(1);
+    await expect(page.locator('.truss-node', { hasText: 'Events' })).toHaveCount(1);
+    await expect(page.locator('.stack-header strong', { hasText: /^Shapes$/ })).toBeVisible();
+    await expect(page.locator('.stack-header strong', { hasText: /^Dev$/ })).toBeVisible();
+
+    // A nested stack is a box inside its parent's, with the parent's environment.
+    const parent = page.locator('.stack-box', { has: page.locator('.stack-header strong', { hasText: /^Shapes$/ }) }).first();
+    const nested = page.locator('.stack-box', { has: page.locator('.stack-header strong', { hasText: /^Nested$/ }) }).first();
+    const [outer, inner] = [(await parent.boundingBox())!, (await nested.boundingBox())!];
+    expect(inner.x).toBeGreaterThanOrEqual(outer.x);
+    expect(inner.y).toBeGreaterThanOrEqual(outer.y);
+    expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width);
+    expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height);
+    await expect(nested).toContainText('us-east-1 · 123456789012');
+    await expect(page.locator('.truss-node', { hasText: 'InnerQueue' })).toBeVisible();
+
+    // A `fromXxx` import is dashed; a class of the app's own says what it builds on.
+    await expect(page.locator('.truss-node.external')).toHaveCount(1);
+    await expect(page.locator('.truss-node.external')).toContainText('Existing');
+    await expect(page.locator('.truss-node', { hasText: 'Plain' })).not.toHaveClass(/external/);
+    await expect(page.locator('.truss-node', { hasText: 'Docs' })).toContainText('MyBucket · S3 Bucket');
+
+    // Picking the other Stage swaps its Stacks in, and the choice survives a reload.
+    await picker.selectOption('StageProd');
+    await expect(page.locator('.stack-header strong', { hasText: /^Core$/ })).toHaveCount(1);
+    await expect(page.locator('.truss-node', { hasText: 'Events' })).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByLabel('Stage')).toHaveValue('StageProd', { timeout: 60_000 });
   } finally {
     truss.child.kill('SIGINT');
     await truss.exited;

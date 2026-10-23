@@ -33,7 +33,7 @@ export interface PropFacts {
 /** The props argument: an object literal Truss can read prop by prop, or anything else (a variable, a call). */
 export type PropsFacts = { form: 'object'; props: PropFacts[] } | { form: 'other'; text: string };
 
-/** What the TypeScript source says about one construct path (ADR 0007). */
+/** What the TypeScript source says about one construct path (ADR 0007). `span` is the `new` call, or the `fromXxx` call of an external. */
 export interface NodeFacts {
   span: Span;
   /** The class as written, e.g. `s3.Bucket`. */
@@ -48,6 +48,8 @@ export interface NodeFacts {
   surround?: Surround;
   /** Absent when the `new` passes no props. */
   props?: PropsFacts;
+  /** The construct comes from a `fromXxx` call, so the app refers to it without creating it. */
+  external?: true;
 }
 
 /** Facts per construct path. Nothing in here is a syntax tree. */
