@@ -218,7 +218,7 @@ export class Session {
     this.rebase(base);
     if (this.draft.intents.length === 0) return this.serialised(async () => this.showBase());
     const planned = this.planned()!;
-    if (!planned.ok) throw new Error(planned.reason);
+    if (!planned.ok) return this.fail({ message: planned.reason }, 'draft');
     const intents = this.draft.intents;
     const result = await this.deps.synth.synth(this.deps.appDir, { overlay: planned.overlay });
     if (this.stopped || this.isStale()) return;
@@ -273,6 +273,8 @@ export class Session {
 
   /** Shows a synth result; with `shown`, the result of synthing the Draft. */
   private async show(result: SynthResult, files: FileSet, shown?: { intents: readonly Intent[]; changes: Record<string, TextChange[]>; base: Base }): Promise<void> {
+    // The Draft was changed while this was synthing (discarded, say): the result is of a Draft that is gone.
+    if (shown && shown.intents !== this.draft.intents) return;
     if (!(await this.readSidecar())) return;
     if (!result.ok) return this.fail(result.error, shown ? 'draft' : undefined);
     const facts = this.deps.source.analyse(files, result.assembly);
@@ -494,7 +496,7 @@ export class Session {
     this.problems = [];
     // What was written is now the base, but only a synth of it can say so.
     this.filesVersion++;
-    this.push({ ...this.draftFields() });
+    this.push({ ...this.body(), ...this.draftFields() });
     void this.request();
     return { type: 'ack', requestId };
   }

@@ -38,4 +38,3 @@ export function quantityOf(n: ts.Expression): PropFacts['quantity'] {
   const amount = literalValue(n.arguments[0]!);
   return type && typeof amount?.value === 'number' ? { type, unit: n.expression.name.text, amount: amount.value } : undefined;
 }
-

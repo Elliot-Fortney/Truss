@@ -72,7 +72,7 @@ export function valueText(value: PropValue): string {
   }
 }
 
-/** `versioned → true` for the Draft list. */
+/** An intent as the Draft list words it, e.g. `versioned → true`. */
 export const describeIntent = (intent: Intent): string => `${intent.prop.join('.')} → ${valueText(intent.value)}`;
 
 // --- Panel overlay ---------------------------------------------------------------------------------------

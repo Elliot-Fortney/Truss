@@ -192,6 +192,30 @@ describe('the Draft', () => {
     expect(diff).toContain('+      visibilityTimeout: cdk.Duration.minutes(2),');
   });
 
+  it('does not paint a discarded Draft when its synth finishes after the discard', async () => {
+    const synth = new FakeSynth();
+    const r = await rig({ synth });
+    let release!: () => void;
+    synth.result = () => new Promise((resolve) => (release = () => resolve(good())));
+    await set(r, UPLOADS, 'versioned', bool(false));
+    await send(r, 'discard');
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(r.session.view()).toMatchObject({ synthing: false, hasDesign: true });
+    expect(r.session.view().draft).toBeUndefined();
+    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)?.changed).toBeUndefined();
+    expect(r.session.draftSize()).toBe(0);
+  });
+
+  it('takes the changed badges off at once when the Draft is saved', async () => {
+    const r = await rig();
+    await set(r, UPLOADS, 'versioned', bool(false));
+    await settled(r);
+    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)?.changed).toBe(true);
+    await send(r, 'save');
+    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)?.changed).toBeUndefined();
+  });
+
   describe('refuses an edit', () => {
     it('to a prop the panel does not offer an input for, a value of the wrong kind, or a member the enum lacks', async () => {
       const r = await rig();

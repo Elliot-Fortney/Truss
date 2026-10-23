@@ -313,6 +313,14 @@ describe('Source.plan style matrix', () => {
     expect(out).toBe(expected);
   });
 
+  it.each(styles.map((s) => [JSON.stringify(s), s] as const))('adds an object literal, and appends to a one-line object, in the style of %s', (_name, s) => {
+    const { indent: i, quote: q, semi, eol } = s;
+    const wrap = (...calls: string[]) => [`import * as s3 from ${q}aws-cdk-lib/aws-s3${q}${semi}`, ``, `export class S extends Stack {`, `${i}constructor() {`, ...calls.map((c) => `${i}${i}${c}${semi}`), `${i}}`, `}`, ``].join(eol);
+    const text = wrap(`new s3.Bucket(this, ${q}A${q})`, `new s3.Bucket(this, ${q}B${q}, { versioned: true })`);
+    const out = after(text, set('A', 's3.Bucket', 'bucketName', str('a')), set('B', 's3.Bucket', 'bucketName', str('b')));
+    expect(out).toBe(wrap(`new s3.Bucket(this, ${q}A${q}, { bucketName: ${q}a${q} })`, `new s3.Bucket(this, ${q}B${q}, { versioned: true, bucketName: ${q}b${q} })`));
+  });
+
   it('writes the CRLF it finds, never a bare LF, when it adds lines', () => {
     const text = file({ indent: '  ', eol: '\r\n', semi: ';', quote: "'", trailing: true }, [`versioned: true`]);
     const out = after(text, set('A', 's3.Bucket', 'bucketName', str('x')));

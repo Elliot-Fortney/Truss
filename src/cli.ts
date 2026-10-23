@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { createInterface } from 'node:readline';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { extname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { createCatalogLoader } from './adapters/catalog/read-catalog.ts';
 import { NodeFiles } from './adapters/files/node-files.ts';

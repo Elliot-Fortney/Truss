@@ -1,10 +1,10 @@
 // The only module that imports `typescript` (ADR 0007). Nothing that leaves it is a syntax tree.
+import { join } from 'node:path';
 import ts from '@typescript/typescript6';
 import type { Assembly, Frame, TreeNode } from '../../core/assembly.ts';
 import type { Binding, EnclosingClass, Facts, NodeFacts, PropFacts, PropsFacts, Span, Surround } from '../../core/facts.ts';
 import type { Intent } from '../../core/intents.ts';
 import type { Diagnostic, FileSet, PlanResult, Source } from '../../core/ports.ts';
-import { dirname, isAbsolute, join, relative } from 'node:path';
 import { planIntents } from './ts-plan.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from '../../core/tree.ts';
