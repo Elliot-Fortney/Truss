@@ -12,6 +12,10 @@ _Avoid_: Diagram (when meaning the saved document), project, model
 One box on the canvas, corresponding to exactly one CDK construct.
 _Avoid_: Service, shape, component, resource (unless it is literally an L1 resource)
 
+**External Node**:
+A Node for an AWS resource that the app refers to but doesn't create, made by a `fromXxx` call such as `Bucket.fromBucketName`. It can be a Connection target, but it deploys nothing.
+_Avoid_: Lookup (that's only `fromLookup`), imported Node, existing resource
+
 **Construct ID**:
 The literal ID a Node's construct gets in the app's code. Together with its parents it forms the construct path, which is also the Node's identity in Truss. Changing it replaces the deployed resource.
 _Avoid_: Name, label, Node ID (when meaning the code ID)
@@ -57,12 +61,16 @@ A Layer derived from the Node's actual props by instantiating the Design locally
 _Avoid_: Live Layer, example Layer
 
 **Catalog**:
-The set of constructs a Design can use, generated from the app's own installed `aws-cdk-lib`, so it always matches the version the app synths with.
+The set of constructs a Design can use, generated from the app's own installed `aws-cdk-lib` and its other directly installed jsii construct libraries, so it always matches the versions the app synths with. The app's own construct classes aren't in it.
 _Avoid_: Palette (the UI that lists it), registry, library
 
 **Overlay**:
 Hand-written presentation data for one construct in the Catalog: tier, display name, featured props, fixtures and Connection hints.
 _Avoid_: Plugin, extension, config
+
+**Override**:
+A raw CloudFormation change the app's code makes to a Node's L1 child through a CDK escape hatch (`addPropertyOverride`, `addOverride`, `addDeletionOverride`). Truss shows the ones it recognises, but never edits them.
+_Avoid_: Escape hatch (the technique, not the change), patch
 
 **Scaffold**:
 The minimal CDK app Truss writes when a user starts in an empty folder. From then on it is an app like any other.
