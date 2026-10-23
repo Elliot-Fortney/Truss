@@ -1,7 +1,8 @@
-import { Background, Controls, ReactFlow, type Node, type NodeProps } from '@xyflow/react';
-import { useMemo } from 'react';
-import type { SourceLocation, SynthError } from '../core/assembly.ts';
-import type { View } from '../core/view.ts';
+import { applyNodeChanges, Background, Controls, ReactFlow, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SourceLocation } from '../core/assembly.ts';
+import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
+import type { NodeView, View, ViewError } from '../core/view.ts';
 import { layoutView, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 import { useView } from './use-view.ts';
 
@@ -13,6 +14,7 @@ interface TrussNodeData extends Record<string, unknown> {
   label: string;
   subtitle: string;
   fqn: string;
+  note?: string;
 }
 
 function StackBox({ data }: NodeProps<Node<StackData>>) {
@@ -43,6 +45,11 @@ function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
         <div className="node-label">{data.label}</div>
         <div className="node-subtitle">{data.subtitle}</div>
       </div>
+      {data.note ? (
+        <span className="node-note" title={data.note}>
+          note
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -69,18 +76,37 @@ function toFlowNodes(view: View): Node[] {
       id: n.id,
       type: 'truss',
       parentId: `stack:${n.stackId}`,
-      extent: 'parent',
       position: { x: pos.x, y: pos.y },
       style: { width: NODE_WIDTH, height: NODE_HEIGHT },
-      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn },
-      draggable: false,
+      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, ...(n.note ? { note: n.note } : {}) },
     };
   });
   // React Flow needs a parent to come before its children.
   return [...stackNodes, ...nodes];
 }
 
-function ErrorLocation({ error, onOpen }: { error: SynthError; onOpen(at: SourceLocation): void }) {
+function NotePanel({ node, onSave }: { node: NodeView; onSave: (note: string) => void }) {
+  return (
+    <aside className="note-panel">
+      <h2>{node.label}</h2>
+      <label>
+        Note
+        {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
+        <textarea
+          key={node.id}
+          defaultValue={node.note ?? ''}
+          rows={6}
+          maxLength={MAX_NOTE_LENGTH}
+          onBlur={(e) => {
+            if (e.currentTarget.value !== (node.note ?? '')) onSave(e.currentTarget.value);
+          }}
+        />
+      </label>
+    </aside>
+  );
+}
+
+function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceLocation): void }) {
   if (!error.location) return null;
   const { file, line, col } = error.location;
   return (
@@ -96,9 +122,40 @@ function ErrorLocation({ error, onOpen }: { error: SynthError; onOpen(at: Source
 }
 
 export function App() {
-  const { view, connection, openInEditor } = useView();
+  const { view, connection, send, openInEditor } = useView();
   const flowNodes = useMemo(() => (view ? toFlowNodes(view) : []), [view]);
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const fitKey = flowNodes.map((n) => n.id).join('|');
+
+  // The View is the truth; React Flow only holds a Node's position while it is being dragged.
+  useEffect(() => setNodes(flowNodes), [flowNodes]);
+  const onNodesChange = useCallback<OnNodesChange>((changes) => setNodes((current) => applyNodeChanges(changes, current)), []);
+
+  const request = useCallback(
+    async (req: ClientRequest) => {
+      const outcome = await send(req);
+      setNotice(outcome.ok ? undefined : outcome.reason);
+      // A refused change never reached the Sidecar, so put every Node back where the View has it.
+      if (!outcome.ok) setNodes(flowNodes);
+    },
+    [send, flowNodes],
+  );
+
+  const onNodeDragStop = useCallback(
+    (_event: unknown, _node: Node, dragged: Node[]) => {
+      // React Flow reports a Node relative to its Stack box; the Sidecar keeps canvas coordinates.
+      // A multi-select drag moves every selected Node, so every one is saved.
+      for (const node of dragged) {
+        const box = nodes.find((n) => n.id === node.parentId);
+        void request({ type: 'move', id: node.id, x: node.position.x + (box?.position.x ?? 0), y: node.position.y + (box?.position.y ?? 0) });
+      }
+    },
+    [nodes, request],
+  );
+
+  const selected = view?.nodes.find((n) => n.id === selectedId);
 
   if (!view) {
     return <div className="page-message">{connection === 'closed' ? 'Disconnected from Truss.' : 'Connecting…'}</div>;
@@ -108,11 +165,11 @@ export function App() {
   if (error && !view.hasDesign) {
     return (
       <div className="page-error" role="alert">
-        <h1>Your app didn’t synth</h1>
+        <h1>{error.kind === 'sidecar' ? 'Truss can’t use your truss.json' : 'Your app didn’t synth'}</h1>
         <p>{error.message}</p>
         <ErrorLocation error={error} onOpen={openInEditor} />
         {error.output ? <pre>{error.output}</pre> : null}
-        {view.synthing ? <p className="muted">synthing…</p> : <p className="muted">Truss is watching your files and will load the Design as soon as the app synths.</p>}
+        {error.kind === 'sidecar' ? null : view.synthing ? <p className="muted">synthing…</p> : <p className="muted">Truss is watching your files and will load the Design as soon as the app synths.</p>}
       </div>
     );
   }
@@ -135,15 +192,24 @@ export function App() {
             ) : null}
           </div>
         ) : null}
+        {notice ? (
+          <div className="banner notice" role="alert">
+            {notice}
+          </div>
+        ) : null}
       </div>
       <ReactFlow
         // fitView only runs on mount, so re-mount when the set of boxes changes (the first push has none).
         key={fitKey}
-        nodes={flowNodes}
+        nodes={nodes}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={onNodeDragStop}
+        onSelectionChange={({ nodes: picked }) => setSelectedId(picked.find((n) => n.type === 'truss')?.id)}
         edges={[]}
         nodeTypes={nodeTypes}
         nodesConnectable={false}
-        elementsSelectable={false}
+        // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
+        deleteKeyCode={null}
         fitView
         minZoom={0.1}
         proOptions={{ hideAttribution: false }}
@@ -151,6 +217,7 @@ export function App() {
         <Background />
         <Controls showInteractive={false} />
       </ReactFlow>
+      {selected ? <NotePanel node={selected} onSave={(note) => void request({ type: 'note', id: selected.id, note })} /> : null}
     </div>
   );
 }

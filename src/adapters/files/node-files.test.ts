@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,6 +20,34 @@ describe('NodeFiles.read', () => {
       ['bin/app.ts', 'a'],
       ['lib/deep/stack.ts', 'b'],
     ]);
+  });
+});
+
+describe('NodeFiles.readText and writeText', () => {
+  const appDir = () => mkdtempSync(join(tmpdir(), 'truss-files-'));
+
+  it('reads a file next to cdk.json, or undefined when there is none', async () => {
+    const dir = appDir();
+    writeFileSync(join(dir, 'truss.json'), '{}');
+    const files = new NodeFiles(dir);
+    expect(await files.readText('truss.json')).toBe('{}');
+    expect(await files.readText('missing.json')).toBeUndefined();
+  });
+
+  it('writes the whole file, replacing what was there, and leaves no temporary file behind', async () => {
+    const dir = appDir();
+    writeFileSync(join(dir, 'truss.json'), 'old');
+    const files = new NodeFiles(dir);
+    await files.writeText('truss.json', 'new\n');
+    await files.writeText('other.json', 'x');
+    expect(readFileSync(join(dir, 'truss.json'), 'utf8')).toBe('new\n');
+    expect(readdirSync(dir).sort()).toEqual(['other.json', 'truss.json']);
+  });
+
+  it('reports a read that fails for a reason other than a missing file', async () => {
+    const dir = appDir();
+    mkdirSync(join(dir, 'truss.json'));
+    await expect(new NodeFiles(dir).readText('truss.json')).rejects.toThrow(/EISDIR/);
   });
 });
 
@@ -86,6 +114,7 @@ describe('NodeFiles.watch', () => {
     writeFileSync(join(dir, '.git/index.json'), '{}');
     writeFileSync(join(dir, 'README.md'), 'readme');
     writeFileSync(join(dir, 'lib/.a.ts.swp'), 'swap');
+    writeFileSync(join(dir, 'truss.json'), '{}');
     await settle();
     expect(onChange).not.toHaveBeenCalled();
   });

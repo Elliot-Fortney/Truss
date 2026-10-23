@@ -1,5 +1,6 @@
 import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import type { Facts } from './facts.ts';
+import type { Point, Sidecar } from './sidecar.ts';
 
 /** A Stack drawn as a group box. */
 export interface StackBoxView {
@@ -20,7 +21,14 @@ export interface NodeView {
   fqn: string;
   icon: string;
   source: { file: string; line: number; col: number };
+  /** Where the Sidecar says this Node sits on the canvas. Absent: the canvas lays it out. */
+  position?: Point;
+  /** The note the Sidecar holds for this Node. */
+  note?: string;
 }
+
+/** A synth error, or (`kind: 'sidecar'`) a `truss.json` that is invalid or from a newer Truss. */
+export type ViewError = SynthError & { kind?: 'sidecar' };
 
 /** Everything the browser draws. The server pushes the whole of it, tagged with a version. */
 export interface View {
@@ -28,10 +36,11 @@ export interface View {
   /** True while a synth is running, so the Design may be out of date. */
   synthing: boolean;
   /**
-   * The error from the latest synth. With `hasDesign` false there is nothing to show but the error;
-   * with it true the Design below is the last good one, and the canvas is dimmed under a banner.
+   * The error from the latest synth, or a Sidecar Truss refuses to use. With `hasDesign` false there
+   * is nothing to show but the error; with it true the Design below is the last good one, and the
+   * canvas is dimmed under a banner.
    */
-  error?: SynthError;
+  error?: ViewError;
   /** True once a synth has succeeded, so `stacks` and `nodes` are a Design rather than empty. */
   hasDesign: boolean;
   stacks: StackBoxView[];
@@ -49,7 +58,7 @@ function envLabel(env: string | undefined): string {
 }
 
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
-export function buildView(facts: Facts, assembly: Assembly): ViewBody {
+export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): ViewBody {
   const stacks: StackBoxView[] = assembly.stacks.map((s) => ({
     id: s.path,
     label: s.path.split('/').at(-1) ?? s.path,
@@ -63,6 +72,7 @@ export function buildView(facts: Facts, assembly: Assembly): ViewBody {
     const nodeFacts = facts.nodes[tree.path];
     if (isStack) stackId = tree.path;
     else if (stackId && nodeFacts && !insideNode) {
+      const saved = sidecar.nodes[tree.path];
       nodes.push({
         id: tree.path,
         stackId,
@@ -71,6 +81,8 @@ export function buildView(facts: Facts, assembly: Assembly): ViewBody {
         fqn: tree.fqn,
         icon: GENERIC_ICON,
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
+        ...(saved?.position ? { position: saved.position } : {}),
+        ...(saved?.note ? { note: saved.note } : {}),
       });
       insideNode = true;
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { TsSource } from '../adapters/source/ts-source.ts';
+import { memoryFiles } from '../../test/support/memory-files.ts';
 import { readFixtureAssembly, readFixtureFiles } from '../../test/support/fixture.ts';
 import { run, type RunDeps } from './run.ts';
 
@@ -11,7 +12,7 @@ function deps(overrides: Partial<RunDeps> = {}): RunDeps & { lines: string[] } {
     cwd: '/work/app',
     findApp: () => '/work/app',
     synth: { synth: async () => ({ ok: true, assembly: readFixtureAssembly('straight-line') }) },
-    files: () => ({ read: async () => readFixtureFiles('straight-line'), watch: () => () => undefined }),
+    files: () => memoryFiles(readFixtureFiles('straight-line')),
     source: new TsSource(),
     token: 'tok123',
     ui: { '/': { type: 'text/html', body: '<p>ui</p>' } },
@@ -60,7 +61,7 @@ describe('run', () => {
 
   it('stops watching the app when it stops', async () => {
     const unwatch = vi.fn();
-    const d = deps({ files: () => ({ read: async () => readFixtureFiles('straight-line'), watch: () => unwatch }) });
+    const d = deps({ files: () => ({ ...memoryFiles(readFixtureFiles('straight-line')), watch: () => unwatch }) });
     const running = await run({ open: false, port: 0 }, d);
     await running.stop();
     expect(unwatch).toHaveBeenCalled();

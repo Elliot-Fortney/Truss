@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -66,10 +66,10 @@ test('refuses the WebSocket without the session token', async ({ page }) => {
   }
 });
 
-/** A throwaway copy of the fixture app that a test may edit while Truss watches it. */
+/** A throwaway copy of the fixture app (without any truss.json) that a test may edit while Truss watches it. */
 function copyApp(): string {
   const dir = mkdtempSync(join(tmpdir(), 'truss-e2e-'));
-  cpSync(app, dir, { recursive: true, filter: (src) => !/node_modules|cdk\.out/.test(src) });
+  cpSync(app, dir, { recursive: true, filter: (src) => !/node_modules|cdk\.out|truss\.json/.test(src) });
   symlinkSync(join(app, 'node_modules'), join(dir, 'node_modules'));
   return dir;
 }
@@ -115,6 +115,73 @@ test('a failed first open shows the error full page, then loads the Design once 
 
     writeFileSync(stackFile, original);
     await expect(page.locator('.truss-node')).toHaveCount(3, { timeout: 60_000 });
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('a dragged Node and its note are saved in truss.json and survive a reload', async ({ page }) => {
+  const dir = copyApp();
+  const sidecar = join(dir, 'truss.json');
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    const orders = page.locator('.truss-node', { hasText: 'Orders' });
+    const uploads = page.locator('.truss-node', { hasText: 'Uploads' });
+    await expect(orders).toBeVisible({ timeout: 60_000 });
+    expect(existsSync(sidecar)).toBe(false);
+
+    // Drag Orders down and to the right.
+    const from = (await orders.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2 + 150, from.y + from.height / 2 + 120, { steps: 10 });
+    await page.mouse.up();
+
+    await expect.poll(() => (existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) : undefined)).toMatchObject({
+      formatVersion: 1,
+      nodes: { 'ShopStack/Orders': { position: { x: expect.any(Number), y: expect.any(Number) } } },
+    });
+
+    // Delete is a code edit, not a canvas gesture: the selected Node must stay.
+    await orders.click();
+    await page.keyboard.press('Delete');
+    await expect(orders).toBeVisible();
+
+    // Add a note to it.
+    await page.getByLabel('Note').fill('Retries 3x, then DLQ');
+    await page.getByLabel('Note').blur();
+    await expect.poll(() => JSON.parse(readFileSync(sidecar, 'utf8')).nodes['ShopStack/Orders'].note).toBe('Retries 3x, then DLQ');
+
+    const offset = async () => {
+      const [o, u] = [(await orders.boundingBox())!, (await uploads.boundingBox())!];
+      return [(o.x - u.x) / u.width, (o.y - u.y) / u.height];
+    };
+    const before = await offset();
+    await page.reload();
+    await expect(orders).toBeVisible({ timeout: 60_000 });
+    const after = await offset();
+    expect(after[0]).toBeCloseTo(before[0]!, 1);
+    expect(after[1]).toBeCloseTo(before[1]!, 1);
+    await orders.click();
+    await expect(page.getByLabel('Note')).toHaveValue('Retries 3x, then DLQ');
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('a truss.json from a newer Truss is refused with a clear message and left untouched', async ({ page }) => {
+  const dir = copyApp();
+  const text = JSON.stringify({ formatVersion: 99, nodes: {} });
+  writeFileSync(join(dir, 'truss.json'), text);
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    await expect(page.getByRole('alert')).toContainText(/format 99.*newer.*Upgrade Truss/, { timeout: 60_000 });
+    await expect(page.locator('.truss-node')).toHaveCount(0);
+    expect(readFileSync(join(dir, 'truss.json'), 'utf8')).toBe(text);
   } finally {
     truss.child.kill('SIGINT');
     await truss.exited;

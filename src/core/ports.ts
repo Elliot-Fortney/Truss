@@ -16,6 +16,11 @@ export interface Source {
 export interface Files {
   /** Reads the app's TypeScript sources, keyed by path relative to the app folder. */
   read(): Promise<FileSet>;
+  /** Reads one file next to `cdk.json` as text, or `undefined` when it doesn't exist. */
+  readText(name: string): Promise<string | undefined>;
+  /** Writes one file next to `cdk.json`, whole or not at all. */
+  writeText(name: string, text: string): Promise<void>;
+
   /**
    * Calls `onChange` when anything in the app folder that can change the Design is touched: an
    * editor save, `git pull`, a formatter, a new `package-lock.json`. Events are already debounced.

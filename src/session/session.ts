@@ -1,5 +1,8 @@
-import type { SynthError } from '../core/assembly.ts';
-import type { Files, Source, Synth } from '../core/ports.ts';
+import type { Assembly, SynthError, SynthResult } from '../core/assembly.ts';
+import type { Facts } from '../core/facts.ts';
+import type { FileSet, Files, Source, Synth } from '../core/ports.ts';
+import type { ClientMessage, Reply } from '../core/protocol.ts';
+import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { locateError } from '../core/synth-error.ts';
 import { buildView, type View } from '../core/view.ts';
 
@@ -8,6 +11,8 @@ export interface SessionDeps {
   synth: Synth;
   files: Files;
   source: Source;
+  /** The Sidecar's format history; only tests give their own. */
+  migrations?: readonly Migration[];
 }
 
 /**
@@ -28,8 +33,17 @@ export class Session {
   private waiting = false;
   /** Results dropped as stale in a row, so continuous edits can't keep the Design from ever updating. */
   private staleInARow = 0;
+  private sidecar: Sidecar = emptySidecar();
+  /** Runs Sidecar changes and the showing of a synth result one at a time, so each builds on the one before. */
+  private queue: Promise<unknown> = Promise.resolve();
+  /** What the Design on screen was derived from; absent until a synth has succeeded with a usable Sidecar. */
+  private snapshot: { facts: Facts; assembly: Assembly } | undefined;
 
-  constructor(private readonly deps: SessionDeps) {}
+  private readonly migrations: readonly Migration[];
+
+  constructor(private readonly deps: SessionDeps) {
+    this.migrations = deps.migrations ?? MIGRATIONS;
+  }
 
   view(): View {
     return this.current;
@@ -52,6 +66,11 @@ export class Session {
     this.stopped = true;
     this.unwatch?.();
     this.unwatch = undefined;
+  }
+
+  /** Applies one request from the browser. Never throws: a failure is a refusal. */
+  handle(message: ClientMessage): Promise<Reply> {
+    return this.serialised(() => this.apply(message));
   }
 
   /**
@@ -86,13 +105,27 @@ export class Session {
     try {
       const [result, files] = await Promise.all([this.deps.synth.synth(this.deps.appDir), this.deps.files.read()]);
       if (this.stopped || this.isStale()) return;
-      if (!result.ok) return this.fail(result.error);
-      const facts = this.deps.source.analyse(files, result.assembly);
-      this.push({ synthing: false, hasDesign: true, error: undefined, ...buildView(facts, result.assembly) });
+      await this.serialised(() => this.show(result, files));
     } catch (err) {
       if (this.stopped || this.isStale()) return;
       this.fail({ message: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  /** Shows a synth result with the Sidecar as the file holds it now, not as it was when the synth began. */
+  private async show(result: SynthResult, files: FileSet): Promise<void> {
+    const sidecarText = await this.deps.files.readText(SIDECAR_FILE);
+    const parsed = sidecarText === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(sidecarText, this.migrations);
+    if (!parsed.ok) {
+      this.snapshot = undefined;
+      this.push({ synthing: false, hasDesign: false, error: { kind: 'sidecar', message: parsed.message }, stacks: [], nodes: [] });
+      return;
+    }
+    this.sidecar = parsed.sidecar;
+    if (!result.ok) return this.fail(result.error);
+    const facts = this.deps.source.analyse(files, result.assembly);
+    this.snapshot = { facts, assembly: result.assembly };
+    this.push({ synthing: false, hasDesign: true, error: undefined, ...buildView(facts, result.assembly, this.sidecar) });
   }
 
   /** Stale means the files changed during the run, so the next run reads newer ones; but only so many in a row. */
@@ -109,6 +142,40 @@ export class Session {
   private fail(error: SynthError): void {
     const location = error.location ?? locateError(error, this.deps.appDir);
     this.push({ synthing: false, error: location ? { ...error, location } : error });
+  }
+
+  private serialised<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(work);
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async apply(message: ClientMessage): Promise<Reply> {
+    const { requestId } = message;
+    if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
+    if (!this.current.nodes.some((n) => n.id === message.id)) {
+      return { type: 'refused', requestId, reason: `No Node at ${message.id}` };
+    }
+    let next: Sidecar;
+    try {
+      // The file may have changed since the last change (a branch switch, a pull), so build on what it holds now.
+      const text = await this.deps.files.readText(SIDECAR_FILE);
+      const parsed = text === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(text, this.migrations);
+      if (!parsed.ok) return { type: 'refused', requestId, reason: parsed.message };
+      next =
+        message.type === 'move'
+          ? withPosition(parsed.sidecar, message.id, message)
+          : withNote(parsed.sidecar, message.id, message.note);
+      await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(next, currentFormatVersion(this.migrations)));
+    } catch (err) {
+      return { type: 'refused', requestId, reason: `Couldn't update ${SIDECAR_FILE}: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    this.sidecar = next;
+    this.push(buildView(this.snapshot.facts, this.snapshot.assembly, this.sidecar));
+    return { type: 'ack', requestId };
   }
 
   private push(change: Partial<Omit<View, 'version'>>): void {
