@@ -1,4 +1,8 @@
+import type { Assembly } from '../core/assembly.ts';
+import type { Facts } from '../core/facts.ts';
 import type { Files, Source, Synth } from '../core/ports.ts';
+import type { ClientMessage, Reply } from '../core/protocol.ts';
+import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { buildView, type View } from '../core/view.ts';
 
 export interface SessionDeps {
@@ -6,6 +10,8 @@ export interface SessionDeps {
   synth: Synth;
   files: Files;
   source: Source;
+  /** The Sidecar's format history; only tests give their own. */
+  migrations?: readonly Migration[];
 }
 
 /**
@@ -15,8 +21,15 @@ export interface SessionDeps {
 export class Session {
   private current: View = { version: 0, synthing: true, stacks: [], nodes: [] };
   private listeners = new Set<(view: View) => void>();
+  private sidecar: Sidecar = emptySidecar();
+  private queue: Promise<unknown> = Promise.resolve();
+  private snapshot: { facts: Facts; assembly: Assembly } | undefined;
 
-  constructor(private readonly deps: SessionDeps) {}
+  private readonly migrations: readonly Migration[];
+
+  constructor(private readonly deps: SessionDeps) {
+    this.migrations = deps.migrations ?? MIGRATIONS;
+  }
 
   view(): View {
     return this.current;
@@ -32,21 +45,61 @@ export class Session {
   async start(): Promise<void> {
     this.push({ synthing: true });
     try {
-      const [result, files] = await Promise.all([this.deps.synth.synth(this.deps.appDir), this.deps.files.read()]);
+      const [result, files, sidecarText] = await Promise.all([
+        this.deps.synth.synth(this.deps.appDir),
+        this.deps.files.read(),
+        this.deps.files.readText(SIDECAR_FILE),
+      ]);
+      if (sidecarText !== undefined) {
+        const parsed = parseSidecar(sidecarText, this.migrations);
+        if (!parsed.ok) {
+          this.push({ synthing: false, error: { kind: 'sidecar', message: parsed.message }, stacks: [], nodes: [] });
+          return;
+        }
+        this.sidecar = parsed.sidecar;
+      }
       if (!result.ok) {
-        this.push({ synthing: false, error: result.error, stacks: [], nodes: [] });
+        this.push({ synthing: false, error: { kind: 'synth', ...result.error }, stacks: [], nodes: [] });
         return;
       }
       const facts = this.deps.source.analyse(files, result.assembly);
-      this.push({ synthing: false, error: undefined, ...buildView(facts, result.assembly) });
+      this.snapshot = { facts, assembly: result.assembly };
+      this.push({ synthing: false, error: undefined, ...buildView(facts, result.assembly, this.sidecar) });
     } catch (err) {
       this.push({
         synthing: false,
-        error: { message: err instanceof Error ? err.message : String(err) },
+        error: { kind: 'synth', message: err instanceof Error ? err.message : String(err) },
         stacks: [],
         nodes: [],
       });
     }
+  }
+
+  /** Applies one request from the browser. Never throws: a failure is a refusal. */
+  handle(message: ClientMessage): Promise<Reply> {
+    // One at a time, so each change is built on the one before it.
+    const reply = this.queue.then(() => this.apply(message));
+    this.queue = reply.then(() => undefined);
+    return reply;
+  }
+
+  private async apply(message: ClientMessage): Promise<Reply> {
+    const { requestId } = message;
+    if (!this.snapshot || !this.current.nodes.some((n) => n.id === message.id)) {
+      return { type: 'refused', requestId, reason: `No Node at ${message.id}` };
+    }
+    const next =
+      message.type === 'move'
+        ? withPosition(this.sidecar, message.id, message)
+        : withNote(this.sidecar, message.id, message.note);
+    try {
+      await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(next, currentFormatVersion(this.migrations)));
+    } catch (err) {
+      return { type: 'refused', requestId, reason: `Couldn't write ${SIDECAR_FILE}: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    this.sidecar = next;
+    this.push(buildView(this.snapshot.facts, this.snapshot.assembly, this.sidecar));
+    return { type: 'ack', requestId };
   }
 
   private push(change: Partial<Omit<View, 'version'>>): void {

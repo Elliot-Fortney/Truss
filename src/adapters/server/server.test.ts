@@ -2,15 +2,22 @@ import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
+import type { ClientMessage, Reply } from '../../core/protocol.ts';
 import type { View } from '../../core/view.ts';
 import { startServer, type RunningServer, type ViewSource } from './server.ts';
 
 const view = (version: number): View => ({ version, synthing: false, stacks: [], nodes: [] });
 
-function fakeSource(initial: View): ViewSource & { push(v: View): void } {
+function fakeSource(initial: View): ViewSource & { push(v: View): void; handled: ClientMessage[] } {
   let current = initial;
+  const handled: ClientMessage[] = [];
   const listeners = new Set<(v: View) => void>();
   return {
+    handled,
+    handle: async (m) => {
+      handled.push(m);
+      return m.id === 'unknown' ? { type: 'refused', requestId: m.requestId, reason: 'No Node' } : { type: 'ack', requestId: m.requestId };
+    },
     view: () => current,
     subscribe: (l) => (listeners.add(l), () => listeners.delete(l)),
     push(v) {
@@ -121,5 +128,49 @@ describe('startServer', () => {
     const closed = new Promise((r) => conn.ws.once('close', r));
     await server.close();
     await closed;
+  });
+
+  describe('requests from the browser', () => {
+    /** Connects, waits out the first View, sends `payload`, and resolves with the next message. */
+    const ask = async (source: ReturnType<typeof fakeSource>, payload: string): Promise<Reply> => {
+      const { server } = await start(source);
+      const conn = await connect(wsUrl(server), `http://127.0.0.1:${server.port}`);
+      if ('status' in conn) throw new Error(`refused with ${conn.status}`);
+      await conn.first;
+      const reply = new Promise<Reply>((res) => conn.ws.once('message', (d) => res(JSON.parse(String(d)))));
+      conn.ws.send(payload);
+      const got = await reply;
+      conn.ws.close();
+      return got;
+    };
+
+    it.each([
+      [{ type: 'move', requestId: 'r1', id: 'A/b', x: 10, y: 20 }],
+      [{ type: 'note', requestId: 'r2', id: 'A/b', note: 'hello' }],
+    ])('hands %j to the session and sends back its reply', async (message) => {
+      const source = fakeSource(view(1));
+      expect(await ask(source, JSON.stringify(message))).toEqual({ type: 'ack', requestId: message.requestId });
+      expect(source.handled).toEqual([message]);
+    });
+
+    it("sends back the session's refusal", async () => {
+      const reply = await ask(fakeSource(view(1)), JSON.stringify({ type: 'move', requestId: 'r', id: 'unknown', x: 1, y: 1 }));
+      expect(reply).toEqual({ type: 'refused', requestId: 'r', reason: 'No Node' });
+    });
+
+    it.each([
+      ['not JSON', 'nope', ''],
+      ['an unknown type', JSON.stringify({ type: 'explode', requestId: 'r' }), 'r'],
+      ['a move without numbers', JSON.stringify({ type: 'move', requestId: 'r', id: 'A', x: '1', y: 2 }), 'r'],
+      ['a move to infinity', '{"type":"move","requestId":"r","id":"A","x":1e999,"y":2}', 'r'],
+      ['a note that is not text', JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 5 }), 'r'],
+      ['a note that is far too long', JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 'x'.repeat(10_001) }), 'r'],
+      ['no request ID', JSON.stringify({ type: 'move', id: 'A', x: 1, y: 2 }), ''],
+    ])('refuses %s without troubling the session', async (_why, payload, requestId) => {
+      const source = fakeSource(view(1));
+      const reply = await ask(source, payload);
+      expect(reply).toEqual({ type: 'refused', requestId, reason: expect.any(String) });
+      expect(source.handled).toEqual([]);
+    });
   });
 });

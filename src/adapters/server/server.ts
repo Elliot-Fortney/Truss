@@ -2,10 +2,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
+import { parseClientMessage, type ClientMessage, type Reply } from '../../core/protocol.ts';
 import type { View } from '../../core/view.ts';
 
-/** What the server needs from the session: the current View and a feed of new ones. */
+/** What the server needs from the session: the current View, a feed of new ones, and a way to apply requests. */
 export interface ViewSource {
+  handle(message: ClientMessage): Promise<Reply>;
   view(): View;
   subscribe(listener: (view: View) => void): () => void;
 }
@@ -36,6 +38,8 @@ export interface RunningServer {
 const HOST = '127.0.0.1';
 export const DEFAULT_PORT = 4318;
 const MAX_PORT_TRIES = 50;
+/** A request is a few hundred bytes; the largest is a note of ten thousand characters. */
+const MAX_FRAME_BYTES = 128 * 1024;
 
 const sameToken = (a: string, b: string) => {
   const x = Buffer.from(a);
@@ -101,7 +105,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     res.writeHead(200, { 'content-type': asset.type, 'cache-control': 'no-store' }).end(asset.body);
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
   const refuse = (socket: Socket, status: number, reason: string) => {
     socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   };
@@ -118,6 +122,14 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       send(opts.source.view());
       const off = opts.source.subscribe(send);
       ws.once('close', off);
+      ws.on('message', (data) => {
+        const reply = (r: Reply) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(r));
+        const parsed = parseClientMessage(String(data));
+        if (!parsed.ok) return reply({ type: 'refused', requestId: parsed.requestId, reason: parsed.reason });
+        opts.source.handle(parsed.message).then(reply, (err) =>
+          reply({ type: 'refused', requestId: parsed.message.requestId, reason: err instanceof Error ? err.message : String(err) }),
+        );
+      });
       // A malformed frame or a reset must drop that client, not crash Truss.
       ws.on('error', () => ws.terminate());
     });

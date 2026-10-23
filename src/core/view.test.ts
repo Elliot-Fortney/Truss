@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Assembly } from './assembly.ts';
 import type { Facts } from './facts.ts';
+import { emptySidecar } from './sidecar.ts';
 import { buildView } from './view.ts';
 
 const span = (line: number) => ({ file: 'lib/a.ts', start: { line, col: 5 }, end: { line, col: 20 } });
@@ -47,7 +48,7 @@ const facts: Facts = {
 };
 
 describe('buildView', () => {
-  const view = buildView(facts, assembly);
+  const view = buildView(facts, assembly, emptySidecar());
 
   it('draws each Stack as a box headed by its id and environment', () => {
     expect(view.stacks).toEqual([

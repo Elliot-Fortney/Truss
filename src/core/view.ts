@@ -1,5 +1,6 @@
 import type { Assembly, TreeNode } from './assembly.ts';
 import type { Facts } from './facts.ts';
+import type { Sidecar } from './sidecar.ts';
 
 /** A Stack drawn as a group box. */
 export interface StackBoxView {
@@ -20,6 +21,10 @@ export interface NodeView {
   fqn: string;
   icon: string;
   source: { file: string; line: number; col: number };
+  /** Where the Sidecar says this Node sits on the canvas. Absent: the canvas lays it out. */
+  position?: { x: number; y: number };
+  /** The note the Sidecar holds for this Node. */
+  note?: string;
 }
 
 /** Everything the browser draws. The server pushes the whole of it, tagged with a version. */
@@ -28,7 +33,7 @@ export interface View {
   /** True while a synth is running, so the Design may be out of date. */
   synthing: boolean;
   /** The synth error, when there is no Design to show. */
-  error?: { message: string; output?: string };
+  error?: { kind: 'synth' | 'sidecar'; message: string; output?: string };
   stacks: StackBoxView[];
   nodes: NodeView[];
 }
@@ -44,7 +49,7 @@ function envLabel(env: string | undefined): string {
 }
 
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
-export function buildView(facts: Facts, assembly: Assembly): ViewBody {
+export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): ViewBody {
   const stacks: StackBoxView[] = assembly.stacks.map((s) => ({
     id: s.path,
     label: s.path.split('/').at(-1) ?? s.path,
@@ -58,6 +63,7 @@ export function buildView(facts: Facts, assembly: Assembly): ViewBody {
     const nodeFacts = facts.nodes[tree.path];
     if (isStack) stackId = tree.path;
     else if (stackId && nodeFacts && !insideNode) {
+      const saved = sidecar.nodes[tree.path];
       nodes.push({
         id: tree.path,
         stackId,
@@ -66,6 +72,8 @@ export function buildView(facts: Facts, assembly: Assembly): ViewBody {
         fqn: tree.fqn,
         icon: GENERIC_ICON,
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
+        ...(saved?.position ? { position: saved.position } : {}),
+        ...(saved?.note ? { note: saved.note } : {}),
       });
       insideNode = true;
     }

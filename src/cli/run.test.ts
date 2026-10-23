@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TsSource } from '../adapters/source/ts-source.ts';
+import { memoryFiles } from '../../test/support/memory-files.ts';
 import { readFixtureAssembly, readFixtureFiles } from '../../test/support/fixture.ts';
 import { run, type RunDeps } from './run.ts';
 
@@ -10,7 +11,7 @@ function deps(overrides: Partial<RunDeps> = {}): RunDeps & { lines: string[] } {
     cwd: '/work/app',
     findApp: () => '/work/app',
     synth: { synth: async () => ({ ok: true, assembly: readFixtureAssembly('straight-line') }) },
-    files: () => ({ read: async () => readFixtureFiles('straight-line') }),
+    files: () => memoryFiles(readFixtureFiles('straight-line')),
     source: new TsSource(),
     token: 'tok123',
     ui: { '/': { type: 'text/html', body: '<p>ui</p>' } },
