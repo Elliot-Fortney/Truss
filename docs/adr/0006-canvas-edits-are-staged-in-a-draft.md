@@ -13,6 +13,6 @@ ADR 0005 makes the app's code the source of truth and every canvas edit an edit 
 - **Review before Save.** Draft items carry added/changed/deleted badges on the canvas. Deleted Nodes stay as ghosts. A review panel shows the exact per-file diff Save will write.
 - **Save is all-or-nothing.** Every touched file passes its staleness check (hash from the last synth, plus class and literal ID at the span), or nothing is written. Discard drops the whole Draft. There's no per-hunk saving in v1.
 - **Undo steps through the Draft**, so it never touches disk. After Save, undo is git's job.
-- **Rebasing on outside changes.** When files change on disk (git, editor, formatter), Truss re-derives the base and re-locates each Draft edit by construct path, class and literal ID. Edits that no longer locate are dropped, and the user is told which.
+- **Rebasing on outside changes.** When files change on disk (git, editor, formatter), Truss re-derives the base and re-locates each Draft edit by construct path, class and literal ID. Edits that no longer locate are dropped, and the user is told which. While the new code doesn't synth there is no base to rebase on, so the Draft is held as it was: Save is off, Discard still works, and the rebase happens when the app synths again.
 - **The Draft is never persisted.** Closing the tab warns, and Ctrl+C asks before discarding an unsaved Draft.
 - The source port (ADR 0004's successor) has to cover shadow-copy synth and rebasing the Draft, not just span edits.

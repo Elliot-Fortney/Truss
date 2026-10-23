@@ -415,5 +415,101 @@ describe('the Draft', () => {
       expect(r.session.view().draft?.notices).toEqual([]);
       expect(r.synth.shadowCalls.at(-1)!.overlay!.get(SHOP)).toContain('versioned: false');
     });
+
+    it('shows the Design on the new code, with the Draft empty and the notice kept, when every edit is dropped', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      const shadows = r.synth.shadowCalls.length;
+
+      r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
+      r.files.change();
+      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await settled(r);
+      const draft = r.session.view().draft;
+      expect(draft?.items).toEqual([]);
+      expect(draft?.diffs).toEqual([]);
+      expect(r.session.draftSize()).toBe(0);
+      expect(r.session.view().nodes.some((x) => x.changed)).toBe(false);
+      // Nothing is left to apply, so no shadow synth is made for it.
+      expect(r.synth.shadowCalls).toHaveLength(shadows);
+    });
+
+    it('keeps the notices of earlier rebases until the Draft is changed', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await set(r, 'ShopStack/Orders', 'fifo', bool(true));
+      await settled(r);
+
+      r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
+      r.files.change();
+      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await settled(r);
+      r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Orders'", "'Renamed2'"));
+      r.files.change();
+      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(2));
+      await settled(r);
+      expect(r.session.view().draft?.notices.join('\n')).toMatch(/versioned → false on Uploads[^]*fifo → true on Orders/);
+
+      await send(r, 'discard');
+      expect(r.session.view().draft).toBeUndefined();
+    });
+  });
+
+  describe('while the code on disk does not synth', () => {
+    const breakApp = async (r: Rig) => {
+      r.synth.result = () => ({ ok: false, error: { message: 'boom' } });
+      r.files.change();
+      await vi.waitFor(() => expect(r.session.view().error?.message).toBe('boom'));
+    };
+
+    it('holds the Draft as it was, unplanned on the new code, and refuses Save', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      const shadows = r.synth.shadowCalls.length;
+
+      // The rename that would drop the edit is on disk, but nothing can say so while the app doesn't synth.
+      r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
+      await breakApp(r);
+      const draft = r.session.view().draft;
+      expect(draft?.items).toHaveLength(1);
+      expect(draft?.notices).toEqual([]);
+      expect(r.synth.shadowCalls).toHaveLength(shadows);
+
+      expect(refusal(await send(r, 'save'))).toMatch(/Save is paused until the app synths again.*boom/);
+      expect(r.files.writes).toEqual([]);
+      expect(r.session.draftSize()).toBe(1);
+    });
+
+    it('rebases the Draft when the app synths again, saying what no longer applies', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await set(r, 'ShopStack/Orders', 'fifo', bool(true));
+      await settled(r);
+
+      r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
+      await breakApp(r);
+      r.synth.result = () => good();
+      r.files.change();
+      await vi.waitFor(() => expect(r.session.view().error).toBeUndefined());
+      await settled(r);
+      expect(r.session.view().draft?.notices[0]).toMatch(/Dropped versioned → false on Uploads/);
+      expect(r.session.view().draft?.items.map((i) => i.id)).toEqual(['ShopStack/Orders']);
+      expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+    });
+
+    it('still lets the Draft be discarded', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+      await breakApp(r);
+
+      expect(await send(r, 'discard')).toMatchObject({ type: 'ack' });
+      expect(r.session.draftSize()).toBe(0);
+      expect(r.session.view().draft).toBeUndefined();
+      // The app still doesn't synth, and the screen says so.
+      expect(r.session.view().error?.message).toBe('boom');
+    });
   });
 });

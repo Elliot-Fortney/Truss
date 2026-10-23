@@ -234,7 +234,8 @@ export class Session {
       dropped.push(`Dropped ${describeIntent(intent)} on ${intent.expect.literalId}: ${plan.reason}`);
       this.draft = { ...this.draft, intents: this.draft.intents.filter((_, i) => i !== plan.intent) };
     }
-    if (dropped.length > 0) this.notices = dropped;
+    // Notices stay until the user next changes the Draft, so a later rebase adds to them rather than replacing them.
+    this.notices = [...this.notices, ...dropped];
   }
 
   /** Whether the app can be synthed with a Draft, and if not, why. */
@@ -455,7 +456,9 @@ export class Session {
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
     const base = this.base;
     if (!base || this.draft.intents.length === 0) return refuse('There is nothing in the Draft to save.');
-    if (this.current.error) return refuse(`Fix the Problem the Draft causes first: ${this.current.error.message}`);
+    // A Draft is held, not rebased, while the code on disk doesn't synth: there is nothing to check it against.
+    if (this.current.error?.kind === 'draft') return refuse(`Fix the Problem the Draft causes first: ${this.current.error.message}`);
+    if (this.current.error) return refuse(`Save is paused until the app synths again: ${this.current.error.message}`);
     // The screen has to show the Draft as it is now, because the checks were made on what it shows.
     if (this.shownIntents !== this.draft.intents || !this.snapshot) return refuse('Truss is still checking the Draft. Try again in a moment.');
     const planned = this.planned();

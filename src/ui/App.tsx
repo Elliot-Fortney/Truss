@@ -512,7 +512,7 @@ export function App() {
           ) : null}
           {error ? (
             <div className="banner error-banner" role="alert">
-              <strong>{error.kind === 'draft' ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.' : 'Your app no longer synths. Showing the last good Design.'}</strong>
+              <strong>{error.kind === 'draft' ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.' : `Your app no longer synths. Showing the last good Design.${unsaved ? ' Your Draft is held as it was: Save is off until the app synths again, and Discard still works.' : ''}`}</strong>
               <span>{error.message}</span>
               <ErrorLocation error={error} onOpen={openInEditor} />
               {error.output ? (
