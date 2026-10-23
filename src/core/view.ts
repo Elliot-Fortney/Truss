@@ -1,6 +1,6 @@
 import type { Assembly, TreeNode } from './assembly.ts';
 import type { Facts } from './facts.ts';
-import type { Sidecar } from './sidecar.ts';
+import type { Point, Sidecar } from './sidecar.ts';
 
 /** A Stack drawn as a group box. */
 export interface StackBoxView {
@@ -22,7 +22,7 @@ export interface NodeView {
   icon: string;
   source: { file: string; line: number; col: number };
   /** Where the Sidecar says this Node sits on the canvas. Absent: the canvas lays it out. */
-  position?: { x: number; y: number };
+  position?: Point;
   /** The note the Sidecar holds for this Node. */
   note?: string;
 }

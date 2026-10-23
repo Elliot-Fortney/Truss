@@ -226,6 +226,51 @@ describe('Session Sidecar', () => {
     expect(session.view().nodes.find((n) => n.id === 'ShopStack/Orders')?.position).toBeUndefined();
   });
 
+  it("builds on what truss.json holds now, not what it held at start, so a branch switch isn't overwritten", async () => {
+    const files = fixtureFiles({ 'truss.json': saved({ 'ShopStack/Uploads': { note: 'mine' } }) });
+    const session = await started(files);
+    // A teammate's version arrives on disk (git pull) while Truss is open.
+    files.texts.set('truss.json', saved({ 'ShopStack/Uploads': { note: 'theirs' }, 'ShopStack/Catalog': { position: { x: 7, y: 8 } } }));
+
+    await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 2 });
+
+    expect(JSON.parse(files.texts.get('truss.json')!).nodes).toEqual({
+      'ShopStack/Uploads': { note: 'theirs' },
+      'ShopStack/Catalog': { position: { x: 7, y: 8 } },
+      'ShopStack/Orders': { position: { x: 1, y: 2 } },
+    });
+    expect(session.view().nodes.find((n) => n.id === 'ShopStack/Catalog')?.position).toEqual({ x: 7, y: 8 });
+  });
+
+  it('starts from an empty Sidecar when truss.json was deleted while Truss is open', async () => {
+    const files = fixtureFiles({ 'truss.json': saved({ 'ShopStack/Uploads': { note: 'old' } }) });
+    const session = await started(files);
+    files.texts.delete('truss.json');
+    await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 2 });
+    expect(JSON.parse(files.texts.get('truss.json')!).nodes).toEqual({ 'ShopStack/Orders': { position: { x: 1, y: 2 } } });
+  });
+
+  it('refuses, and writes nothing, when truss.json has become unusable since start', async () => {
+    const files = fixtureFiles();
+    const session = await started(files);
+    files.texts.set('truss.json', saved({}, 9));
+    const reply = await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 2 });
+    expect(reply).toEqual({ type: 'refused', requestId: 'r', reason: expect.stringContaining('format 9') });
+    expect(files.writes).toEqual([]);
+  });
+
+  it('says there is no Design yet, not that the Node is missing, when nothing has synthed', async () => {
+    const session = new Session({
+      appDir: '/app',
+      files: fixtureFiles(),
+      synth: fakeSynth({ ok: false, error: { message: 'boom' } }),
+      source: new TsSource(),
+    });
+    await session.start();
+    const reply = await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 2 });
+    expect(reply).toEqual({ type: 'refused', requestId: 'r', reason: expect.stringMatching(/no design/i) });
+  });
+
   describe('migration', () => {
     // Two made-up format changes: v1 -> v2 renamed `layout` to `nodes`; v2 -> v3 nested x and y under `position`.
     const migrations: readonly Migration[] = [

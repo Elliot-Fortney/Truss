@@ -128,10 +128,13 @@ export function App() {
   );
 
   const onNodeDragStop = useCallback(
-    (_event: unknown, node: Node) => {
+    (_event: unknown, _node: Node, dragged: Node[]) => {
       // React Flow reports a Node relative to its Stack box; the Sidecar keeps canvas coordinates.
-      const box = nodes.find((n) => n.id === node.parentId);
-      void request({ type: 'move', id: node.id, x: node.position.x + (box?.position.x ?? 0), y: node.position.y + (box?.position.y ?? 0) });
+      // A multi-select drag moves every selected Node, so every one is saved.
+      for (const node of dragged) {
+        const box = nodes.find((n) => n.id === node.parentId);
+        void request({ type: 'move', id: node.id, x: node.position.x + (box?.position.x ?? 0), y: node.position.y + (box?.position.y ?? 0) });
+      }
     },
     [nodes, request],
   );
@@ -169,6 +172,8 @@ export function App() {
         edges={[]}
         nodeTypes={nodeTypes}
         nodesConnectable={false}
+        // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
+        deleteKeyCode={null}
         fitView
         minZoom={0.1}
         proOptions={{ hideAttribution: false }}

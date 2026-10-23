@@ -1,8 +1,14 @@
 /** The file name of the Sidecar, next to `cdk.json`. */
 export const SIDECAR_FILE = 'truss.json';
 
+/** A place on the canvas. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface SidecarEntry {
-  position?: { x: number; y: number };
+  position?: Point;
   note?: string;
 }
 
@@ -96,7 +102,7 @@ export function serializeSidecar(sidecar: Sidecar, formatVersion = currentFormat
 }
 
 /** Sets where a Node sits. Positions are whole numbers so diffs stay small. */
-export function withPosition(sidecar: Sidecar, path: string, position: { x: number; y: number }): Sidecar {
+export function withPosition(sidecar: Sidecar, path: string, position: Point): Sidecar {
   const entry = sidecar.nodes[path] ?? {};
   return {
     ...sidecar,

@@ -85,17 +85,23 @@ export class Session {
 
   private async apply(message: ClientMessage): Promise<Reply> {
     const { requestId } = message;
-    if (!this.snapshot || !this.current.nodes.some((n) => n.id === message.id)) {
+    if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
+    if (!this.current.nodes.some((n) => n.id === message.id)) {
       return { type: 'refused', requestId, reason: `No Node at ${message.id}` };
     }
-    const next =
-      message.type === 'move'
-        ? withPosition(this.sidecar, message.id, message)
-        : withNote(this.sidecar, message.id, message.note);
+    let next: Sidecar;
     try {
+      // The file may have changed since the last change (a branch switch, a pull), so build on what it holds now.
+      const text = await this.deps.files.readText(SIDECAR_FILE);
+      const parsed = text === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(text, this.migrations);
+      if (!parsed.ok) return { type: 'refused', requestId, reason: parsed.message };
+      next =
+        message.type === 'move'
+          ? withPosition(parsed.sidecar, message.id, message)
+          : withNote(parsed.sidecar, message.id, message.note);
       await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(next, currentFormatVersion(this.migrations)));
     } catch (err) {
-      return { type: 'refused', requestId, reason: `Couldn't write ${SIDECAR_FILE}: ${err instanceof Error ? err.message : String(err)}` };
+      return { type: 'refused', requestId, reason: `Couldn't update ${SIDECAR_FILE}: ${err instanceof Error ? err.message : String(err)}` };
     }
     this.sidecar = next;
     this.push(buildView(this.snapshot.facts, this.snapshot.assembly, this.sidecar));

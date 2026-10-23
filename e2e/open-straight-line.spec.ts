@@ -66,10 +66,10 @@ test('refuses the WebSocket without the session token', async ({ page }) => {
   }
 });
 
-/** A scratch copy of the fixture app (sharing its node_modules), so a test can write truss.json without touching the repo. */
+/** A scratch copy of the fixture app (sharing its node_modules, without any truss.json), so a test can write one without touching the repo. */
 function scratchApp(): string {
   const dir = mkdtempSync(join(tmpdir(), 'truss-e2e-'));
-  cpSync(app, dir, { recursive: true, filter: (src) => !/[\\/](node_modules|cdk\.out)$/.test(src) });
+  cpSync(app, dir, { recursive: true, filter: (src) => !/[\\/](node_modules|cdk\.out|truss\.json)$/.test(src) });
   symlinkSync(join(app, 'node_modules'), join(dir, 'node_modules'), 'dir');
   return dir;
 }
@@ -97,8 +97,12 @@ test('a dragged Node and its note are saved in truss.json and survive a reload',
       nodes: { 'ShopStack/Orders': { position: { x: expect.any(Number), y: expect.any(Number) } } },
     });
 
-    // Add a note to it.
+    // Delete is a code edit, not a canvas gesture: the selected Node must stay.
     await orders.click();
+    await page.keyboard.press('Delete');
+    await expect(orders).toBeVisible();
+
+    // Add a note to it.
     await page.getByLabel('Note').fill('Retries 3x, then DLQ');
     await page.getByLabel('Note').blur();
     await expect.poll(() => JSON.parse(readFileSync(sidecar, 'utf8')).nodes['ShopStack/Orders'].note).toBe('Retries 3x, then DLQ');
