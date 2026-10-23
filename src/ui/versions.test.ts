@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { View } from '../core/view.ts';
 import { applyPush } from './versions.ts';
 
-const v = (version: number): View => ({ version, synthing: false, hasDesign: false, stacks: [], nodes: [] });
+const v = (version: number): View => ({ version, synthing: false, hasDesign: false, stages: [], stacks: [], nodes: [] });
 
 describe('applyPush', () => {
   it('takes the first push', () => {
