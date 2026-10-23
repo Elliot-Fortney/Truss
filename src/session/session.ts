@@ -1,4 +1,5 @@
 import type { Assembly, SynthError, SynthResult } from '../core/assembly.ts';
+import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { Facts } from '../core/facts.ts';
 import type { FileSet, Files, Source, Synth } from '../core/ports.ts';
 import type { ClientMessage, Reply } from '../core/protocol.ts';
@@ -11,6 +12,8 @@ export interface SessionDeps {
   synth: Synth;
   files: Files;
   source: Source;
+  /** What the app's installed libraries offer, read at startup (ADR 0009). Absent, nothing can be searched. */
+  catalog?: Catalog;
   /** The Sidecar's format history; only tests give their own. */
   migrations?: readonly Migration[];
 }
@@ -47,6 +50,11 @@ export class Session {
 
   view(): View {
     return this.current;
+  }
+
+  /** The palette's search: constructs of the Catalog by name, service or CloudFormation type, best first. */
+  searchCatalog(query: string, limit?: number): SearchHit[] {
+    return this.deps.catalog ? searchCatalog(this.deps.catalog, query, limit) : [];
   }
 
   /** Calls `listener` with every new View. Returns an unsubscribe function. */

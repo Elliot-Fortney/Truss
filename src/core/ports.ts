@@ -1,4 +1,5 @@
 import type { Assembly, SynthResult } from './assembly.ts';
+import type { Catalog } from './catalog.ts';
 import type { Facts } from './facts.ts';
 
 /** The app's source files, by path relative to the app folder. */
@@ -28,3 +29,9 @@ export interface Files {
    */
   watch(onChange: () => void): () => void;
 }
+
+/** Truss's answer to an app at startup: its Catalog, or why Truss can't open it (ADR 0009). */
+export type CatalogLoad = { ok: true; catalog: Catalog } | { ok: false; message: string };
+
+/** Reads the Catalog from the packages the app at `appDir` has installed. */
+export type LoadCatalog = (appDir: string) => Promise<CatalogLoad>;

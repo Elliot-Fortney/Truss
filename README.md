@@ -9,6 +9,8 @@ npm i -D truss-cdk   # placeholder package name: `truss` is taken on npm
 npx truss            # run inside a CDK app; --port <n>, --no-open, --synth-timeout <seconds> (default 120)
 ```
 
+Truss opens apps on `aws-cdk-lib` 2.191.0 or newer (not CDK v1), and refuses one whose cloud assembly schema is newer than the one it bundles ("upgrade Truss"). It reads the constructs it offers from the app's installed `aws-cdk-lib` and directly installed jsii libraries, and caches them by package version in `~/.cache/truss/catalog`.
+
 ## Develop
 
 ```sh

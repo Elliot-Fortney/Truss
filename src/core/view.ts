@@ -2,6 +2,7 @@ import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.t
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
 import { iconFor } from './icons.ts';
+import { serviceName } from './services.ts';
 import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
@@ -78,35 +79,11 @@ function envLabel(env: string | undefined): string {
 
 const lastSegment = (s: string) => s.split(/[./]/).at(-1) ?? s;
 
-/** How an AWS service is written, where capitalising its module name wouldn't do. */
-const SERVICE_NAMES: Record<string, string> = {
-  apigateway: 'API Gateway',
-  apigatewayv2: 'API Gateway',
-  cloudfront: 'CloudFront',
-  dynamodb: 'DynamoDB',
-  ec2: 'EC2',
-  ecs: 'ECS',
-  efs: 'EFS',
-  eks: 'EKS',
-  events: 'EventBridge',
-  iam: 'IAM',
-  kms: 'KMS',
-  lambda: 'Lambda',
-  rds: 'RDS',
-  s3: 'S3',
-  secretsmanager: 'Secrets Manager',
-  sns: 'SNS',
-  sqs: 'SQS',
-  stepfunctions: 'Step Functions',
-};
-
 /** `aws-cdk-lib.aws_s3.Bucket` as "S3 Bucket"; undefined for a type with no service name to give, such as `constructs.Construct`. */
 function typeLabel(fqn: string): string | undefined {
   const m = /\.aws_([a-z0-9_]+)\.([A-Za-z0-9]+)$/.exec(fqn);
   if (!m) return undefined;
-  const service = m[1]!;
-  // A module of several words (`ecs_patterns`) can't be turned into a service name by capitalising it.
-  const name = SERVICE_NAMES[service] ?? (/^[a-z0-9]+$/.test(service) ? service[0]!.toUpperCase() + service.slice(1) : undefined);
+  const name = serviceName(m[1]!);
   return name ? `${name} ${m[2]}` : undefined;
 }
 
