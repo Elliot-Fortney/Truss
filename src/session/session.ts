@@ -5,7 +5,8 @@ import { targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import { beforeMoves, movesOf, afterMoves, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
-import { buildPanel, intentForEdit, intentForRename } from '../core/panel.ts';
+import { intentForAdd, intentForDuplicate } from '../core/create.ts';
+import { buildPanel, intentForEdit, intentForRename, type PanelEditing } from '../core/panel.ts';
 import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withMoves, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { annotationProblems, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
@@ -125,11 +126,24 @@ export class Session {
 
   /** The property panel of a Node or Stack of the Design on screen. */
   private panel({ requestId, id }: PanelMessage): Reply {
-    const panel = this.snapshot && buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...(this.snapshot ? { tree: this.snapshot.assembly.tree } : {}), ...this.editBlock() });
+    const panel = this.snapshot && buildPanel(id, this.current, this.snapshot.facts, this.catalog, this.editing(this.snapshot));
     if (!panel) return { type: 'refused', requestId, reason: `No Node or Stack at ${id}` };
     const here = this.draft.problems().filter((p) => p.path === id || p.path?.startsWith(`${id}/`));
     if (here.length > 0) panel.problems = here.map((p) => ({ severity: p.severity, message: p.message, draft: p.draft }));
     return { type: 'panel', requestId, panel };
+  }
+
+  /** What a panel needs to know to offer edits of the Design on screen. */
+  private editing(snapshot: { assembly: Assembly }): PanelEditing {
+    return { intents: this.draft.intents, tree: snapshot.assembly.tree, added: this.addedPaths(), ...this.editBlock() };
+  }
+
+  /** The paths of the constructs the Draft adds: those on screen that the code on disk does not make. */
+  private addedPaths(): Set<string> {
+    const base = this.draft.base;
+    if (!base || !this.snapshot || this.draft.intents.length === 0) return new Set();
+    const moves = movesOf(this.draft.intents);
+    return new Set(Object.keys(this.snapshot.facts.nodes).filter((path) => !base.facts.nodes[beforeMoves(moves, path)]));
   }
 
   /** Why no edit can be made to the Draft at the moment, if so. A synth error the Draft itself causes doesn't stop it: the Draft is what the user fixes it with. */
@@ -318,7 +332,7 @@ export class Session {
     const moves = movesOf(this.draft.intents);
     const changed = this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set<string>();
     // The Sidecar keeps a renamed Node where it was until Save, but on screen it stays where the user put it.
-    return buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]));
+    return buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]), this.addedPaths());
   }
 
   /** The parts of the View that speak of the Draft, always all of them so that a push clears what no longer holds. */
@@ -370,6 +384,7 @@ export class Session {
     const { requestId } = message;
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
     if (message.type === 'setProp' || message.type === 'renameId') return this.stageEdit(message);
+    if (message.type === 'addNode' || message.type === 'duplicate') return this.stageCreation(message);
     // A Draft is held as it was while the code on disk doesn't synth, so only Discard can change it then.
     if ((message.type === 'undo' || message.type === 'redo') && this.current.error && this.current.error.kind !== 'draft') {
       return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
@@ -405,10 +420,36 @@ export class Session {
     const { requestId, id } = message;
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
     if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
-    const panel = buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...(this.snapshot ? { tree: this.snapshot.assembly.tree } : {}), ...this.editBlock() });
+    const panel = buildPanel(id, this.current, this.snapshot.facts, this.catalog, this.editing(this.snapshot));
     const edit = message.type === 'renameId' ? intentForRename(panel, id, message.newId) : intentForEdit(panel, id, message.prop, message.value);
     if (!edit.ok) return refuse(edit.reason);
     const staged = this.draft.stage(edit.intent);
+    if (!staged.ok) return refuse(staged.reason);
+    this.afterDraftChange();
+    return { type: 'ack', requestId };
+  }
+
+  /** Stages a new construct, or a copy of one: planned, and then synthed in a shadow copy. A construct that needs props only the user can give gets a form first, and nothing is staged. */
+  private stageCreation(message: Extract<DraftMessage, { type: 'addNode' | 'duplicate' }>): Reply {
+    const { requestId } = message;
+    const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
+    if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
+    const { blocked } = this.editBlock();
+    if (blocked) return refuse(blocked);
+    let intent: Intent;
+    if (message.type === 'addNode') {
+      const scope = message.scope;
+      if (!this.current.stacks.some((s) => s.id === scope)) return refuse(`No Stack at ${scope}`);
+      const made = intentForAdd(this.catalog, message.fqn, { id: scope, facts: this.snapshot.facts.nodes[scope], tree: this.snapshot.assembly.tree }, message.props ?? {});
+      if ('form' in made) return { type: 'form', requestId, fqn: message.fqn, props: made.form };
+      if (!made.ok) return refuse(made.reason);
+      intent = made.intent;
+    } else {
+      const made = intentForDuplicate(buildPanel(message.id, this.current, this.snapshot.facts, this.catalog, this.editing(this.snapshot)), message.id);
+      if (!made.ok) return refuse(made.reason);
+      intent = made.intent;
+    }
+    const staged = this.draft.stage(intent);
     if (!staged.ok) return refuse(staged.reason);
     this.afterDraftChange();
     return { type: 'ack', requestId };

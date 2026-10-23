@@ -56,7 +56,7 @@ export function checkEditOn(
   const planned = planEdit(app.source, base, intents);
   if (!planned.ok) {
     const at = intents[planned.intent];
-    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : 'the new Construct ID') : 'the edit'}: ${planned.reason}` }] };
+    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : at.type === 'renameId' ? 'the new Construct ID' : 'the new construct') : 'the edit'}: ${planned.reason}` }] };
   }
   const failures: EditFailure[] = [];
   const touched = Object.keys(planned.changes);

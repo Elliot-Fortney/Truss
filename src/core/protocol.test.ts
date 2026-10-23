@@ -27,6 +27,28 @@ describe('parseClientMessage', () => {
     });
   });
 
+  describe('addNode', () => {
+    const fqn = 'aws-cdk-lib.aws_s3.Bucket';
+
+    it('reads the Stack and the construct, and the values a form gave', () => {
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn })).toEqual({ ok: true, message: { type: 'addNode', requestId: '1', scope: 'A', fqn } });
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { bucketName: { kind: 'string', value: 'x' } } })).toMatchObject({ ok: true, message: { props: { bucketName: { kind: 'string', value: 'x' } } } });
+    });
+
+    it('refuses a missing Stack, a construct name that is not an FQN, and values that are not values Truss writes', () => {
+      expect(parse({ type: 'addNode', requestId: '1', fqn })).toMatchObject({ ok: false, requestId: '1' });
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn: 'new Foo()' })).toMatchObject({ ok: false });
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { 'a b': { kind: 'string', value: 'x' } } })).toMatchObject({ ok: false });
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { name: { kind: 'code', value: 'x' } } })).toMatchObject({ ok: false });
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: [] })).toMatchObject({ ok: false });
+    });
+  });
+
+  it('reads a duplicate, which names the Node', () => {
+    expect(parse({ type: 'duplicate', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'duplicate', requestId: '1', id: 'A/B' } });
+    expect(parse({ type: 'duplicate', requestId: '1' })).toMatchObject({ ok: false });
+  });
+
   describe('renameId', () => {
     it('reads the Node and the new ID', () => {
       expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' })).toEqual({ ok: true, message: { type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' } });

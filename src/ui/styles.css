@@ -66,9 +66,11 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .palette { position: absolute; z-index: 10; top: 44px; right: 12px; display: flex; flex-direction: column; gap: 6px; width: 300px; max-height: 45%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .palette input { font: inherit; font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
 .palette ul { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 0; list-style: none; }
-.palette-hit { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 5px 4px; border-radius: 6px; font-size: 13px; }
+.palette-hit { display: grid; grid-template-columns: 1fr auto auto; gap: 0 8px; cursor: grab; padding: 5px 4px; border-radius: 6px; font-size: 13px; }
 .palette-hit:hover { background: var(--bg); }
 .palette-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-add { font: inherit; font-size: 13px; line-height: 1; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; }
+.palette-add:disabled { opacity: 0.4; cursor: not-allowed; }
 .palette-detail { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
 .palette-deprecated { color: var(--error-fg); font-size: 11px; }
 .palette-empty { margin: 0; font-size: 12px; color: var(--muted); }
@@ -112,6 +114,7 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .prop-more { margin-top: 6px; font: inherit; font-size: 12px; cursor: pointer; }
 .truss-node.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .changed-badge { position: absolute; top: -8px; right: 8px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 8px; background: var(--card); color: var(--accent); font-size: 11px; }
+.changed-badge.added { border-color: var(--ok, var(--accent)); color: var(--ok, var(--accent)); }
 .stack-header .changed-badge { position: static; align-self: flex-start; }
 .prop-input { font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; margin-top: 2px; max-width: 100%; box-sizing: border-box; }
 input.prop-input[type='text'] { width: 100%; }
@@ -158,3 +161,6 @@ button.link { padding: 0; border: 0; background: none; color: var(--accent); cur
 .suspect-error, .truss-bug { color: var(--error-fg); font-size: 11px; }
 .panel-problems { margin: 0 0 8px; padding-left: 18px; font-size: 12px; }
 .panel-problems .error { color: var(--error-fg); }
+
+.add-form-actions { display: flex; gap: 8px; margin-top: 8px; }
+.duplicate { font: inherit; font-size: 12px; margin-bottom: 6px; }

@@ -159,6 +159,8 @@ export interface PanelEditing {
   tree?: TreeNode;
   /** Why the Draft can't take an edit at the moment, when it can't: the app can't be synthed with a Draft, or doesn't synth. */
   blocked?: string;
+  /** The paths of the constructs the Draft adds, which have no code on disk to edit until it is saved. */
+  added?: ReadonlySet<string>;
 }
 
 const sameSpan = (a: NodeFacts, b: NodeFacts) => a.span.file === b.span.file && a.span.start.line === b.span.start.line && a.span.start.col === b.span.start.col;
@@ -179,7 +181,7 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
   const described = isStack ? { first: STACK_PROPS, rest: [], featured: new Set<string>() } : entry && nodeFacts && classNamed(nodeFacts.className) === entry.name ? describeEntry(entry) : undefined;
 
   const lock = node ? node.lock : nodeFacts ? errorOf(nodeEditability(id, nodeFacts)) : 'Truss found no code for this Stack';
-  const readOnly = !editing ? undefined : lock !== undefined ? lock : nodeFacts?.props?.form === 'other' ? propsNotice(nodeFacts.props.text) : editing.blocked;
+  const readOnly = !editing ? undefined : editing.added?.has(id) ? ADDED_NOTICE : lock !== undefined ? lock : nodeFacts?.props?.form === 'other' ? propsNotice(nodeFacts.props.text) : editing.blocked;
   // The Draft's edits to this construct, and to any other made by the same `new`: a Stack or Stage class created more than once.
   const mine = nodeFacts && editing ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts)) : [];
   const props = withIntents(nodeFacts?.props, mine);
@@ -200,6 +202,7 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
 }
 
 const errorOf = (e: ReturnType<typeof nodeEditability>) => (e.editable ? undefined : e.reason);
+const ADDED_NOTICE = 'Added in the Draft: save it to edit it.';
 const propsNotice = (text: string) => `Props are passed as ${text}, so Truss shows every prop read-only.`;
 
 /**
@@ -220,6 +223,10 @@ export function inputFor(panel: PanelView, prop: readonly string[]): PropInput |
   return input;
 }
 
+/** Whether `value` is one the `input` takes. */
+export const valueFits = (input: PropInput, value: PropValue): boolean =>
+  input.kind === value.kind && (input.kind !== 'enum' || (value.kind === 'enum' && value.type === input.fqn && input.members.includes(value.member)));
+
 /**
  * What a panel edit means for the Draft: the intent to stage, or why the edit is refused. The panel is the one the user edited in,
  * so a prop it offers no input for, or a value its input doesn't take, is turned away here and never reaches the code.
@@ -235,10 +242,7 @@ export function intentForEdit(
   const input = inputFor(panel, prop);
   const named = prop.join('.');
   if (!input) return { ok: false, reason: `${named} can't be edited here` };
-  const fits =
-    input.kind === value.kind &&
-    (input.kind !== 'enum' || (value.kind === 'enum' && value.type === input.fqn && input.members.includes(value.member)));
-  if (!fits) return { ok: false, reason: `${named} takes a ${input.kind}, not a ${value.kind}` };
+  if (!valueFits(input, value)) return { ok: false, reason: `${named} takes a ${input.kind}, not a ${value.kind}` };
   if (panel.literalId === undefined) return { ok: false, reason: `${id} has no Construct ID in the code to edit by` };
   return { ok: true, intent: { type: 'setProp', path: id, expect: { className: panel.className, literalId: panel.literalId }, prop, value } };
 }

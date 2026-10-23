@@ -1,4 +1,4 @@
-import type { SearchHit } from './catalog.ts';
+import type { CatalogProp, SearchHit } from './catalog.ts';
 import { MAX_ID_LENGTH } from './construct-id.ts';
 import { DURATION_UNITS, SIZE_UNITS, type PropValue } from './intents.ts';
 import type { PanelView } from './panel.ts';
@@ -20,6 +20,10 @@ export type DraftMessage =
   | { type: 'setProp'; requestId: string; id: string; prop: string[]; value: PropValue }
   /** Changes the Construct ID of a Node or Stack. */
   | { type: 'renameId'; requestId: string; id: string; newId: string }
+  /** Adds the construct `fqn` to the Stack `scope`. `props` are values for required props the Overlay has no default for, from the form. */
+  | { type: 'addNode'; requestId: string; scope: string; fqn: string; props?: Record<string, PropValue> }
+  /** Copies the Node at `id` with a fresh Construct ID. */
+  | { type: 'duplicate'; requestId: string; id: string }
   | { type: 'undo'; requestId: string }
   | { type: 'redo'; requestId: string }
   | { type: 'save'; requestId: string }
@@ -36,6 +40,8 @@ export type Reply =
   | { type: 'ack'; requestId: string }
   | { type: 'refused'; requestId: string; reason: string }
   | { type: 'results'; requestId: string; hits: SearchHit[] }
+  /** Nothing was staged: the construct needs these props, which only the user can give. */
+  | { type: 'form'; requestId: string; fqn: string; props: CatalogProp[] }
   | { type: 'panel'; requestId: string; panel: PanelView };
 
 export const MAX_NOTE_LENGTH = 10_000;
@@ -45,6 +51,9 @@ export const MAX_STRING_VALUE_LENGTH = 4_000;
 export const MAX_PROP_DEPTH = 4;
 /** Bounds the work of one search: no construct name or CloudFormation type comes near this long. */
 export const MAX_QUERY_LENGTH = 200;
+
+/** A construct has a handful of required props, not hundreds. */
+const MAX_FORM_PROPS = 50;
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
@@ -104,6 +113,21 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
   if (raw['type'] === 'undo' || raw['type'] === 'redo' || raw['type'] === 'save' || raw['type'] === 'discard') {
     return { ok: true, message: { type: raw['type'], requestId } };
   }
+  if (raw['type'] === 'addNode') {
+    const { scope, fqn } = raw;
+    if (typeof scope !== 'string' || scope === '') return refuse('An addNode needs the Stack path as "scope"');
+    if (typeof fqn !== 'string' || !/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_]+){1,2}$/.test(fqn)) return refuse('An addNode needs the construct as "fqn"');
+    const given = raw['props'];
+    if (given === undefined) return { ok: true, message: { type: 'addNode', requestId, scope, fqn } };
+    if (!isObject(given) || Object.keys(given).length > MAX_FORM_PROPS) return refuse('An addNode takes its props as an object of values');
+    const props: Record<string, PropValue> = {};
+    for (const [name, value] of Object.entries(given)) {
+      const parsed = IDENTIFIER.test(name) ? parsePropValue(value) : ({ ok: false, reason: `${name} is not a prop name` } as const);
+      if (!parsed.ok) return refuse(parsed.reason);
+      props[name] = parsed.value;
+    }
+    return { ok: true, message: { type: 'addNode', requestId, scope, fqn, props } };
+  }
   const id = raw['id'];
   if (typeof id !== 'string' || id === '') return refuse('A request needs the construct path as "id"');
 
@@ -123,6 +147,8 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
     }
     case 'panel':
       return { ok: true, message: { type: 'panel', requestId, id } };
+    case 'duplicate':
+      return { ok: true, message: { type: 'duplicate', requestId, id } };
     case 'renameId': {
       const newId = raw['newId'];
       if (typeof newId !== 'string') return refuse('A renameId needs the new Construct ID as "newId"');

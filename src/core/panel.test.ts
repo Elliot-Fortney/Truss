@@ -170,6 +170,13 @@ describe('buildPanel for editing', () => {
     expect(panelOf(undefined, { intents: [] }).literalId).toBe('Logs');
   });
 
+  it('is read-only for a construct the Draft adds, which has no code on disk yet', () => {
+    const panel = panelOf(undefined, { intents: [], added: new Set(['App/Logs']) });
+    expect(panel.readOnly).toMatch(/save it/);
+    expect(input(panel, 'versioned')).toBeUndefined();
+    expect(panel.idEdit).toBeUndefined();
+  });
+
   it('offers no input for a type Truss writes no literal for', () => {
     expect(input(panelOf(undefined, { intents: [] }), 'lifecycleRules')).toBeUndefined();
   });

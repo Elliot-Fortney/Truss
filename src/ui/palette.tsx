@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import type { SearchHit } from '../core/catalog.ts';
 import type { SearchOutcome } from './use-view.ts';
 
+/** What a palette entry puts on the drag, so a drop on a Stack knows which construct it is. */
+export const CONSTRUCT_DRAG = 'application/x-truss-construct';
+
 /** The line under a construct's name: where it comes from and what it builds, so two like-named constructs can be told apart. */
 export function hitDetail(hit: SearchHit): string {
   return [hit.service, hit.cfnType, hit.library === 'aws-cdk-lib' ? undefined : hit.library].filter(Boolean).join(' · ');
 }
 
 /** The palette: every construct the app's installed libraries offer, searched by name, service or CloudFormation type. */
-export function Palette({ search }: { search(query: string): Promise<SearchOutcome> }) {
+export function Palette({ search, scope, onAdd }: { search(query: string): Promise<SearchOutcome>; scope: string | undefined; onAdd(hit: SearchHit): void }) {
   const [query, setQuery] = useState('');
   const [outcome, setOutcome] = useState<SearchOutcome>();
   const asked = useRef(0);
@@ -29,12 +32,24 @@ export function Palette({ search }: { search(query: string): Promise<SearchOutco
       {outcome?.ok ? (
         <ul>
           {outcome.hits.map((hit) => (
-            <li key={hit.fqn} className="palette-hit" title={hit.fqn}>
+            <li
+              key={hit.fqn}
+              className="palette-hit"
+              title={hit.fqn}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(CONSTRUCT_DRAG, hit.fqn);
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
+            >
               <span className="palette-name">
                 {hit.displayName ?? hit.name}
                 {hit.deprecated ? <span className="palette-deprecated"> deprecated</span> : null}
               </span>
               <span className={`tier tier-${hit.tier}`}>{hit.tier}</span>
+              <button type="button" className="palette-add" disabled={scope === undefined} title={scope === undefined ? 'Select a Stack to add to, or drag this onto one' : `Add to ${scope}`} aria-label={`Add ${hit.displayName ?? hit.name}`} onClick={() => onAdd(hit)}>
+                +
+              </button>
               <span className="palette-detail">{hitDetail(hit)}</span>
             </li>
           ))}

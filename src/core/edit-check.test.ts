@@ -123,3 +123,35 @@ describe('newDiagnostics', () => {
     expect(newDiagnostics([d(1), d(2)], [d(2)])).toEqual([]);
   });
 });
+
+describe('judgeEdit for added and copied constructs', () => {
+  const add: Intent = { type: 'addNode', path: 'S', expect: { className: 'Stack', literalId: 'S' }, fqn: 'lib.Bucket', id: 'New', props: [] };
+  const withStack: Facts = { nodes: { ...facts.nodes, S: { ...node(1), className: 'Stack', literalId: 'S' } } };
+  const statement: TextChange = { start: text.indexOf('zzzz'), end: text.indexOf('zzzz'), text: 'new Bucket(this, "New");\n', purpose: 'add' };
+  const base = assembly(tree(...A, ['S/B', 'x']));
+  const run = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
+    judgeEdit({ files, changes: { 'f.ts': [statement] }, facts: withStack, intents: [add], before: base, after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Bucket'], ['S/New/Resource', 'lib.CfnBucket'])), ...over });
+
+  it('holds for one new path of the expected class and what it creates beneath itself', () => {
+    expect(run()).toEqual([]);
+  });
+
+  it('does not make the Stack a target', () => {
+    expect([...targetPaths(withStack, [add])]).toEqual([]);
+  });
+
+  it('fails when the new path is missing, is another class, or something else changed too', () => {
+    expect(run({ after: base })[0]).toContain('S/New was not added');
+    expect(run({ after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Other'])) })[0]).toContain('not the lib.Bucket');
+    expect(run({ after: assembly(tree(...A, ['S/B', 'changed'], ['S/New', 'lib.Bucket'])) })[0]).toContain('S/B');
+    expect(run({ after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Bucket'], ['S/Extra', 'lib.Bucket'])) })[0]).toContain('S/Extra');
+  });
+
+  it('expects the copy of a Node to be the same class under the new ID', () => {
+    const copy: Intent = { type: 'duplicate', path: 'S/B', expect: { className: 'X', literalId: 'B' }, newId: 'B2' };
+    const mine = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
+      judgeEdit({ files, changes: { 'f.ts': [statement] }, facts, intents: [copy], before: base, after: assembly(tree(...A, ['S/B', 'x'], ['S/B2', 'x'])), ...over });
+    expect(mine()).toEqual([]);
+    expect(mine({ after: assembly(tree(...A, ['S/B', 'x'], ['S/B2', 'y'])) })[0]).toContain('S/B2');
+  });
+});

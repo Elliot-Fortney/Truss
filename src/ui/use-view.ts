@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
-import type { SearchHit } from '../core/catalog.ts';
+import type { CatalogProp, SearchHit } from '../core/catalog.ts';
+import type { PropValue } from '../core/intents.ts';
 import type { PanelView } from '../core/panel.ts';
 import type { ClientRequest, Reply } from '../core/protocol.ts';
 import type { OpenInEditorMessage, View } from '../core/view.ts';
@@ -11,6 +12,9 @@ export type Connection = 'connecting' | 'open' | 'closed';
 export type Outcome = { ok: true } | { ok: false; reason: string };
 
 export type SearchOutcome = { ok: true; hits: SearchHit[] } | { ok: false; reason: string };
+
+/** What adding a construct came to: staged, turned away, or in need of props from the user first. */
+export type AddOutcome = { ok: true } | { ok: false; reason: string } | { ok: false; form: CatalogProp[] };
 
 export type PanelOutcome = { ok: true; panel: PanelView } | { ok: false; reason: string };
 
@@ -26,6 +30,8 @@ export function useView(): {
   search(query: string): Promise<SearchOutcome>;
   /** Asks for the property panel of a Node or Stack. Never rejects. */
   panel(id: string): Promise<PanelOutcome>;
+  /** Adds the construct `fqn` to the Stack `scope`. Never rejects. */
+  addNode(scope: string, fqn: string, props?: Record<string, PropValue>): Promise<AddOutcome>;
   openInEditor(at: SourceLocation): void;
 } {
   const [view, setView] = useState<View>();
@@ -101,10 +107,19 @@ export function useView(): {
     [ask],
   );
 
+  const addNode = useCallback(
+    async (scope: string, fqn: string, props?: Record<string, PropValue>): Promise<AddOutcome> => {
+      const reply = await ask({ type: 'addNode', scope, fqn, ...(props ? { props } : {}) });
+      if (reply.type === 'form') return { ok: false, form: reply.props };
+      return reply.type === 'refused' ? { ok: false, reason: reply.reason } : { ok: true };
+    },
+    [ask],
+  );
+
   /** Asks Truss to show a place in the app's code in the user's editor. */
   const openInEditor = useCallback((at: SourceLocation) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
   }, []);
 
-  return { view, connection, send, search, panel, openInEditor };
+  return { view, connection, send, search, panel, addNode, openInEditor };
 }

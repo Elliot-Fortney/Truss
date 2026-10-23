@@ -2,8 +2,9 @@
 import ts from '@typescript/typescript6';
 import { applyChanges, offsetOf, type TextChange } from '../../core/diff.ts';
 import type { Facts, NodeFacts } from '../../core/facts.ts';
-import { constructIdProblem } from '../../core/construct-id.ts';
-import { onBase, type Intent, type PropValue } from '../../core/intents.ts';
+import { constructIdProblem, parentPath } from '../../core/construct-id.ts';
+import { nodeEditability } from '../../core/editability.ts';
+import { onBase, type AddNodeIntent, type AddedProp, type DuplicateIntent, type Intent, type PropValue } from '../../core/intents.ts';
 import type { FileSet, PlanResult } from '../../core/ports.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 
@@ -63,8 +64,8 @@ class FileEdit {
     this.quote = quoteStyle(sf);
   }
 
-  change(start: number, end: number, text: string): void {
-    this.changes.push({ start, end, text });
+  change(start: number, end: number, text: string, purpose?: TextChange['purpose']): void {
+    this.changes.push({ start, end, text, ...(purpose ? { purpose } : {}) });
   }
 
   /** The text after the changes so far, with imports. */
@@ -92,7 +93,14 @@ class FileEdit {
     return /^[ \t]*/.exec(this.text.slice(lineStart))![0];
   }
 
-  private used(name: string): boolean {
+  /** Keeps `name` from being given to anything else in this plan. */
+  claim(name: string): void {
+    this.used(name);
+    this.identifiers!.add(name);
+  }
+
+  /** Whether the file already has an identifier called `name`, or this plan has given it to something. */
+  used(name: string): boolean {
     if (!this.identifiers) {
       this.identifiers = new Set();
       const visit = (n: ts.Node) => {
@@ -202,12 +210,12 @@ function quoted(value: string, quote: string): string {
   return quote + (quote === '`' ? escaped.replace(/\$\{/g, '\\${') : escaped) + quote;
 }
 
-/** Where an enum of `aws-cdk-lib` is imported from, and what its namespace is called when the file has to import it whole. */
+/** Where an enum or construct class of `aws-cdk-lib` is imported from, and what its namespace is called when the file has to import it whole. */
 function enumHome(intent: number, fqn: string): { module: string; type: string; alias: string } {
   const parts = fqn.split('.');
   const type = parts.at(-1)!;
   const namespace = parts.length === 3 ? parts[1]! : undefined;
-  if (parts[0] !== CDK_LIB || parts.length < 2 || parts.length > 3) throw new Refusal(intent, `Truss only writes enums of ${CDK_LIB}, not ${fqn}`);
+  if (parts[0] !== CDK_LIB || parts.length < 2 || parts.length > 3) throw new Refusal(intent, `Truss only writes enums and constructs of ${CDK_LIB}, not ${fqn}`);
   if (!namespace) return { module: CDK_LIB, type, alias: 'cdk' };
   const module = `${CDK_LIB}/${(namespace.startsWith('aws_') ? `aws-${namespace.slice(4)}` : namespace).replace(/_/g, '-')}`;
   const alias = namespace.replace(/^aws_/, '').replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
@@ -322,6 +330,235 @@ function editNew(edit: FileEdit, target: Target): void {
   editObject(edit, props, target.assigns);
 }
 
+
+// --- Adding and duplicating ---------------------------------------------------------------------------
+
+/** A statement that makes a new construct, with the scope it is made in. */
+interface Creation {
+  index: number;
+  intent: AddNodeIntent | DuplicateIntent;
+  /** The Stack the construct goes in, as the code makes it. */
+  scopePath: string;
+  scope: NodeFacts;
+  /** The `new` call that is copied; only for a duplicate. */
+  source?: NodeFacts;
+}
+
+/** Where a new statement goes, and how it refers to its scope. */
+interface Placement {
+  edit: FileEdit;
+  /** The statement the new one follows. */
+  anchor: ts.Statement;
+  /** What the scope is called where the statement is written: `this`, or the variable the Stack is bound to. */
+  scopeArg: string;
+  /** The class whose constructor the statement goes in, and whether the constructs in it are kept in fields. */
+  cls?: ts.ClassDeclaration;
+  fields: boolean;
+}
+
+const RESERVED = new Set(
+  'break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with yield let static implements interface package private protected public await async of type'.split(' '),
+);
+
+/** The name a construct with Construct ID `id` is bound to: the ID with a lowercase first letter, made a valid identifier that nothing in the file uses. */
+function bindingFor(edit: FileEdit, id: string): string {
+  let base = id.replace(/[^A-Za-z0-9_$]/g, '');
+  base = base.charAt(0).toLowerCase() + base.slice(1);
+  if (!IDENTIFIER.test(base)) base = `node${base.charAt(0).toUpperCase()}${base.slice(1)}`;
+  if (RESERVED.has(base)) base += 'Node';
+  let name = base;
+  for (let n = 2; edit.used(name); n++) name = `${base}${n}`;
+  edit.claim(name);
+  return name;
+}
+
+const newAt = (edit: FileEdit, f: NodeFacts): ts.NewExpression | undefined => {
+  const start = offsetOf(edit.text, f.span.start.line, f.span.start.col);
+  let found: ts.NewExpression | undefined;
+  const visit = (n: ts.Node) => {
+    if (ts.isNewExpression(n) && n.getStart(edit.sf) === start) found = n;
+    if (!found) ts.forEachChild(n, visit);
+  };
+  visit(edit.sf);
+  return found;
+};
+
+/** The statement of `body` that holds `n`. */
+function statementIn(n: ts.Node, body: ts.Node): ts.Statement | undefined {
+  for (let at: ts.Node | undefined = n; at?.parent; at = at.parent) if (at.parent === body && ts.isStatement(at)) return at;
+  return undefined;
+}
+
+const mentions = (s: ts.Node, name: string): boolean => {
+  let hit = false;
+  const visit = (n: ts.Node) => {
+    if (ts.isIdentifier(n) && n.text === name) hit = true;
+    if (!hit) ts.forEachChild(n, visit);
+  };
+  visit(s);
+  return hit;
+};
+
+/**
+ * Where the statement for a new construct in `scope` goes: after the last editable sibling's statement, or
+ * at the end of the constructor, for a Stack class; after the last use of the variable, for a Stack made inline in `bin/`.
+ */
+function place(c: Creation, facts: Facts, edits: (file: string, intent: number) => FileEdit, files: FileSet, parse: (file: string) => ts.SourceFile | undefined): Placement {
+  const { scope, scopePath, index } = c;
+  const className = scope.className.split('.').at(-1)!;
+  let cls: { edit: FileEdit; decl: ts.ClassDeclaration } | undefined;
+  for (const file of files.keys()) {
+    const sf = parse(file);
+    const decl = sf?.statements.find((st): st is ts.ClassDeclaration => ts.isClassDeclaration(st) && st.name?.text === className);
+    if (decl) {
+      cls = { edit: edits(file, index), decl };
+      break;
+    }
+  }
+  if (cls) {
+    const ctor = cls.decl.members.find(ts.isConstructorDeclaration);
+    if (!ctor?.body || ctor.body.statements.length === 0) throw new Refusal(index, `${className} has no constructor body to add the construct to`);
+    const siblings = Object.entries(facts.nodes).filter(([path, f]) => parentPath(path) === scopePath && !f.external);
+    let anchor = ctor.body.statements.at(-1)!;
+    let end = -1;
+    for (const [path, f] of siblings) {
+      if (f.span.file !== cls.edit.file || !nodeEditability(path, f).editable) continue;
+      const found = newAt(cls.edit, f);
+      const st = found && statementIn(found, ctor.body);
+      if (st && st.getEnd() > end) {
+        anchor = st;
+        end = st.getEnd();
+      }
+    }
+    return { edit: cls.edit, anchor, scopeArg: 'this', cls: cls.decl, fields: siblings.some(([, f]) => f.binding === 'field') };
+  }
+  if (scope.surround) throw new Refusal(index, `${scopePath} is made in a ${scope.surround.kind === 'loop' ? 'loop' : `helper, ${scope.surround.name}`}, so Truss can't tell where to add to it`);
+  const edit = edits(scope.span.file, index);
+  const made = newAt(edit, scope);
+  let decl: ts.Node | undefined = made;
+  while (decl && !ts.isVariableDeclaration(decl)) decl = decl.parent;
+  const statement = decl?.parent?.parent;
+  if (!decl || !ts.isVariableDeclaration(decl) || !ts.isIdentifier(decl.name) || !statement || !ts.isVariableStatement(statement) || !(ts.isSourceFile(statement.parent) || ts.isBlock(statement.parent))) {
+    throw new Refusal(index, `${scopePath} isn't kept in a variable, so there is nothing to add the construct to`);
+  }
+  const list = statement.parent.statements;
+  const name = decl.name.text;
+  const after = list.slice(list.indexOf(statement));
+  const anchor = after.findLast((st) => mentions(st, name)) ?? statement;
+  return { edit, anchor, scopeArg: name, fields: false };
+}
+
+/** The code of the added construct's props, as the object literal it goes in; empty when it has none. */
+function addedProps(edit: FileEdit, index: number, props: readonly AddedProp[]): string {
+  const parts = props.map((p) => {
+    if (!IDENTIFIER.test(p.name)) throw new Refusal(index, `${p.name} is not a prop name`);
+    if ('value' in p) return render(edit, p.name, { leaf: p.value, intent: index });
+    let code = p.snippet.code;
+    for (const fqn of p.snippet.uses ?? []) {
+      const home = enumHome(index, fqn);
+      const ref = edit.ref(index, home.module, home.type, home.alias);
+      if (ref !== home.type) code = code.replace(new RegExp(`(?<![\\w$.'"])${home.type}\\b`, 'g'), ref);
+    }
+    return `${p.name}: ${code}`;
+  });
+  return parts.length > 0 ? `, { ${parts.join(', ')} }` : '';
+}
+
+/** The quote the statement uses for its first string, which is the file's own style where the statement goes; else the quote the file mostly uses. */
+function quoteNear(edit: FileEdit, statement: ts.Node): string {
+  let first: ts.StringLiteral | undefined;
+  const visit = (n: ts.Node) => {
+    if (ts.isStringLiteral(n) && !first) first = n;
+    if (!first) ts.forEachChild(n, visit);
+  };
+  visit(statement);
+  return first ? first.getText(edit.sf)[0]! : edit.quote;
+}
+
+/** Inserts `text` on a new line after `anchor`, keeping a comment that trails the anchor with it. */
+function insertAfter(edit: FileEdit, anchor: ts.Node, text: string): void {
+  const end = anchor.getEnd();
+  const at = ts.getTrailingCommentRanges(edit.text, end)?.at(-1)?.end ?? end;
+  edit.change(at, at, `${edit.newline}${edit.indentOf(anchor)}${text}`, 'add');
+}
+
+/** Declares the field `name` of type `type` in `cls`, in the way its other fields are declared. */
+function declareField(edit: FileEdit, cls: ts.ClassDeclaration, name: string, type: string): void {
+  const properties = cls.members.filter(ts.isPropertyDeclaration);
+  const modifiers = properties.at(-1)?.modifiers?.map((m) => m.getText(edit.sf)).join(' ') ?? 'readonly';
+  const declaration = `${modifiers ? modifiers + ' ' : ''}${name}: ${type};`;
+  const last = properties.at(-1);
+  if (last) return insertAfter(edit, last, declaration);
+  const ctor = cls.members.find(ts.isConstructorDeclaration)!;
+  const at = ctor.getStart(edit.sf);
+  edit.change(at, at, `${declaration}${edit.newline}${edit.newline}${edit.indentOf(ctor)}`, 'add');
+}
+
+function create(c: Creation, facts: Facts, edits: (file: string, intent: number) => FileEdit, files: FileSet, parse: (file: string) => ts.SourceFile | undefined): void {
+  const { intent, index } = c;
+  const placed = place(c, facts, edits, files, parse);
+  const { edit, anchor } = placed;
+  const semicolon = anchor.getText(edit.sf).endsWith(';') ? ';' : '';
+  if (intent.type === 'addNode') {
+    const problem = constructIdProblem(intent.id, []);
+    if (problem) throw new Refusal(index, problem);
+    const home = enumHome(index, intent.fqn);
+    const type = edit.ref(index, home.module, home.type, home.alias);
+    const name = bindingFor(edit, intent.id);
+    const made = `new ${type}(${placed.scopeArg}, ${quoted(intent.id, quoteNear(edit, anchor))}${addedProps(edit, index, intent.props)})`;
+    if (placed.fields && placed.cls) {
+      declareField(edit, placed.cls, name, type);
+      return insertAfter(edit, anchor, `this.${name} = ${made}${semicolon}`);
+    }
+    return insertAfter(edit, anchor, `const ${name} = ${made}${semicolon}`);
+  }
+  copy(c as Creation & { intent: DuplicateIntent; source: NodeFacts }, placed, semicolon);
+}
+
+/** Writes a copy of the statement that makes the construct, with the ID and the name it is bound to changed. */
+function copy(c: Creation & { intent: DuplicateIntent; source: NodeFacts }, placed: Placement, semicolon: string): void {
+  const { intent, index, source } = c;
+  const { edit } = placed;
+  const problem = constructIdProblem(intent.newId, []);
+  if (problem) throw new Refusal(index, problem);
+  if (edit.file !== source.span.file) throw new Refusal(index, `${intent.path} is in ${source.span.file}, not in the file the copy goes in`);
+  const found = newAt(edit, source);
+  const id = found?.arguments?.[1];
+  if (!found || !id || !isStringLike(id)) throw new Refusal(index, `The code at ${source.span.file}:${source.span.start.line} is not the \`new\` Truss read`);
+  let statement: ts.Node | undefined = found;
+  while (statement && !ts.isStatement(statement)) statement = statement.parent;
+  if (!statement || !ts.isStatement(statement)) throw new Refusal(index, `${intent.path} isn't made by a statement of its own, so it can't be copied`);
+  const replacements: Array<{ start: number; end: number; text: string }> = [{ start: id.getStart(edit.sf), end: id.getEnd(), text: quoted(intent.newId, id.getText(edit.sf)[0]!) }];
+  let declared: { old: string; name: string } | undefined;
+  if (ts.isVariableStatement(statement)) {
+    const [only, ...more] = statement.declarationList.declarations;
+    if (!only || more.length > 0 || !ts.isIdentifier(only.name) || only.initializer !== found) throw new Refusal(index, `${intent.path} is made in a statement Truss can't copy`);
+    const name = bindingFor(edit, intent.newId);
+    replacements.push({ start: only.name.getStart(edit.sf), end: only.name.getEnd(), text: name });
+  } else if (ts.isExpressionStatement(statement)) {
+    const e = statement.expression;
+    if (ts.isBinaryExpression(e) && e.right === found && ts.isPropertyAccessExpression(e.left) && e.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const name = bindingFor(edit, intent.newId);
+      replacements.push({ start: e.left.name.getStart(edit.sf), end: e.left.name.getEnd(), text: name });
+      declared = { old: e.left.name.text, name };
+    } else if (e !== found) throw new Refusal(index, `${intent.path} is made in a statement Truss can't copy`);
+  } else throw new Refusal(index, `${intent.path} is made in a statement Truss can't copy`);
+
+  const from = statement.getStart(edit.sf);
+  let text = edit.text.slice(from, statement.getEnd());
+  for (const r of replacements.sort((a, b) => b.start - a.start)) text = text.slice(0, r.start - from) + r.text + text.slice(r.end - from);
+  if (!semicolon && text.endsWith(';')) text = text.slice(0, -1);
+  if (declared && placed.cls) {
+    const property = placed.cls.members.find((m): m is ts.PropertyDeclaration => ts.isPropertyDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === declared.old);
+    if (property) {
+      const start = property.getStart(edit.sf);
+      const name = property.name.getStart(edit.sf) - start;
+      insertAfter(edit, property, edit.text.slice(start, property.getEnd()).slice(0, name) + declared.name + edit.text.slice(property.name.getEnd(), property.getEnd()));
+    }
+  }
+  insertAfter(edit, placed.anchor, text);
+}
+
 const key = (f: NodeFacts) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
 /** Plans `intents` against `files`, which `facts` were read from. Every intent is checked, and the changes it makes are confined to the `new` call it names (and the file's imports). */
@@ -329,12 +566,27 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
   try {
     // Edits of one `new` call are planned together, because a later edit may land in an object an earlier one created.
     const targets = new Map<string, Target>();
+    const creations: Creation[] = [];
     for (const [i, intent] of onBase(intents).entries()) {
       const f = facts.nodes[intent.path];
       if (!f) throw new Refusal(i, `There is no construct at ${intent.path} in the code`);
       if (f.external) throw new Refusal(i, `${intent.path} refers to an existing resource; the code doesn't create it`);
-      if (f.className !== intent.expect.className || f.literalId !== intent.expect.literalId) {
+      if (f.className !== intent.expect.className || (f.literalId ?? '') !== intent.expect.literalId) {
         throw new Refusal(i, `${intent.path} is no longer ${intent.expect.className} "${intent.expect.literalId}" in the code`);
+      }
+      if (intent.type === 'addNode') {
+        creations.push({ index: i, intent, scopePath: intent.path, scope: f });
+        continue;
+      }
+      if (intent.type === 'duplicate') {
+        const nodeProblem = nodeEditability(intent.path, f);
+        if (!nodeProblem.editable) throw new Refusal(i, nodeProblem.reason);
+        if (f.pathsOnSpan > 1) throw new Refusal(i, `${intent.path} is one of ${f.pathsOnSpan} constructs made by the same \`new\` call, so it can't be copied for one of them alone`);
+        const scopePath = parentPath(intent.path);
+        const scope = facts.nodes[scopePath];
+        if (!scope) throw new Refusal(i, `There is no Stack at ${scopePath} in the code to put the copy in`);
+        creations.push({ index: i, intent, scopePath, scope, source: f });
+        continue;
       }
       const target = targets.get(key(f)) ?? { file: f.span.file, facts: f, assigns: new Map<string, Assign>(), intent: i };
       if (intent.type === 'renameId') {
@@ -351,23 +603,25 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
     }
 
     const edits = new Map<string, FileEdit>();
-    for (const target of targets.values()) {
-      let edit = edits.get(target.file);
+    const editOf = (file: string, intent: number): FileEdit => {
+      let edit = edits.get(file);
       if (!edit) {
-        const text = files.get(target.file);
-        const sf = parse(target.file);
-        if (text === undefined || !sf) throw new Refusal(target.intent, `${target.file} is not among the app's files`);
-        edit = new FileEdit(target.file, text, sf);
-        edits.set(target.file, edit);
+        const text = files.get(file);
+        const sf = parse(file);
+        if (text === undefined || !sf) throw new Refusal(intent, `${file} is not among the app's files`);
+        edit = new FileEdit(file, text, sf);
+        edits.set(file, edit);
       }
-      editNew(edit, target);
-    }
+      return edit;
+    };
+    for (const target of targets.values()) editNew(editOf(target.file, target.intent), target);
+    for (const c of creations) create(c, facts, editOf, files, parse);
 
     const changes: Record<string, TextChange[]> = {};
     for (const [file, edit] of edits) {
       const sorted = edit.finish();
       if (sorted.length === 0) continue;
-      const blame = [...targets.values()].find((t) => t.file === file)!.intent;
+      const blame = [...targets.values()].find((t) => t.file === file)?.intent ?? creations[0]?.index ?? 0;
       let after: string;
       try {
         after = applyChanges(edit.text, sorted);

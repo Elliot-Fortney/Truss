@@ -1,5 +1,5 @@
 import { unifiedDiff, type FileDiff } from '../core/diff.ts';
-import { describeIntent, emptyDraftHistory, redo, stage, undo, type DraftHistory, type Intent } from '../core/intents.ts';
+import { describeIntent, emptyDraftHistory, idOf, redo, stage, undo, type DraftHistory, type Intent } from '../core/intents.ts';
 import type { Source } from '../core/ports.ts';
 import { buildReport, type Problem } from '../core/problems.ts';
 import type { DraftView } from '../core/view.ts';
@@ -148,7 +148,7 @@ export class Draft {
     return {
       items: intents.map((i) => ({
         id: i.path,
-        label: i.expect.literalId,
+        label: idOf(i),
         summary: describeIntent(i),
         ...(suspects.includes(i) ? { suspect: true as const } : {}),
         ...(suspects.length === 1 && suspects[0] === i ? { error: this.error! } : {}),

@@ -1,4 +1,5 @@
 import { withId } from './construct-id.ts';
+import type { Snippet } from './overlay.ts';
 import type { PropFacts, PropsFacts } from './facts.ts';
 
 export const DURATION_UNITS = ['millis', 'seconds', 'minutes', 'hours', 'days'] as const;
@@ -38,7 +39,41 @@ export interface RenameIdIntent {
   newId: string;
 }
 
-export type Intent = SetPropIntent | RenameIdIntent;
+/** A prop of a new construct: a piece of code from the Overlay's defaults, or a value the user gave in the form. */
+export type AddedProp = { name: string; snippet: Snippet } | { name: string; value: PropValue };
+
+/** Adds a construct of the Catalog to a Stack, as the statement the developer would have written. */
+export interface AddNodeIntent {
+  type: 'addNode';
+  /** The construct path of the Stack it is added to. */
+  path: string;
+  /** The class as written and the literal ID of that Stack at the time of the edit. */
+  expect: { className: string; literalId: string };
+  /** The jsii FQN of the construct to add, e.g. `aws-cdk-lib.aws_s3.Bucket`. */
+  fqn: string;
+  /** The Construct ID it gets. */
+  id: string;
+  /** The props the construct needs to be valid. */
+  props: AddedProp[];
+}
+
+/** Copies the `new` statement of an editable Node, with a fresh Construct ID. */
+export interface DuplicateIntent {
+  type: 'duplicate';
+  /** The construct path of the Node that is copied. */
+  path: string;
+  expect: { className: string; literalId: string };
+  /** The Construct ID of the copy. */
+  newId: string;
+}
+
+export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent;
+
+/** The path a construct made by `intent` has, in the paths as they are once the intents before it have been made. Undefined for an intent that makes none. */
+export const createdPath = (intent: Intent): string | undefined => (intent.type === 'addNode' ? `${intent.path}/${intent.id}` : intent.type === 'duplicate' ? withId(intent.path, intent.newId) : undefined);
+
+/** The Construct ID of the construct an intent is about: the one it makes, or the one it edits. */
+export const idOf = (intent: Intent): string => (intent.type === 'addNode' ? intent.id : intent.type === 'duplicate' ? intent.newId : intent.expect.literalId);
 
 /** Where a rename moves a construct: its path before and after, and so everything beneath it. */
 export interface Move {
@@ -122,7 +157,18 @@ export function valueText(value: PropValue): string {
 }
 
 /** An intent as the Draft list words it, e.g. `versioned → true`. */
-export const describeIntent = (intent: Intent): string => (intent.type === 'renameId' ? `Construct ID → ${JSON.stringify(intent.newId)}` : `${intent.prop.join('.')} → ${valueText(intent.value)}`);
+export function describeIntent(intent: Intent): string {
+  switch (intent.type) {
+    case 'renameId':
+      return `Construct ID → ${JSON.stringify(intent.newId)}`;
+    case 'addNode':
+      return `Add ${intent.fqn.split('.').at(-1)} ${JSON.stringify(intent.id)}`;
+    case 'duplicate':
+      return `Duplicate as ${JSON.stringify(intent.newId)}`;
+    case 'setProp':
+      return `${intent.prop.join('.')} → ${valueText(intent.value)}`;
+  }
+}
 
 // --- Panel overlay ---------------------------------------------------------------------------------------
 

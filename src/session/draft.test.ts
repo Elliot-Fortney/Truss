@@ -38,6 +38,8 @@ const catalog = buildCatalog([
         struct('aws-cdk-lib.aws_dynamodb.Attribute', [prop('name', { primitive: 'string' }, false), prop('type', { fqn: 'aws-cdk-lib.aws_dynamodb.AttributeType' }, false)]),
         { kind: 'enum', fqn: 'aws-cdk-lib.aws_dynamodb.AttributeType', name: 'AttributeType', members: [{ name: 'STRING' }, { name: 'NUMBER' }] },
         { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }, { name: 'RETAIN' }] },
+        cls('aws-cdk-lib.aws_sns.Topic', 'aws-cdk-lib.aws_sns.TopicProps'),
+        struct('aws-cdk-lib.aws_sns.TopicProps', [prop('displayName', { primitive: 'string' }, false), prop('fifo', { primitive: 'boolean' })]),
         { kind: 'class', fqn: 'aws-cdk-lib.Duration', name: 'Duration' },
       ].map((t) => [t.fqn, t]),
     ),
@@ -776,5 +778,96 @@ describe('renaming a Construct ID', () => {
       expect(refusal(await send(r, 'save'))).toMatch(/was not renamed/);
       expect(r.files.writes).toEqual([]);
     });
+  });
+});
+
+describe('adding a Node, and duplicating one', () => {
+  const add = (r: Rig, scope: string, fqn: string, props?: Record<string, PropValue>): Promise<Reply> => r.session.handle({ type: 'addNode', requestId: `r${++n}`, scope, fqn, ...(props ? { props } : {}) });
+  const duplicate = (r: Rig, id: string): Promise<Reply> => r.session.handle({ type: 'duplicate', requestId: `r${++n}`, id });
+  const BUCKET = 'aws-cdk-lib.aws_s3.Bucket';
+
+  /** The fixture's assembly with one more child under ShopStack: `path` made like `like`, or a bare `fqn`. */
+  const withChild = (child: { id: string; fqn: string; like?: string }): SynthResult => {
+    const assembly = readFixtureAssembly('straight-line');
+    const stack = assembly.tree.children.find((c) => c.path === 'ShopStack')!;
+    const like = child.like ? stack.children.find((c) => c.path === child.like)! : undefined;
+    const copy = like ? JSON.parse(JSON.stringify(like).replaceAll(like.path, `ShopStack/${child.id}`)) : { id: child.id, path: `ShopStack/${child.id}`, fqn: child.fqn, children: [] };
+    stack.children.push({ ...copy, id: child.id, path: `ShopStack/${child.id}` });
+    return { ok: true, assembly };
+  };
+  const synthWith = (child: Parameters<typeof withChild>[0], marker: string) => {
+    const synth = new FakeSynth();
+    synth.result = (overlay) => (overlay?.get(SHOP)?.includes(marker) ? withChild(child) : good());
+    return synth;
+  };
+
+  it('stages the statement a developer would write, shows it at once, and writes it on Save', async () => {
+    const r = await rig({ synth: synthWith({ id: 'Bucket', fqn: BUCKET }, "new s3.Bucket(this, 'Bucket')") });
+    expect(await add(r, 'ShopStack', BUCKET)).toMatchObject({ type: 'ack' });
+    expect(r.session.view().draft?.items).toEqual([{ id: 'ShopStack', label: 'Bucket', summary: 'Add Bucket "Bucket"' }]);
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain("+    const bucket = new s3.Bucket(this, 'Bucket');");
+    await settled(r);
+    expect(r.session.view().draft?.problems).toEqual([]);
+    expect(r.files.writes).toEqual([]);
+
+    expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+    expect(r.files.texts.get(SHOP)).toContain("    new dynamodb.Table(this, 'Catalog', {");
+    expect(r.files.texts.get(SHOP)).toContain("const bucket = new s3.Bucket(this, 'Bucket');");
+  });
+
+  it('refuses to save an add that synth does not show as one new construct of that class', async () => {
+    const r = await rig();
+    await add(r, 'ShopStack', BUCKET);
+    await settled(r);
+    expect(refusal(await send(r, 'save'))).toMatch(/ShopStack\/Bucket was not added/);
+    expect(r.files.writes).toEqual([]);
+  });
+
+  it('gives a second construct of the same kind an ID of its own', async () => {
+    const r = await rig();
+    await add(r, 'ShopStack', 'aws-cdk-lib.aws_sqs.Queue');
+    expect(r.session.view().draft?.items[0]?.label).toBe('Queue');
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain("new sqs.Queue(this, 'Queue')");
+  });
+
+  it('asks for the props the construct needs and has no default for, and stages nothing until they come', async () => {
+    const r = await rig();
+    const asked = await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic');
+    expect(asked).toMatchObject({ type: 'form', fqn: 'aws-cdk-lib.aws_sns.Topic', props: [{ name: 'displayName', required: true }] });
+    expect(r.session.draftSize()).toBe(0);
+    expect(await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic', { displayName: { kind: 'string', value: 'Alerts' } })).toMatchObject({ type: 'ack' });
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain("const topic = new sns.Topic(this, 'Topic', { displayName: 'Alerts' });");
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain("import * as sns from 'aws-cdk-lib/aws-sns';");
+  });
+
+  it('refuses a value of the wrong kind for the form, a construct that needs what Truss cannot write, and a scope that is not a Stack', async () => {
+    const r = await rig();
+    expect(await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic', { displayName: { kind: 'boolean', value: true } })).toMatchObject({ type: 'form' });
+    expect(refusal(await add(r, 'ShopStack', 'aws-cdk-lib.aws_dynamodb.Table'))).toMatch(/partitionKey/);
+    expect(refusal(await add(r, 'ShopStack/Uploads', BUCKET))).toMatch(/No Stack/);
+    expect(refusal(await add(r, 'ShopStack', 'aws-cdk-lib.aws_nothing.Thing'))).toMatch(/not in the Catalog/);
+    expect(r.session.draftSize()).toBe(0);
+  });
+
+  it('copies a Node with a fresh ID, and saves it', async () => {
+    const r = await rig({ synth: synthWith({ id: 'Uploads2', fqn: BUCKET, like: UPLOADS }, "'Uploads2'") });
+    expect(await duplicate(r, UPLOADS)).toMatchObject({ type: 'ack' });
+    expect(r.session.view().draft?.items).toEqual([{ id: UPLOADS, label: 'Uploads2', summary: 'Duplicate as "Uploads2"' }]);
+    await settled(r);
+    expect(r.session.view().draft?.problems).toEqual([]);
+    expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+    expect(r.files.texts.get(SHOP)).toContain("new s3.Bucket(this, 'Uploads2', {\n      versioned: true,\n    });");
+  });
+
+  it('refuses to duplicate what is not there', async () => {
+    const r = await rig();
+    expect(refusal(await duplicate(r, 'ShopStack/Nope'))).toMatch(/No Node/);
+  });
+
+  it('undoes an add like any other edit', async () => {
+    const r = await rig();
+    await add(r, 'ShopStack', BUCKET);
+    expect(await send(r, 'undo')).toMatchObject({ type: 'ack' });
+    expect(r.session.draftSize()).toBe(0);
   });
 });

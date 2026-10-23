@@ -6,10 +6,13 @@ import type { PropValue } from '../core/intents.ts';
 import { badgesFor, isBadged, type Badge, type Problem } from '../core/problems.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
+import type { CatalogProp, SearchHit } from '../core/catalog.ts';
+import { addScopeOf, stackPathOf } from './add.ts';
+import { AddForm } from './add-form.tsx';
 import { DraftBar } from './draft-bar.tsx';
 import { layoutView } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
-import { Palette } from './palette.tsx';
+import { CONSTRUCT_DRAG, Palette } from './palette.tsx';
 import { ProblemsPanel } from './problems-panel.tsx';
 import { jumpTarget } from './problems-view.ts';
 import { PropertyPanel, type PanelState } from './property-panel.tsx';
@@ -33,6 +36,8 @@ interface TrussNodeData extends Record<string, unknown> {
   lock?: string;
   /** The Draft changes this Node's code. */
   changed?: boolean;
+  /** The Draft adds this Node. */
+  added?: boolean;
   /** Problems on this Node, or beneath it where the Layer is closed. */
   badge?: Badge;
   external?: boolean;
@@ -149,6 +154,11 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
           changed
         </span>
       ) : null}
+      {data.added ? (
+        <span className="changed-badge added" title="The Draft adds this">
+          added
+        </span>
+      ) : null}
       <ProblemBadge badge={data.badge} />
     </div>
   );
@@ -226,6 +236,7 @@ function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, 
         ...(n.note ? { note: n.note } : {}),
         ...(n.lock ? { lock: n.lock } : {}),
         ...(n.changed ? { changed: true } : {}),
+        ...(n.added ? { added: true } : {}),
         ...(badges.has(n.id) ? { badge: badges.get(n.id)! } : {}),
         ...(n.external ? { external: true } : {}),
         ...(n.hoisted ? { hoisted: true } : {}),
@@ -299,7 +310,7 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onDuplicate, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onDuplicate(): void; onOpen(at: SourceLocation): void }) {
   const causers = (node.causedBy ?? []).map((id) => nodes.find((n) => n.id === id)?.label ?? id);
   return (
     <aside className="note-panel">
@@ -309,6 +320,11 @@ function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onOpen
       {node.source ? (
         <button type="button" className="open-in-editor" onClick={() => onOpen(node.source!)}>
           Open in editor
+        </button>
+      ) : null}
+      {props.status === 'ready' && props.panel.kind === 'node' && props.panel.idEdit && !props.panel.readOnly ? (
+        <button type="button" className="duplicate" onClick={onDuplicate}>
+          Duplicate
         </button>
       ) : null}
       {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
@@ -392,7 +408,7 @@ function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceL
 }
 
 export function App() {
-  const { view, connection, send, search, panel, openInEditor } = useView();
+  const { view, connection, send, search, panel, addNode, openInEditor } = useView();
   // The picked Stage is only a preference of this browser; with none picked, or a gone one, the first Stage shows.
   const [pickedStage, setPickedStage] = useState(rememberedStage);
   const stageId = view ? chooseStage(view.stages, pickedStage) : undefined;
@@ -498,6 +514,22 @@ export function App() {
     },
     [request],
   );
+  /** The construct being added that needs props from the user first, and the Stack it goes in. */
+  const [asking, setAsking] = useState<{ fqn: string; name: string; scope: string; props: readonly CatalogProp[] }>();
+  const add = useCallback(
+    async (scope: string, fqn: string, name: string, props?: Record<string, PropValue>) => {
+      const outcome = await addNode(scope, fqn, props);
+      if ('form' in outcome) {
+        setAsking({ fqn, name, scope, props: outcome.form });
+        setNotice(undefined);
+        return;
+      }
+      setAsking(undefined);
+      setNotice(outcome.ok ? undefined : outcome.reason);
+    },
+    [addNode],
+  );
+  const onAdd = useCallback((scope: string | undefined, hit: SearchHit) => (scope ? add(scope, hit.fqn, hit.displayName ?? hit.name) : undefined), [add]);
   const undo = useCallback(() => void request({ type: 'undo' }), [request]);
   const redo = useCallback(() => void request({ type: 'redo' }), [request]);
   const save = useCallback(async () => {
@@ -536,6 +568,7 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
+  const addScope = shown ? addScopeOf(shown.stacks, openStack?.id, selected?.stackId) : undefined;
   const panelState = usePanel(selected?.id ?? openStack?.id, view?.version, panel);
   const selectedLayer = useMemo(() => {
     for (const node of shown?.nodes ?? []) {
@@ -574,7 +607,20 @@ export function App() {
         />
       ) : null}
       {/* With an error here the Design is the last good one: dimmed, and not editable until synth works again. */}
-      <div className={error ? 'canvas dimmed' : 'canvas'}>
+      <div
+        className={error ? 'canvas dimmed' : 'canvas'}
+        onDragOver={(e) => e.dataTransfer.types.includes(CONSTRUCT_DRAG) && e.preventDefault()}
+        onDrop={(e) => {
+          const fqn = e.dataTransfer.getData(CONSTRUCT_DRAG);
+          if (!fqn) return;
+          e.preventDefault();
+          // Boxes are drawn beside each other, not inside each other, so the first one under the pointer is the innermost.
+          const box = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.classList.contains('react-flow__node-stack'));
+          const scope = stackPathOf(box?.getAttribute('data-id') ?? undefined);
+          if (scope) void add(scope, fqn, fqn.split('.').at(-1)!);
+          else setNotice('Drop a construct on a Stack to add it there.');
+        }}
+      >
         {view.synthing ? <div className="synthing">synthing…</div> : null}
         <div className="banners">
           {connection === 'closed' ? <div className="banner">Disconnected from Truss.</div> : null}
@@ -622,7 +668,7 @@ export function App() {
           <Background />
           <Controls showInteractive={false} />
         </ReactFlow>
-        <Palette search={search} />
+        <Palette search={search} scope={addScope} onAdd={(hit) => void onAdd(addScope, hit)} />
         {problemsOpen ? (
           <ProblemsPanel problems={view.problems} output={error?.output} highlighted={linkedProblem} onJump={jumpTo} locate={locate} onOpen={openInEditor} onClose={() => setProblemsOpen(false)} />
         ) : (
@@ -631,7 +677,8 @@ export function App() {
           </button>
         )}
         {draft ? <DraftBar draft={draft} busy={view.synthing || saving} blockers={view.problems.filter((p) => p.blocking)} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} onShowProblem={showProblem} /> : null}
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onDuplicate={() => void request({ type: 'duplicate', id: selected.id })} onOpen={openInEditor} /> : null}
+        {asking ? <AddForm key={asking.fqn} name={asking.name} props={asking.props} onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)} onCancel={() => setAsking(undefined)} /> : null}
         {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onRename={rename(openStack.id, stackNodeId)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
       </div>

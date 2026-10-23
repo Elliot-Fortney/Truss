@@ -1,14 +1,22 @@
 import type { Assembly, TreeNode } from './assembly.ts';
 import { offsetOf, type TextChange } from './diff.ts';
 import type { Facts } from './facts.ts';
+import { withId } from './construct-id.ts';
 import { afterMoves, beforeMoves, movesOf, onBase, type Intent } from './intents.ts';
 import type { Diagnostic, FileSet } from './ports.ts';
 
 const spanKey = (f: { span: { file: string; start: { line: number; col: number } } }) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
+/** Every path on the span of the construct at `path`: more than one for a Stack class created several times. */
+const targetPathsOfSpan = (facts: Facts, path: string): string[] => {
+  const f = facts.nodes[path];
+  return f ? Object.entries(facts.nodes).flatMap(([p, other]) => (spanKey(other) === spanKey(f) ? [p] : [])) : [];
+};
+
 /** The paths in the Base of every construct made by the `new` call an intent names, which is more than one for a Stack class created several times (ADR 0008). */
 export function targetPaths(facts: Facts, intents: readonly Intent[]): Set<string> {
-  const spans = new Set(onBase(intents).flatMap((i) => (facts.nodes[i.path] ? [spanKey(facts.nodes[i.path]!)] : [])));
+  // An added or copied construct changes nothing that is already there, so the Stack or Node it is made from isn't a target.
+  const spans = new Set(onBase(intents).flatMap((i) => (i.type !== 'addNode' && i.type !== 'duplicate' && facts.nodes[i.path] ? [spanKey(facts.nodes[i.path]!)] : [])));
   return new Set(Object.entries(facts.nodes).flatMap(([path, f]) => (spans.has(spanKey(f)) ? [path] : [])));
 }
 
@@ -44,14 +52,14 @@ export interface EditCheck {
 export function judgeEdit({ files, changes, facts, intents, before, after }: EditCheck): string[] {
   const failures: string[] = [];
   const onDisk = onBase(intents);
-  const targets = [...new Set(onDisk.flatMap((i) => (facts.nodes[i.path] ? [facts.nodes[i.path]!] : [])))];
+  const targets = [...new Set(onDisk.flatMap((i) => (i.type !== 'addNode' && i.type !== 'duplicate' && facts.nodes[i.path] ? [facts.nodes[i.path]!] : [])))];
 
   // Confined diff: every change is inside a `new` call an intent names, or adds an import.
   for (const [file, list] of Object.entries(changes)) {
     const text = files.get(file) ?? '';
     const inside = targets.filter((t) => t.span.file === file).map((t) => [offsetOf(text, t.span.start.line, t.span.start.col), offsetOf(text, t.span.end.line, t.span.end.col)] as const);
     for (const c of list) {
-      if (c.purpose === 'import' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
+      if (c.purpose === 'import' || c.purpose === 'add' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
       failures.push(`The edit changes ${file} outside the code it was meant to change`);
       break;
     }
@@ -78,7 +86,19 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     const lost = [...new Set([...was.keys(), ...now.keys()])].filter((path) => path.startsWith(`${root}/`) && was.get(path) !== now.get(path));
     for (const path of lost) if (!lost.some((other) => path.startsWith(`${other}/`))) failures.push(`${path} did not move with ${root}`);
   }
-  const changed = [...new Set([...was.keys(), ...now.keys()])].filter((path) => !paths.has(path) && was.get(path) !== now.get(path) && !below(path));
+  // An added or copied construct is one new path of the expected class, and what it creates beneath itself.
+  const made = new Map<string, string | undefined>();
+  for (const i of onDisk) {
+    if (i.type === 'addNode') for (const scope of targetPathsOfSpan(facts, i.path)) made.set(`${scope}/${i.id}`, i.fqn);
+    if (i.type === 'duplicate') for (const source of targetPathsOfSpan(facts, i.path)) made.set(withId(source, i.newId), was.get(source));
+  }
+  for (const [path, fqn] of made) {
+    if (was.has(path)) failures.push(`${path} was already there, so the edit did not add it`);
+    else if (!now.has(path)) failures.push(`${path} was not added`);
+    else if (fqn !== undefined && now.get(path) !== fqn) failures.push(`${path} is a ${now.get(path)}, not the ${fqn} that was meant`);
+  }
+  const within = (path: string) => [...made.keys()].some((m) => path === m || path.startsWith(`${m}/`));
+  const changed = [...new Set([...was.keys(), ...now.keys()])].filter((path) => !paths.has(path) && was.get(path) !== now.get(path) && !below(path) && !within(path));
   // A construct that came or went takes everything beneath it along, which is one thing to say, not many.
   for (const path of changed) {
     if (!changed.some((other) => path.startsWith(`${other}/`))) failures.push(`The edit changes ${path}, which it should not touch`);

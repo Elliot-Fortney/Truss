@@ -73,6 +73,8 @@ export interface NodeView {
   note?: string;
   /** The Draft changes this Node's code, so the Node shows as changed. */
   changed?: true;
+  /** The Draft adds this Node: its code is not on disk yet. */
+  added?: true;
 }
 
 /**
@@ -229,7 +231,7 @@ function causes(nodes: readonly NodeView[], refs: readonly ResourceRef[]): Map<s
 }
 
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
-export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, changed: ReadonlySet<string> = new Set()): ViewBody {
+export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, changed: ReadonlySet<string> = new Set(), added: ReadonlySet<string> = new Set()): ViewBody {
   const envs = new Map(assembly.stacks.map((s) => [s.path, s.env]));
   const stages: StageView[] = [];
   const stacks: StackBoxView[] = [];
@@ -270,6 +272,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, ch
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
         ...(editability.editable ? {} : { lock: editability.reason }),
         ...(changed.has(tree.path) ? { changed: true as const } : {}),
+        ...(added.has(tree.path) ? { added: true as const } : {}),
         ...(saved?.position ? { position: saved.position } : {}),
         ...(saved?.note ? { note: saved.note } : {}),
         ...(children.length > 0 ? { children } : {}),

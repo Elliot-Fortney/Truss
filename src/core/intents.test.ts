@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { afterMoves, beforeMoves, describeIntent, emptyDraftHistory, movesOf, onBase, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
+import { afterMoves, beforeMoves, createdPath, describeIntent, emptyDraftHistory, movesOf, onBase, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
 
 const set = (prop: string[], value: PropValue, path = 'A/B'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'B' }, prop, value });
 const bool = (value: boolean): PropValue => ({ kind: 'boolean', value });
@@ -157,5 +157,32 @@ describe('renameId', () => {
       const intents = [set(['a'], bool(true))];
       expect(onBase(intents)[0]).toBe(intents[0]);
     });
+  });
+});
+
+describe('adding and copying', () => {
+  const add: Intent = { type: 'addNode', path: 'S', expect: { className: 'Stack', literalId: 'S' }, fqn: 'aws-cdk-lib.aws_s3.Bucket', id: 'Data', props: [] };
+  const copy: Intent = { type: 'duplicate', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'A2' };
+
+  it('words them for the Draft list', () => {
+    expect(describeIntent(add)).toBe('Add Bucket "Data"');
+    expect(describeIntent(copy)).toBe('Duplicate as "A2"');
+  });
+
+  it('names the path of the construct they make', () => {
+    expect(createdPath(add)).toBe('S/Data');
+    expect(createdPath(copy)).toBe('S/A2');
+    expect(createdPath({ type: 'renameId', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'B' })).toBeUndefined();
+  });
+
+  it('keeps every one as its own step of undo', () => {
+    const twice = stage(stage(emptyDraftHistory, add), add);
+    expect(twice.intents).toHaveLength(2);
+    expect(undo(twice).intents).toHaveLength(1);
+  });
+
+  it('names the Stack by its old path once it has been renamed', () => {
+    const rename: Intent = { type: 'renameId', path: 'S', expect: { className: 'Stack', literalId: 'S' }, newId: 'T' };
+    expect(onBase([rename, { ...add, path: 'T', expect: { className: 'Stack', literalId: 'T' } }])[1]).toMatchObject({ path: 'S', expect: { literalId: 'S' } });
   });
 });
