@@ -1,7 +1,7 @@
 import type { Assembly, SynthError, SynthResult } from '../core/assembly.ts';
 import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { Facts } from '../core/facts.ts';
-import type { FileSet, Files, Source, Synth } from '../core/ports.ts';
+import type { CatalogLoad, FileSet, Files, Source, Synth } from '../core/ports.ts';
 import type { ClientMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { locateError } from '../core/synth-error.ts';
@@ -14,6 +14,12 @@ export interface SessionDeps {
   source: Source;
   /** What the app's installed libraries offer, read at startup (ADR 0009). Absent, nothing can be searched. */
   catalog?: Catalog;
+  /**
+   * Reads the Catalog again from what the app has installed. Asked before every synth, so that when the
+   * resolved `aws-cdk-lib` changes the Catalog is regenerated (or loaded from cache) before the re-synth
+   * (ADR 0009). An answer that refuses the app stops that synth and is shown as the reason.
+   */
+  reloadCatalog?: () => Promise<CatalogLoad>;
   /** The Sidecar's format history; only tests give their own. */
   migrations?: readonly Migration[];
 }
@@ -43,9 +49,11 @@ export class Session {
   private snapshot: { facts: Facts; assembly: Assembly } | undefined;
 
   private readonly migrations: readonly Migration[];
+  private catalog: Catalog | undefined;
 
   constructor(private readonly deps: SessionDeps) {
     this.migrations = deps.migrations ?? MIGRATIONS;
+    this.catalog = deps.catalog;
   }
 
   view(): View {
@@ -54,7 +62,7 @@ export class Session {
 
   /** The palette's search: constructs of the Catalog by name, service or CloudFormation type, best first. */
   searchCatalog(query: string, limit?: number): SearchHit[] {
-    return this.deps.catalog ? searchCatalog(this.deps.catalog, query, limit) : [];
+    return this.catalog ? searchCatalog(this.catalog, query, limit) : [];
   }
 
   /** Calls `listener` with every new View. Returns an unsubscribe function. */
@@ -111,6 +119,7 @@ export class Session {
   private async derive(): Promise<void> {
     this.push({ synthing: true });
     try {
+      if (!(await this.refreshCatalog()) || this.stopped) return;
       const [result, files] = await Promise.all([this.deps.synth.synth(this.deps.appDir), this.deps.files.read()]);
       if (this.stopped || this.isStale()) return;
       await this.serialised(() => this.show(result, files));
@@ -118,6 +127,18 @@ export class Session {
       if (this.stopped || this.isStale()) return;
       this.fail({ message: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  /** Takes the Catalog the app's installed libraries give now. False, with the reason shown, when Truss can't open the app any more. */
+  private async refreshCatalog(): Promise<boolean> {
+    if (!this.deps.reloadCatalog) return true;
+    const load = await this.deps.reloadCatalog();
+    if (load.ok) {
+      this.catalog = load.catalog;
+      return true;
+    }
+    if (!this.stopped) this.fail({ message: load.message });
+    return false;
   }
 
   /** Shows a synth result with the Sidecar as the file holds it now, not as it was when the synth began. */

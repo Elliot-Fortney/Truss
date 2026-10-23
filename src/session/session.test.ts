@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SynthResult } from '../core/assembly.ts';
-import type { Files, Synth } from '../core/ports.ts';
+import type { CatalogLoad, Files, Synth } from '../core/ports.ts';
 import type { Migration } from '../core/sidecar.ts';
 import type { View } from '../core/view.ts';
 import { buildCatalog, digestAssembly, type Catalog } from '../core/catalog.ts';
@@ -353,6 +353,84 @@ describe('Session Catalog', () => {
 
   it('finds nothing when it was handed no Catalog', () => {
     expect(session().searchCatalog('bucket')).toEqual([]);
+  });
+});
+
+describe('Session Catalog refresh', () => {
+  const catalogOf = (...names: string[]) =>
+    buildCatalog([
+      digestAssembly({
+        name: 'lib',
+        version: '1.0.0',
+        types: Object.fromEntries(names.map((n) => [`lib.s3.${n}`, { kind: 'class', fqn: `lib.s3.${n}`, name: n, namespace: 's3', base: 'constructs.Construct' }])),
+      }),
+    ]);
+
+  function setup(reload: () => Promise<CatalogLoad>) {
+    const events: string[] = [];
+    const files = new FakeFiles(readFixtureFiles('straight-line'));
+    const synth: Synth = {
+      synth: async () => {
+        events.push('synth');
+        return good();
+      },
+    };
+    const session = new Session({
+      appDir: '/app',
+      source: new TsSource(),
+      files,
+      synth,
+      catalog: catalogOf('Bucket'),
+      reloadCatalog: async () => {
+        events.push('catalog');
+        return reload();
+      },
+    });
+    return { session, files, events };
+  }
+
+  it('reads the Catalog again before each synth, so a changed aws-cdk-lib is searched from then on', async () => {
+    let next: CatalogLoad = { ok: true, catalog: catalogOf('Bucket') };
+    const { session, files, events } = setup(async () => next);
+    await session.start();
+    expect(events).toEqual(['catalog', 'synth']);
+    expect(session.searchCatalog('').map((h) => h.name)).toEqual(['Bucket']);
+
+    next = { ok: true, catalog: catalogOf('Bucket', 'Table') };
+    files.change();
+    await flush();
+    await flush();
+    expect(events).toEqual(['catalog', 'synth', 'catalog', 'synth']);
+    expect(session.searchCatalog('').map((h) => h.name)).toEqual(['Bucket', 'Table']);
+  });
+
+  it('shows why when the app has moved to a version Truss cannot open, keeps the Design and the old Catalog, and does not synth', async () => {
+    let next: CatalogLoad = { ok: true, catalog: catalogOf('Bucket') };
+    const { session, files, events } = setup(async () => next);
+    await session.start();
+
+    next = { ok: false, message: 'aws-cdk-lib 2.100.0 is older than the minimum' };
+    files.change();
+    await flush();
+    await flush();
+    expect(events).toEqual(['catalog', 'synth', 'catalog']);
+    expect(session.view()).toMatchObject({ synthing: false, hasDesign: true, error: { message: 'aws-cdk-lib 2.100.0 is older than the minimum' } });
+    expect(session.searchCatalog('').map((h) => h.name)).toEqual(['Bucket']);
+
+    next = { ok: true, catalog: catalogOf('Bucket') };
+    files.change();
+    await flush();
+    await flush();
+    expect(events.at(-1)).toBe('synth');
+    expect(session.view().error).toBeUndefined();
+  });
+
+  it('shows a failure to read the Catalog as the reason, rather than throwing', async () => {
+    const { session } = setup(async () => {
+      throw new Error('disk gone');
+    });
+    await session.start();
+    expect(session.view()).toMatchObject({ synthing: false, error: { message: 'disk gone' } });
   });
 });
 

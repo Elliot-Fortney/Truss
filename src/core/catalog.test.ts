@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCatalog, digestAssembly, entryFor, searchCatalog, type Catalog } from './catalog.ts';
+import type { Overlay } from './overlay.ts';
 
 const doc = (summary: string, extra: Record<string, unknown> = {}) => ({ summary, stability: 'stable', ...extra });
 const prop = (name: string, type: unknown, extra: Record<string, unknown> = {}) => ({ name, type, docs: doc(`The ${name}.`), ...extra });
@@ -322,5 +323,167 @@ describe('searchCatalog', () => {
 
   it('finds nothing for a word nothing contains', () => {
     expect(names('zzzz')).toEqual([]);
+  });
+});
+
+describe('Overlays', () => {
+  const bucket: Overlay = { fqn: 'aws-cdk-lib.aws_s3.Bucket', displayName: 'S3 Bucket', featuredProps: ['versioned', 'bucketName'] };
+  const withOverlays = (...overlays: Overlay[]) => buildCatalog([digestAssembly(cdkLib())], overlays);
+
+  it('gives a construct its friendly name and marks it featured in the palette', () => {
+    const hit = searchCatalog(withOverlays(bucket), 'bucket')[0]!;
+    expect(hit).toMatchObject({ fqn: 'aws-cdk-lib.aws_s3.Bucket', displayName: 'S3 Bucket', featured: true });
+    expect(searchCatalog(withOverlays(), 'bucket')[0]).not.toHaveProperty('displayName');
+    expect(searchCatalog(withOverlays(), 'bucket')[0]).not.toHaveProperty('featured');
+  });
+
+  it('finds a featured construct by its friendly name', () => {
+    const c = withOverlays({ ...bucket, displayName: 'Storage Bucket' });
+    expect(searchCatalog(c, 'storage').map((h) => h.fqn)).toEqual(['aws-cdk-lib.aws_s3.Bucket']);
+  });
+
+  it('lists featured constructs first, ahead of those of equal rank', () => {
+    const c = withOverlays({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Lambda Function' });
+    expect(searchCatalog(c, '')[0]).toMatchObject({ fqn: 'aws-cdk-lib.aws_lambda.Function', featured: true });
+  });
+
+  it('replaces the tier the generator decided on', () => {
+    const c = withOverlays({ ...bucket, tier: 'L3' });
+    expect(entryFor(c, 'aws-cdk-lib.aws_s3.Bucket')?.tier).toBe('L3');
+  });
+
+  describe('items that do not resolve', () => {
+    /** A small library with the members the Overlay items below refer to. */
+    function overlayLib() {
+      const raw = cdkLib() as { types: Record<string, unknown> };
+      const t = raw.types;
+      const method = (name: string) => ({ name, parameters: [] });
+      t['aws-cdk-lib.aws_s3.Bucket'] = { ...(t['aws-cdk-lib.aws_s3.Bucket'] as object), base: 'aws-cdk-lib.aws_s3.BucketBase', methods: [method('addLifecycleRule')] };
+      t['aws-cdk-lib.aws_s3.BucketBase'] = cls('aws-cdk-lib.aws_s3.BucketBase', {
+        base: 'aws-cdk-lib.Resource',
+        abstract: true,
+        methods: [method('grantRead'), { name: 'protectedThing', protected: true }, { name: 'fromBucketName', static: true }],
+        properties: [
+          prop('grants', { fqn: 'aws-cdk-lib.aws_s3.BucketGrants' }, { immutable: true }),
+          prop('bucketArn', { primitive: 'string' }),
+          prop('root', { fqn: 'aws-cdk-lib.aws_s3.IFolder' }),
+        ],
+      });
+      t['aws-cdk-lib.aws_s3.IFolder'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_s3.IFolder', name: 'IFolder', interfaces: ['aws-cdk-lib.aws_s3.IBaseFolder'], methods: [method('addFolder')] };
+      t['aws-cdk-lib.aws_s3.IBaseFolder'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_s3.IBaseFolder', name: 'IBaseFolder', methods: [method('addFile')], properties: [prop('path', { primitive: 'string' })] };
+      t['aws-cdk-lib.aws_s3.BucketGrants'] = cls('aws-cdk-lib.aws_s3.BucketGrants', { methods: [method('read')] });
+      t['aws-cdk-lib.RemovalPolicy'] = { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }] };
+      t['aws-cdk-lib.aws_lambda.Function'] = {
+        ...(t['aws-cdk-lib.aws_lambda.Function'] as object),
+        methods: [method('addEnvironment'), method('addEventSource')],
+        properties: [prop('role', { fqn: 'aws-cdk-lib.aws_iam.IRole' })],
+      };
+      return raw;
+    }
+    const build = (...overlays: Overlay[]) => buildCatalog([digestAssembly(overlayLib())], overlays);
+    const bucketWith = (extra: Partial<Overlay>): Overlay => ({ fqn: 'aws-cdk-lib.aws_s3.Bucket', displayName: 'S3 Bucket', ...extra });
+
+    it('drops a whole Overlay whose construct is not in the Catalog, and says so', () => {
+      const c = build({ fqn: 'aws-cdk-lib.aws_s3.NoSuchThing', displayName: 'Nothing' });
+      expect(c.entries.some((e) => e.overlay)).toBe(false);
+      expect(c.dropped).toEqual([expect.stringContaining('aws-cdk-lib.aws_s3.NoSuchThing')]);
+    });
+
+    it('keeps featured props the construct has, in the Overlay order, and drops the ones it does not', () => {
+      const c = build(bucketWith({ featuredProps: ['versioned', 'gone', 'bucketName'] }));
+      expect(entryFor(c, 'aws-cdk-lib.aws_s3.Bucket')?.overlay?.featuredProps).toEqual(['versioned', 'bucketName']);
+      expect(c.dropped).toEqual([expect.stringMatching(/Bucket.*featured prop "gone"/)]);
+    });
+
+    it('keeps defaults and fixtures for props the construct has, and for the classes they name', () => {
+      const ok = { code: 'RemovalPolicy.DESTROY', uses: ['aws-cdk-lib.RemovalPolicy'] };
+      const c = build(
+        bucketWith({
+          defaults: { removalPolicy: ok, gone: { code: '1' }, versioned: { code: 'Nope.X', uses: ['aws-cdk-lib.Nope'] } },
+          fixtures: { bucketName: { code: "'b'" }, alsoGone: { code: '1' } },
+        }),
+      );
+      const overlay = entryFor(c, 'aws-cdk-lib.aws_s3.Bucket')!.overlay!;
+      expect(overlay.defaults).toEqual({ removalPolicy: ok });
+      expect(overlay.fixtures).toEqual({ bucketName: { code: "'b'" } });
+      expect(c.dropped).toHaveLength(3);
+      expect(c.dropped.join('\n')).toMatch(/default "gone"/);
+      expect(c.dropped.join('\n')).toMatch(/default "versioned".*aws-cdk-lib\.Nope/);
+      expect(c.dropped.join('\n')).toMatch(/fixture "alsoGone"/);
+    });
+
+    describe('Connection hints', () => {
+      const grantRead = {
+        kind: 'grant' as const,
+        label: 'is read by',
+        peers: ['aws-cdk-lib.aws_lambda.Function'],
+        flow: 'out' as const,
+        primary: { forms: [['grants', 'read'], ['grantRead']], args: ['{peer}'] },
+      };
+      const hintsOf = (c: Catalog) => entryFor(c, 'aws-cdk-lib.aws_s3.Bucket')!.overlay!.connections;
+
+      it('keeps a hint whose calls resolve, through the class and the classes it extends', () => {
+        const c = build(bucketWith({ connections: [grantRead] }));
+        expect(hintsOf(c)).toEqual([grantRead]);
+        expect(c.dropped).toEqual([]);
+      });
+
+      it('drops the spellings of a call that do not resolve, so the app is written in the form it has', () => {
+        const old = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [['grants', 'readAll'], ['grantRead']] } }] }));
+        expect(hintsOf(old)[0]!.primary.forms).toEqual([['grantRead']]);
+        expect(old.dropped).toEqual([expect.stringMatching(/form grants\.readAll/)]);
+      });
+
+      it('drops a hint none of whose primary spellings resolve', () => {
+        const c = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [['grantNothing']] } }] }));
+        expect(hintsOf(c)).toEqual([]);
+        expect(c.dropped.join('\n')).toMatch(/hint "is read by".*grantNothing/);
+      });
+
+      it('does not take a static or protected method for one the Node can be called with', () => {
+        for (const member of ['fromBucketName', 'protectedThing']) {
+          const c = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [[member]] } }] }));
+          expect(hintsOf(c), member).toEqual([]);
+        }
+      });
+
+      it('drops peers that are not in the libraries, and the hint when none are left', () => {
+        const some = build(bucketWith({ connections: [{ ...grantRead, peers: ['aws-cdk-lib.aws_lambda.Function', 'aws-cdk-lib.aws_nope.Thing'] }] }));
+        expect(hintsOf(some)[0]!.peers).toEqual(['aws-cdk-lib.aws_lambda.Function']);
+        const none = build(bucketWith({ connections: [{ ...grantRead, peers: ['aws-cdk-lib.aws_nope.Thing'] }] }));
+        expect(hintsOf(none)).toEqual([]);
+      });
+
+      it('follows a property typed as an interface, and finds methods on the interfaces it extends', () => {
+        for (const member of ['addFolder', 'addFile']) {
+          const hint = { ...grantRead, primary: { ...grantRead.primary, forms: [['root', member]] } };
+          expect(hintsOf(build(bucketWith({ connections: [hint] }))), member).toEqual([hint]);
+        }
+      });
+
+      it('drops a hint whose arguments name a class that is not there', () => {
+        const c = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, uses: ['aws-cdk-lib.aws_nope.Thing'] } }] }));
+        expect(hintsOf(c)).toEqual([]);
+      });
+
+      it('drops a secondary call that does not resolve on the peer, and keeps the hint', () => {
+        const env = { on: 'peer' as const, forms: [['addEnvironment']], args: ["'BUCKET'", '{self}.bucketName'] };
+        const lost = { on: 'peer' as const, forms: [['addNothing']], args: [] };
+        const c = build(bucketWith({ connections: [{ ...grantRead, secondary: [env, lost] }] }));
+        expect(hintsOf(c)[0]!.secondary).toEqual([env]);
+        expect(c.dropped).toEqual([expect.stringMatching(/addNothing/)]);
+      });
+    });
+
+    describe('accessors', () => {
+      const fn = (accessors: Overlay['accessors']): Overlay => ({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Function', accessors });
+
+      it('keeps an accessor whose path follows properties the construct has, and drops one that does not', () => {
+        const good = { as: 'grantee' as const, path: ['role'] };
+        const c = build(fn([good, { as: 'grantee', path: ['nope', 'role'] }, { as: 'connectable', path: ['role', 'deeper'] }]));
+        expect(entryFor(c, 'aws-cdk-lib.aws_lambda.Function')!.overlay!.accessors).toEqual([good]);
+        expect(c.dropped).toHaveLength(2);
+      });
+    });
   });
 });

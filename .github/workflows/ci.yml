@@ -26,6 +26,13 @@ jobs:
           for dir in test/fixtures/*/; do
             if [ -f "$dir/package.json" ]; then (cd "$dir" && npm ci); fi
           done
+      - name: Install the minimum supported aws-cdk-lib
+        # The Overlays are validated against it as well as against the baseline fixture (ADR 0009).
+        run: |
+          min=$(node --input-type=module -e "import { MIN_CDK_LIB_VERSION } from './src/core/support.ts'; console.log(MIN_CDK_LIB_VERSION)")
+          mkdir "$RUNNER_TEMP/min-app"
+          (cd "$RUNNER_TEMP/min-app" && npm init -y >/dev/null && npm install --no-audit --no-fund "aws-cdk-lib@$min" constructs)
+          echo "TRUSS_MIN_CDK_APP=$RUNNER_TEMP/min-app" >> "$GITHUB_ENV"
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
