@@ -185,6 +185,10 @@ export class Session {
   private async apply(message: ClientMessage): Promise<Reply> {
     const { requestId } = message;
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
+    // The Design on screen is the last good one, dimmed: editing it waits until the app synths again.
+    if (this.current.error) {
+      return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
+    }
     if (!this.current.nodes.some((n) => n.id === message.id)) {
       return { type: 'refused', requestId, reason: `No Node at ${message.id}` };
     }

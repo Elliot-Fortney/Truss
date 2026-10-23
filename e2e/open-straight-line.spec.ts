@@ -127,10 +127,13 @@ test('breaking the app from outside dims the last good Design under a banner, an
     await expect(banner.getByRole('button', { name: 'Open in editor' })).toBeVisible();
     await expect(page.locator('.truss-node')).toHaveCount(3);
     await expect(page.locator('.canvas')).toHaveClass(/dimmed/);
+    // Editing is paused: no Node can be dragged.
+    await expect(page.locator('.react-flow__node.draggable')).toHaveCount(0);
 
     writeFileSync(stackFile, original);
     await expect(banner).toHaveCount(0, { timeout: 60_000 });
     await expect(page.locator('.canvas')).not.toHaveClass(/dimmed/);
+    await expect(page.locator('.react-flow__node-truss.draggable')).toHaveCount(3);
   } finally {
     truss.child.kill('SIGINT');
     await truss.exited;
