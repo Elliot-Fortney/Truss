@@ -1,9 +1,9 @@
-import { applyNodeChanges, Background, Controls, ReactFlow, useStore, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
+import { applyNodeChanges, Background, Controls, Handle, Position, ReactFlow, useStore, type Edge, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
-import type { NodeView, View, ViewError } from '../core/view.ts';
-import { layoutView, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
+import type { LayerChildView, NodeView, View, ViewError } from '../core/view.ts';
+import { layoutView } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
 import { Palette } from './palette.tsx';
 import { chooseStage, rememberStage, rememberedStage, showStage } from './stage.ts';
@@ -22,6 +22,22 @@ interface TrussNodeData extends Record<string, unknown> {
   note?: string;
   lock?: string;
   external?: boolean;
+  hoisted?: boolean;
+  /** The Node has a Layer to open. */
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggle?(id: string): void;
+}
+interface LayerNodeData extends Record<string, unknown> {
+  label: string;
+  /** The CloudFormation type of an L1, else the construct class. */
+  subtitle: string;
+  /** Shown on hover: the construct path and what it is. */
+  tooltip: string;
+  icon: string;
+  expandable: boolean;
+  expanded: boolean;
+  onToggle(id: string): void;
 }
 
 function StackBox({ data }: NodeProps<Node<StackData>>) {
@@ -47,19 +63,45 @@ function LockIcon() {
 /** Icon sizes in px: larger when the Node is only its icon. */
 const ICON_SIZE = 36;
 const ICON_ONLY_SIZE = 44;
+const LAYER_ICON_SIZE = 24;
 
-function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
+function ExpandToggle({ id, label, expanded, onToggle }: { id: string; label: string; expanded: boolean; onToggle(id: string): void }) {
+  return (
+    <button
+      type="button"
+      // React Flow would otherwise start a drag or a pan from the click.
+      className="expand-toggle nodrag nopan"
+      aria-expanded={expanded}
+      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label}`}
+      title={expanded ? 'Collapse' : 'Show what this creates'}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(id);
+      }}
+    >
+      {expanded ? '▾' : '▸'}
+    </button>
+  );
+}
+
+function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
   // Zoomed out, a name is too small to read, so the Node is its icon; the full name stays in the tooltip.
   const showName = useStore((s) => namesShownAt(s.transform[2]));
-  const className = ['truss-node', data.external ? 'external' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
+  const className = ['truss-node', data.external ? 'external' : '', data.hoisted ? 'hoisted' : '', data.expanded ? 'expanded' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
   const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
   return (
     <div className={className} title={tooltip}>
-      <NodeIcon icon={data.icon} size={showName ? ICON_SIZE : ICON_ONLY_SIZE} />
-      {/* Always in the page, so screen readers have the name; zoomed out it is clipped away rather than removed. */}
-      <div className="node-text">
-        <div className="node-label">{data.label}</div>
-        <div className="node-subtitle">{data.subtitle}</div>
+      {/* Only a hoisted Node is ever the end of a line, and only to the Node that caused it. */}
+      <Handle type="target" position={Position.Left} isConnectable={false} className="truss-handle" />
+      <Handle type="source" position={Position.Right} isConnectable={false} className="truss-handle" />
+      <div className="node-head">
+        <NodeIcon icon={data.icon} size={showName ? ICON_SIZE : ICON_ONLY_SIZE} />
+        {/* Always in the page, so screen readers have the name; zoomed out it is clipped away rather than removed. */}
+        <div className="node-text">
+          <div className="node-label">{data.label}</div>
+          <div className="node-subtitle">{data.subtitle}</div>
+        </div>
+        {data.expandable && data.onToggle ? <ExpandToggle id={id} label={data.label} expanded={data.expanded === true} onToggle={data.onToggle} /> : null}
       </div>
       {data.lock ? (
         <span className="node-lock" title={data.lock} aria-label={`Read-only: ${data.lock}`} role="img">
@@ -75,13 +117,34 @@ function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
   );
 }
 
-const nodeTypes = { stack: StackBox, truss: TrussNode };
+/** A construct in an expanded Node's Layer. It is only what synth produced, so it has no lock, note or handles. */
+function LayerNode({ id, data }: NodeProps<Node<LayerNodeData>>) {
+  return (
+    <div className={data.expanded ? 'layer-node expanded' : 'layer-node'} title={data.tooltip}>
+      <div className="node-head">
+        <NodeIcon icon={data.icon} size={LAYER_ICON_SIZE} />
+        <div className="node-text">
+          <div className="node-label">{data.label}</div>
+          <div className="node-subtitle">{data.subtitle}</div>
+        </div>
+        {data.expandable ? <ExpandToggle id={id} label={data.label} expanded={data.expanded} onToggle={data.onToggle} /> : null}
+      </div>
+    </div>
+  );
+}
 
-function toFlowNodes(view: View): Node[] {
-  const layout = layoutView(view);
+const nodeTypes = { stack: StackBox, truss: TrussNode, layer: LayerNode };
+
+/** The class a construct was made from, without its package: `aws-cdk-lib.aws_s3.CfnBucket` is `CfnBucket`. */
+const shortClass = (fqn: string) => fqn.split('.').at(-1) ?? fqn;
+
+function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: string) => void): Node[] {
+  const layout = layoutView(view, expanded);
   const stacksById = new Map(view.stacks.map((s) => [s.id, s]));
   const boxesById = new Map(layout.stacks.map((b) => [b.id, b]));
   const nodesById = new Map(view.nodes.map((n) => [n.id, n]));
+  const childrenById = new Map(view.nodes.flatMap((n) => n.children ?? []).map((c) => [c.id, c]));
+  const hasChildren = new Set(view.nodes.flatMap((n) => n.children ?? []).map((c) => c.parentId));
   const stackNodes: Node[] = layout.stacks.map((box) => {
     const stack = stacksById.get(box.id)!;
     // React Flow places a child relative to its parent, and a nested box is laid out in canvas coordinates.
@@ -99,17 +162,62 @@ function toFlowNodes(view: View): Node[] {
   });
   const nodes: Node[] = layout.nodes.map((pos) => {
     const n = nodesById.get(pos.id)!;
+    const expandable = (n.children?.length ?? 0) > 0;
     return {
       id: n.id,
       type: 'truss',
       parentId: `stack:${n.stackId}`,
       position: { x: pos.x, y: pos.y },
-      style: { width: NODE_WIDTH, height: NODE_HEIGHT },
-      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, icon: n.icon, ...(n.note ? { note: n.note } : {}), ...(n.lock ? { lock: n.lock } : {}), ...(n.external ? { external: true } : {}) },
+      style: { width: pos.width, height: pos.height },
+      // A hoisted Node is the library's, not the app's: its position is the Sidecar's to keep, but nothing else about it is editable.
+      data: {
+        label: n.label,
+        subtitle: n.subtitle,
+        fqn: n.fqn,
+        icon: n.icon,
+        ...(n.note ? { note: n.note } : {}),
+        ...(n.lock ? { lock: n.lock } : {}),
+        ...(n.external ? { external: true } : {}),
+        ...(n.hoisted ? { hoisted: true } : {}),
+        expandable,
+        expanded: expandable && expanded.has(n.id),
+        onToggle,
+      },
+    };
+  });
+  // The children of an expanded Node sit inside its box, and are read-only: they can be selected but not moved.
+  const layers: Node[] = layout.layers.map((pos) => {
+    const c = childrenById.get(pos.id)!;
+    return {
+      id: c.id,
+      type: 'layer',
+      parentId: pos.parentId,
+      position: { x: pos.x, y: pos.y },
+      style: { width: pos.width, height: pos.height },
+      draggable: false,
+      data: {
+        label: c.label,
+        subtitle: c.cfnType ?? shortClass(c.fqn),
+        tooltip: `${c.id} · ${c.cfnType ?? c.fqn}`,
+        icon: c.icon,
+        expandable: hasChildren.has(c.id),
+        expanded: hasChildren.has(c.id) && expanded.has(c.id),
+        onToggle,
+      } satisfies LayerNodeData,
     };
   });
   // React Flow needs a parent to come before its children.
-  return [...stackNodes, ...nodes];
+  return [...stackNodes, ...nodes, ...layers];
+}
+
+/** A dashed line from each Node to the hoisted Nodes it caused, for the Nodes on show. */
+function toFlowEdges(view: View): Edge[] {
+  const shown = new Set(view.nodes.map((n) => n.id));
+  return view.nodes.flatMap((n) =>
+    (n.causedBy ?? [])
+      .filter((cause) => shown.has(cause))
+      .map((cause) => ({ id: `cause:${cause}>${n.id}`, source: cause, target: n.id, className: 'cause-edge', selectable: false, focusable: false })),
+  );
 }
 
 /** Where a React Flow node sits on the canvas: its own position plus those of the boxes it is nested in. */
@@ -140,14 +248,18 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, paused, onSave, onOpen }: { node: NodeView; paused: boolean; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, paused, onSave, onOpen }: { node: NodeView; nodes: readonly NodeView[]; paused: boolean; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
+  const causers = (node.causedBy ?? []).map((id) => nodes.find((n) => n.id === id)?.label ?? id);
   return (
     <aside className="note-panel">
       <h2>{node.label}</h2>
       {node.lock ? <p className="lock-reason">Read-only: {node.lock}</p> : null}
-      <button type="button" className="open-in-editor" onClick={() => onOpen(node.source)}>
-        Open in editor
-      </button>
+      {causers.length > 0 ? <p className="lock-reason">Caused by {causers.join(', ')}</p> : null}
+      {node.source ? (
+        <button type="button" className="open-in-editor" onClick={() => onOpen(node.source!)}>
+          Open in editor
+        </button>
+      ) : null}
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
@@ -162,6 +274,34 @@ function NodePanel({ node, paused, onSave, onOpen }: { node: NodeView; paused: b
           }}
         />
       </label>
+    </aside>
+  );
+}
+
+/** What a construct in a Layer is: its path and type. There is nothing to edit, because it is not in the app's code. */
+function LayerPanel({ child, node }: { child: LayerChildView; node: NodeView }) {
+  return (
+    <aside className="note-panel">
+      <h2>{child.label}</h2>
+      <p className="lock-reason">Read-only: part of what {node.label} creates, not written in your code</p>
+      <dl className="layer-facts">
+        <dt>Construct path</dt>
+        <dd>
+          <code>{child.id}</code>
+        </dd>
+        {child.cfnType ? (
+          <>
+            <dt>CloudFormation type</dt>
+            <dd>
+              <code>{child.cfnType}</code>
+            </dd>
+          </>
+        ) : null}
+        <dt>Class</dt>
+        <dd>
+          <code>{child.fqn}</code>
+        </dd>
+      </dl>
     </aside>
   );
 }
@@ -187,11 +327,27 @@ export function App() {
   const [pickedStage, setPickedStage] = useState(rememberedStage);
   const stageId = view ? chooseStage(view.stages, pickedStage) : undefined;
   const shown = useMemo(() => (view ? showStage(view, stageId) : undefined), [view, stageId]);
-  const flowNodes = useMemo(() => (shown ? toFlowNodes(shown) : []), [shown]);
+  // Which Nodes are open is this connection's own view state: it is not in the Sidecar, and no other browser sees it.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = useCallback(
+    (id: string) =>
+      setExpanded((current) => {
+        const next = new Set(current);
+        if (!next.delete(id)) next.add(id);
+        return next;
+      }),
+    [],
+  );
+  const flowNodes = useMemo(() => (shown ? toFlowNodes(shown, expanded, toggle) : []), [shown, expanded, toggle]);
+  const flowEdges = useMemo(() => (shown ? toFlowEdges(shown) : []), [shown]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const fitKey = flowNodes.map((n) => n.id).join('|');
+  // Opening a Node must not move the viewport, so only the Nodes and boxes of the Design decide when to fit it again.
+  const fitKey = flowNodes
+    .filter((n) => n.type !== 'layer')
+    .map((n) => n.id)
+    .join('|');
 
   // The View is the truth; React Flow only holds a Node's position while it is being dragged.
   useEffect(() => setNodes(flowNodes), [flowNodes]);
@@ -220,6 +376,13 @@ export function App() {
   );
 
   const selected = shown?.nodes.find((n) => n.id === selectedId);
+  const selectedLayer = useMemo(() => {
+    for (const node of shown?.nodes ?? []) {
+      const child = node.children?.find((c) => c.id === selectedId);
+      if (child) return { child, node };
+    }
+    return undefined;
+  }, [shown, selectedId]);
 
   if (!view) {
     return <div className="page-message">{connection === 'closed' ? 'Disconnected from Truss.' : 'Connecting…'}</div>;
@@ -279,8 +442,8 @@ export function App() {
           nodes={nodes}
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
-          onSelectionChange={({ nodes: picked }) => setSelectedId(picked.find((n) => n.type === 'truss')?.id)}
-          edges={[]}
+          onSelectionChange={({ nodes: picked }) => setSelectedId(picked.find((n) => n.type === 'truss' || n.type === 'layer')?.id)}
+          edges={flowEdges}
           nodeTypes={nodeTypes}
           nodesConnectable={false}
           nodesDraggable={!error}
@@ -294,7 +457,8 @@ export function App() {
           <Controls showInteractive={false} />
         </ReactFlow>
         <Palette search={search} />
-        {selected ? <NodePanel node={selected} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
+        {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
       </div>
     </div>
   );

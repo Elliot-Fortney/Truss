@@ -75,3 +75,19 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .tier { align-self: start; padding: 0 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 11px; color: var(--muted); }
 .tier-L2 { color: var(--accent); border-color: var(--accent); }
 .tier-L3 { color: var(--fg); font-weight: 600; }
+
+.node-head { display: contents; }
+.truss-handle { opacity: 0; pointer-events: none; }
+.expand-toggle { flex: none; margin-left: auto; width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
+.expand-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.truss-node.expanded, .layer-node.expanded { display: block; padding: 0; background: color-mix(in srgb, var(--card) 70%, transparent); }
+.truss-node.expanded .node-head, .layer-node.expanded .node-head { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: 56px; padding: 0 12px; }
+.layer-node { box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; height: 100%; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
+.layer-node .node-text { min-width: 0; }
+.layer-node .node-label { font-size: 12px; }
+.layer-node .node-subtitle { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.truss-node.hoisted { border-style: dotted; }
+.cause-edge .react-flow__edge-path { stroke: var(--muted); stroke-dasharray: 6 4; }
+.layer-facts { margin: 0; font-size: 12px; }
+.layer-facts dt { color: var(--muted); margin-top: 6px; }
+.layer-facts dd { margin: 0; overflow-wrap: anywhere; }

@@ -1369,5 +1369,35 @@
         "col": 39
       }
     ]
-  }
+  },
+  "resourceRefs": [
+    {
+      "from": "Shapes/Outer/Resource",
+      "to": "Shapes/Inner/Resource"
+    },
+    {
+      "from": "Shapes/Outer/Notifications/HandlerPolicy/Resource",
+      "to": "Shapes/Outer/Resource"
+    },
+    {
+      "from": "Shapes/Outer/Notifications/HandlerPolicy/Resource",
+      "to": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource"
+    },
+    {
+      "from": "Shapes/Outer/Notifications/Resource",
+      "to": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource"
+    },
+    {
+      "from": "Shapes/Outer/Notifications/Resource",
+      "to": "Shapes/Outer/Resource"
+    },
+    {
+      "from": "Shapes/Outer/Notifications/Resource",
+      "to": "Shapes/Outer/Notifications/HandlerPolicy/Resource"
+    },
+    {
+      "from": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource",
+      "to": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource"
+    }
+  ]
 }

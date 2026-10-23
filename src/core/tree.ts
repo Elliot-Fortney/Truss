@@ -13,3 +13,13 @@ export function withoutNestedStackPlumbing(children: readonly TreeNode[]): TreeN
   const plumbing = new Set(children.filter((c) => c.fqn === NESTED_STACK_FQN).map((c) => `${c.id}.NestedStack`));
   return children.filter((c) => !plumbing.has(c.id));
 }
+
+/** What CDK adds to every Stack, by construct ID and the type it has. They deploy nothing the app asked for. */
+const STACK_PLUMBING: Readonly<Record<string, string>> = {
+  CDKMetadata: 'constructs.Construct',
+  BootstrapVersion: 'aws-cdk-lib.CfnParameter',
+  CheckBootstrapVersion: 'aws-cdk-lib.CfnRule',
+};
+
+/** Whether a direct child of a Stack is one of the constructs CDK adds to every Stack. */
+export const isStackPlumbing = (child: TreeNode): boolean => STACK_PLUMBING[child.id] === child.fqn;

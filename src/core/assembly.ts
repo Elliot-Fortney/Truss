@@ -29,6 +29,12 @@ export interface StackInfo {
   env?: string;
 }
 
+/** In a stack's template, the L1 resource at `from` points at the one at `to` (a `Ref`, `Fn::GetAtt`, `Fn::Sub` or `DependsOn`). Both are construct paths. */
+export interface ResourceRef {
+  from: string;
+  to: string;
+}
+
 export interface Assembly {
   /** Cloud assembly manifest version. */
   schemaVersion: string;
@@ -36,6 +42,8 @@ export interface Assembly {
   stacks: StackInfo[];
   /** User-code frames per construct path, innermost first. Paths with no user frame are absent. */
   creation: Record<string, Frame[]>;
+  /** What the L1 resources of each Stack's template point at, which says which construct needed which. */
+  resourceRefs: ResourceRef[];
 }
 
 export type SynthResult =

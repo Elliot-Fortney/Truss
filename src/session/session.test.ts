@@ -711,3 +711,49 @@ describe('Session Sidecar', () => {
     });
   });
 });
+
+describe('Session Computed Layers', () => {
+  const startedShapes = async () => {
+    const session = new Session({
+      appDir: '/app',
+      source: new TsSource(),
+      files: new FakeFiles(readFixtureFiles('shapes')),
+      synth: fakeSynth({ ok: true, assembly: readFixtureAssembly('shapes') }),
+    });
+    await session.start();
+    return session;
+  };
+
+  it('gives a Node the construct tree its props made, down to the L1 with its CloudFormation type', async () => {
+    const session = await startedShapes();
+    const outer = session.view().nodes.find((n) => n.id === 'Shapes/Outer')!;
+    expect(outer.children?.map((c) => [c.id, c.cfnType])).toEqual([
+      ['Shapes/Outer/Resource', 'AWS::S3::Bucket'],
+      ['Shapes/Outer/Notifications', undefined],
+      ['Shapes/Outer/Notifications/HandlerPolicy', undefined],
+      ['Shapes/Outer/Notifications/HandlerPolicy/Resource', 'AWS::IAM::Policy'],
+      ['Shapes/Outer/Notifications/Resource', undefined],
+    ]);
+  });
+
+  it('draws what a construct created outside its own subtree at Stack scope, read-only and linked to the Node that caused it', async () => {
+    const session = await startedShapes();
+    const handler = session.view().nodes.find((n) => n.id.startsWith('Shapes/BucketNotificationsHandler'))!;
+    expect(handler).toMatchObject({ stackId: 'Shapes', hoisted: true, causedBy: ['Shapes/Outer'], lock: expect.any(String) });
+    expect(handler.children?.some((c) => c.cfnType === 'AWS::IAM::Role')).toBe(true);
+  });
+
+  it('shows no hoisted Node in an app that has none, and none of the plumbing CDK adds to every Stack', async () => {
+    const session = new Session({ appDir: '/app', source: new TsSource(), ...straightLine() });
+    await session.start();
+    expect(session.view().nodes.filter((n) => n.hoisted)).toEqual([]);
+    expect(session.view().nodes.map((n) => n.id)).not.toContain('ShopStack/CDKMetadata');
+  });
+
+  it('keeps a hoisted Node\'s position in the Sidecar like any other Node\'s', async () => {
+    const session = await startedShapes();
+    const id = session.view().nodes.find((n) => n.hoisted)!.id;
+    expect(await session.handle({ type: 'move', requestId: 'r', id, x: 5, y: 6 })).toEqual({ type: 'ack', requestId: 'r' });
+    expect(session.view().nodes.find((n) => n.id === id)?.position).toEqual({ x: 5, y: 6 });
+  });
+});

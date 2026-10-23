@@ -10,6 +10,7 @@ const assembly: Assembly = {
   schemaVersion: '55.0.0',
   stacks: [{ path: 'Api', env: 'aws://123456789012/us-east-1' }, { path: 'Web' }],
   creation: {},
+  resourceRefs: [],
   tree: {
     id: 'App',
     path: '',
@@ -90,6 +91,7 @@ describe('buildView with nested stacks and Stages', () => {
     schemaVersion: '55.0.0',
     stacks: [{ path: 'Pipeline' }, { path: 'Dev/Core', env: 'aws://111111111111/eu-west-1' }, { path: 'Prod/Core', env: 'aws://111111111111/eu-west-1' }],
     creation: {},
+    resourceRefs: [],
     tree: leaf('', 'aws-cdk-lib.App', [
       leaf('Pipeline', 'aws-cdk-lib.Stack', [leaf('Pipeline/Repo', 'aws-cdk-lib.aws_s3.Bucket')]),
       leaf('Dev', 'aws-cdk-lib.Stage', [
@@ -167,6 +169,7 @@ describe('buildView naming', () => {
     schemaVersion: '55.0.0',
     stacks: [{ path: 'S' }],
     creation: {},
+    resourceRefs: [],
     tree: leaf('', 'aws-cdk-lib.App', [
       leaf('S', 'aws-cdk-lib.Stack', [
         leaf('S/Plain', 'aws-cdk-lib.aws_s3.Bucket'),
@@ -218,5 +221,121 @@ describe('buildView naming', () => {
   it('marks a Node made by a `fromXxx` call as external, and names it by the call', () => {
     expect(byId('S/Existing')).toMatchObject({ external: true, subtitle: 'Bucket.fromBucketName' });
     expect(byId('S/Plain')).not.toHaveProperty('external');
+  });
+});
+
+describe('buildView Layers', () => {
+  const assembly: Assembly = {
+    schemaVersion: '55.0.0',
+    stacks: [{ path: 'S' }],
+    creation: {},
+    resourceRefs: [
+      // The notifications custom resource under the Bucket points at the stack-wide handler.
+      { from: 'S/Site/Notifications/Resource', to: 'S/NotificationsHandler/Resource' },
+      { from: 'S/NotificationsHandler/Resource', to: 'S/NotificationsHandler/Role/Resource' },
+      // The Service points at a default Cluster, which points at a default Vpc.
+      { from: 'S/Service/Resource', to: 'S/DefaultCluster/Resource' },
+      { from: 'S/DefaultCluster/Resource', to: 'S/DefaultVpc/Resource' },
+      // A reference between two Nodes is a Connection's business, not a hoisted Node's.
+      { from: 'S/Service/Resource', to: 'S/Site/Resource' },
+    ],
+    tree: leaf('', 'aws-cdk-lib.App', [
+      leaf('S', 'aws-cdk-lib.Stack', [
+        leaf('S/Site', 'aws-cdk-lib.aws_s3.Bucket', [
+          { ...leaf('S/Site/Resource', 'aws-cdk-lib.aws_s3.CfnBucket'), cfnType: 'AWS::S3::Bucket' },
+          leaf('S/Site/Notifications', 'constructs.Construct', [leaf('S/Site/Notifications/Resource', 'aws-cdk-lib.CfnResource')]),
+        ]),
+        leaf('S/Service', 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService', [
+          { ...leaf('S/Service/Resource', 'aws-cdk-lib.aws_ecs.CfnService'), cfnType: 'AWS::ECS::Service' },
+        ]),
+        leaf('S/NotificationsHandler', 'constructs.Construct', [
+          leaf('S/NotificationsHandler/Role', 'aws-cdk-lib.aws_iam.Role', [{ ...leaf('S/NotificationsHandler/Role/Resource', 'aws-cdk-lib.aws_iam.CfnRole'), cfnType: 'AWS::IAM::Role' }]),
+          leaf('S/NotificationsHandler/Resource', 'aws-cdk-lib.CfnResource'),
+        ]),
+        leaf('S/DefaultCluster', 'aws-cdk-lib.aws_ecs.Cluster', [leaf('S/DefaultCluster/Resource', 'aws-cdk-lib.aws_ecs.CfnCluster')]),
+        leaf('S/DefaultVpc', 'aws-cdk-lib.aws_ec2.Vpc', [leaf('S/DefaultVpc/Resource', 'aws-cdk-lib.aws_ec2.CfnVPC')]),
+        leaf('S/CDKMetadata', 'constructs.Construct', [leaf('S/CDKMetadata/Default', 'aws-cdk-lib.CfnResource')]),
+        leaf('S/BootstrapVersion', 'aws-cdk-lib.CfnParameter'),
+        leaf('S/CheckBootstrapVersion', 'aws-cdk-lib.CfnRule'),
+      ]),
+    ]),
+  };
+  const node = (className: string, id: string, line: number): NodeFacts => ({ span: here(line), className, literalId: id, pathsOnSpan: 1, binding: 'none' });
+  const facts: Facts = {
+    nodes: {
+      'S/Site': node('s3.Bucket', 'Site', 10),
+      'S/Service': node('ecsPatterns.ApplicationLoadBalancedFargateService', 'Service', 20),
+    },
+  };
+  const view = buildView(facts, assembly, emptySidecar());
+  const byId = (id: string) => view.nodes.find((n) => n.id === id)!;
+
+  it('gives a Node every construct beneath it as read-only children, in tree order, with the type and path of each', () => {
+    expect(byId('S/Site').children).toEqual([
+      { id: 'S/Site/Resource', parentId: 'S/Site', label: 'Resource', fqn: 'aws-cdk-lib.aws_s3.CfnBucket', cfnType: 'AWS::S3::Bucket', icon: expect.any(String) },
+      { id: 'S/Site/Notifications', parentId: 'S/Site', label: 'Notifications', fqn: 'constructs.Construct', icon: expect.any(String) },
+      { id: 'S/Site/Notifications/Resource', parentId: 'S/Site/Notifications', label: 'Resource', fqn: 'aws-cdk-lib.CfnResource', icon: expect.any(String) },
+    ]);
+  });
+
+  it('gives a Node with nothing beneath it no children', () => {
+    const bare = buildView(
+      { nodes: { 'S/Site': node('s3.CfnBucket', 'Site', 10) } },
+      { ...assembly, tree: leaf('', 'aws-cdk-lib.App', [leaf('S', 'aws-cdk-lib.Stack', [leaf('S/Site', 'aws-cdk-lib.aws_s3.CfnBucket')])]) },
+      emptySidecar(),
+    );
+    expect(bare.nodes[0]).not.toHaveProperty('children');
+  });
+
+  it('draws a construct outside every Node as a read-only hoisted Node at Stack scope, with its own children', () => {
+    const handler = byId('S/NotificationsHandler');
+    expect(handler).toMatchObject({ stackId: 'S', label: 'NotificationsHandler', hoisted: true });
+    expect(handler.lock).toEqual(expect.stringContaining('Site'));
+    expect(handler.children?.map((c) => c.id)).toEqual(['S/NotificationsHandler/Role', 'S/NotificationsHandler/Role/Resource', 'S/NotificationsHandler/Resource']);
+  });
+
+  it('links a hoisted Node to the Node whose resources point at it', () => {
+    expect(byId('S/NotificationsHandler').causedBy).toEqual(['S/Site']);
+  });
+
+  it('links a hoisted Node reached only through another hoisted Node to the Node that started the chain', () => {
+    expect(byId('S/DefaultCluster').causedBy).toEqual(['S/Service']);
+    expect(byId('S/DefaultVpc').causedBy).toEqual(['S/Service']);
+  });
+
+  it('opens a hoisted Node at the code of the Node that caused it', () => {
+    expect(byId('S/NotificationsHandler').source).toEqual({ file: 'lib/a.ts', line: 10, col: 5 });
+  });
+
+  it('does not link two Nodes, and marks no Node of the app\'s own as hoisted', () => {
+    expect(byId('S/Site')).not.toHaveProperty('hoisted');
+    expect(byId('S/Site')).not.toHaveProperty('causedBy');
+    expect(byId('S/Service')).not.toHaveProperty('causedBy');
+  });
+
+  it('leaves out the Stack plumbing CDK adds to every Stack', () => {
+    const ids = view.nodes.map((n) => n.id);
+    expect(ids).not.toContain('S/CDKMetadata');
+    expect(ids).not.toContain('S/BootstrapVersion');
+    expect(ids).not.toContain('S/CheckBootstrapVersion');
+  });
+
+  it('links a hoisted Node that nothing points at to the Node it points at, as a policy attached to a Node is', () => {
+    const withPolicy: Assembly = {
+      ...assembly,
+      resourceRefs: [...assembly.resourceRefs, { from: 'S/Policy/Resource', to: 'S/Site/Resource' }],
+      tree: {
+        ...assembly.tree,
+        children: [{ ...assembly.tree.children[0]!, children: [...assembly.tree.children[0]!.children, leaf('S/Policy', 'aws-cdk-lib.aws_iam.Policy', [leaf('S/Policy/Resource', 'aws-cdk-lib.aws_iam.CfnPolicy')])] }],
+      },
+    };
+    const policy = buildView(facts, withPolicy, emptySidecar()).nodes.find((n) => n.id === 'S/Policy')!;
+    expect(policy.causedBy).toEqual(['S/Site']);
+  });
+
+  it('still shows a hoisted Node nothing points at, read-only and without a link', () => {
+    const orphan = buildView(facts, { ...assembly, resourceRefs: [] }, emptySidecar()).nodes.find((n) => n.id === 'S/DefaultVpc')!;
+    expect(orphan).toMatchObject({ hoisted: true, lock: expect.any(String) });
+    expect(orphan).not.toHaveProperty('causedBy');
   });
 });

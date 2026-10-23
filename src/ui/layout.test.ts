@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { NodeView, View } from '../core/view.ts';
-import { layoutView, NODE_HEIGHT, NODE_WIDTH, STACK_HEADER, STACK_PADDING } from './layout.ts';
+import type { LayerChildView, NodeView, View } from '../core/view.ts';
+import { LAYER_HEADER, LAYER_HEIGHT, LAYER_PADDING, LAYER_WIDTH, layoutView, NODE_HEIGHT, NODE_WIDTH, STACK_HEADER, STACK_PADDING } from './layout.ts';
 
 const node = (id: string, stackId: string): NodeView => ({
   id,
@@ -168,5 +168,77 @@ describe('layoutView with nested stacks and saved positions', () => {
     const c = l.stacks.find((s) => s.id === 'P/child')!;
     const ownLeft = p.x + own.x;
     expect(ownLeft + NODE_WIDTH <= c.x || c.x + c.width <= ownLeft).toBe(true);
+  });
+});
+
+describe('layoutView with expanded Nodes', () => {
+  const child = (id: string, parentId: string): LayerChildView => ({ id, parentId, label: id, fqn: 'x', icon: 'generic' });
+  const bucket: NodeView = {
+    ...node('A/bucket', 'A'),
+    children: [child('A/bucket/Resource', 'A/bucket'), child('A/bucket/Policy', 'A/bucket'), child('A/bucket/Policy/Resource', 'A/bucket/Policy')],
+  };
+  const queue = node('A/queue', 'A');
+  const v = view([bucket, queue], ['A']);
+  const rect = (b: { x: number; y: number; width: number; height: number }) => ({ left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height });
+  const apart = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+  const find = (l: ReturnType<typeof layoutView>, id: string) => l.nodes.find((n) => n.id === id)!;
+
+  it('draws every Node at the usual size, and shows no children, while nothing is expanded', () => {
+    const l = layoutView(v);
+    expect(l.layers).toEqual([]);
+    expect(l.nodes.map((n) => [n.width, n.height])).toEqual([[NODE_WIDTH, NODE_HEIGHT], [NODE_WIDTH, NODE_HEIGHT]]);
+  });
+
+  it('ignores an expanded id that has no children to show', () => {
+    expect(layoutView(v, new Set(['A/queue'])).layers).toEqual([]);
+  });
+
+  it('grows an expanded Node into a box that holds its direct children below its header', () => {
+    const l = layoutView(v, new Set(['A/bucket']));
+    const box = find(l, 'A/bucket');
+    const direct = l.layers.filter((c) => c.parentId === 'A/bucket');
+    expect(direct.map((c) => c.id)).toEqual(['A/bucket/Resource', 'A/bucket/Policy']);
+    for (const c of direct) {
+      expect(c.x).toBeGreaterThanOrEqual(LAYER_PADDING);
+      expect(c.y).toBeGreaterThanOrEqual(LAYER_HEADER);
+      expect(c.x + c.width).toBeLessThanOrEqual(box.width - LAYER_PADDING);
+      expect(c.y + c.height).toBeLessThanOrEqual(box.height - LAYER_PADDING);
+      expect([c.width, c.height]).toEqual([LAYER_WIDTH, LAYER_HEIGHT]);
+    }
+  });
+
+  it('keeps the children of one parent from overlapping', () => {
+    const [a, b] = layoutView(v, new Set(['A/bucket'])).layers.filter((c) => c.parentId === 'A/bucket');
+    expect(apart(rect(a!), rect(b!))).toBe(true);
+  });
+
+  it('opens a child that is itself expanded, down to the L1, inside its own box', () => {
+    const l = layoutView(v, new Set(['A/bucket', 'A/bucket/Policy']));
+    const policy = l.layers.find((c) => c.id === 'A/bucket/Policy')!;
+    const leaf = l.layers.find((c) => c.id === 'A/bucket/Policy/Resource')!;
+    expect(policy.height).toBeGreaterThan(LAYER_HEIGHT);
+    expect(leaf.parentId).toBe('A/bucket/Policy');
+    expect(leaf.y).toBeGreaterThanOrEqual(LAYER_HEADER);
+    expect(leaf.y + leaf.height).toBeLessThanOrEqual(policy.height - LAYER_PADDING);
+    // Parents come before their children.
+    expect(l.layers.map((c) => c.id).indexOf(policy.id)).toBeLessThan(l.layers.map((c) => c.id).indexOf(leaf.id));
+  });
+
+  it('keeps an expanded Node clear of its neighbours and inside its Stack box', () => {
+    const l = layoutView(v, new Set(['A/bucket', 'A/bucket/Policy']));
+    const stack = l.stacks[0]!;
+    const [a, b] = l.nodes;
+    expect(apart(rect(a!), rect(b!))).toBe(true);
+    for (const n of [a!, b!]) {
+      expect(n.x + n.width).toBeLessThanOrEqual(stack.width);
+      expect(n.y + n.height).toBeLessThanOrEqual(stack.height);
+    }
+  });
+
+  it('puts a hoisted Node to the right of the Node that caused it', () => {
+    const cause = node('A/svc', 'A');
+    const hoisted: NodeView = { ...node('A/vpc', 'A'), hoisted: true, causedBy: ['A/svc'] };
+    const l = layoutView(view([cause, hoisted], ['A']));
+    expect(find(l, 'A/vpc').x).toBeGreaterThanOrEqual(find(l, 'A/svc').x + NODE_WIDTH);
   });
 });

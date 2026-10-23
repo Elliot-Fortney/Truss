@@ -60,6 +60,10 @@ _Avoid_: Level of detail, zoom level
 A Layer derived from the Node's actual props by instantiating the Design locally, never from a static example. Its child Nodes are read-only.
 _Avoid_: Live Layer, example Layer
 
+**Hoisted Node**:
+A read-only Node for a construct that another construct creates outside its own subtree, such as a default VPC or a singleton provider. It is drawn at Stack scope and linked to the Node, or Nodes, whose resources point at it.
+_Avoid_: Side effect, implicit resource, shared resource
+
 **Catalog**:
 The set of constructs a Design can use, generated from the app's own installed `aws-cdk-lib` and its other directly installed jsii construct libraries, so it always matches the versions the app synths with. The app's own construct classes aren't in it.
 _Avoid_: Palette (the UI that lists it), registry, library

@@ -230,6 +230,7 @@ describe('TsSource.analyse finds a `fromXxx` call in the constructor of a base c
     schemaVersion: '55.0.0',
     stacks: [{ path: 'S' }],
     creation: { S: [{ file: 'bin/app.ts', line: 2, col: 1 }] },
+    resourceRefs: [],
     tree: tree('App', '', 'aws-cdk-lib.App', [tree('S', 'S', 'aws-cdk-lib.Stack', [tree('Imp', 'S/Imp', 'aws-cdk-lib.aws_s3.BucketBase')])]),
   };
 
@@ -242,7 +243,8 @@ describe('TsSource.analyse finds a `fromXxx` call in the constructor of a base c
 describe('the view of the shapes fixture', () => {
   const assembly = readFixtureAssembly('shapes');
   const facts = new TsSource().analyse(readFixtureFiles('shapes'), assembly);
-  const locks = Object.fromEntries(buildView(facts, assembly, emptySidecar()).nodes.map((n) => [n.id, n.lock ?? 'editable']));
+  // A hoisted Node is no shape of the app's code; the view's own tests cover it.
+  const locks = Object.fromEntries(buildView(facts, assembly, emptySidecar()).nodes.filter((n) => !n.hoisted).map((n) => [n.id, n.lock ?? 'editable']));
 
   it('locks each shape Truss cannot rewrite, with the reason, and leaves the rest editable', () => {
     expect(locks).toEqual({

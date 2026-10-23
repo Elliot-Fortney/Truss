@@ -1,9 +1,9 @@
-import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
+import type { Assembly, EditorRequest, ResourceRef, SynthError, TreeNode } from './assembly.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
 import { iconFor } from './icons.ts';
 import { serviceName } from './services.ts';
-import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
+import { isStackPlumbing, NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
 /** A Stack drawn as a group box. */
@@ -25,6 +25,19 @@ export interface StageView {
   label: string;
 }
 
+/** One construct beneath a Node, as its Computed Layer shows it. Read-only: it is only what the app's synth produced. */
+export interface LayerChildView {
+  /** The construct path. */
+  id: string;
+  /** The Node, or the other child, this one sits in. */
+  parentId: string;
+  label: string;
+  fqn: string;
+  icon: string;
+  /** CloudFormation type, on L1 resources. */
+  cfnType?: string;
+}
+
 export interface NodeView {
   /** The construct path, which is the Node's identity. */
   id: string;
@@ -37,7 +50,17 @@ export interface NodeView {
   icon: string;
   /** The Node is a `fromXxx` resource the app refers to but doesn't create. */
   external?: true;
-  source: { file: string; line: number; col: number };
+  /**
+   * The Node is a construct created outside the subtree of every Node, such as a default VPC or a
+   * singleton provider, drawn at Stack scope. It is always read-only.
+   */
+  hoisted?: true;
+  /** For a hoisted Node, the Nodes whose resources point at it, directly or through other hoisted Nodes. */
+  causedBy?: string[];
+  /** The Node's Computed Layer: everything beneath it in the synthesized tree, parents before their children. Absent for a Node with nothing beneath it. */
+  children?: LayerChildView[];
+  /** Where in the app's code the Node comes from. For a hoisted Node, the code of the first Node that caused it, if any. */
+  source?: { file: string; line: number; col: number };
   /** Why Truss can't edit this Node, when it can't. Absent means editable. */
   lock?: string;
   /** Where the Sidecar says this Node sits on the canvas. Absent: the canvas lays it out. */
@@ -96,6 +119,70 @@ function subtitleOf(facts: NodeFacts, fqn: string): string {
   return base ? `${written} · ${base}` : written;
 }
 
+/** Every construct beneath `tree`, parents before their children, leaving out the Stacks (they are boxes, not children). */
+function layerOf(tree: TreeNode, envs: ReadonlyMap<string, unknown>): LayerChildView[] {
+  const out: LayerChildView[] = [];
+  const walk = (parent: TreeNode) => {
+    for (const child of withoutNestedStackPlumbing(parent.children)) {
+      if (envs.has(child.path) || child.fqn === NESTED_STACK_FQN) continue;
+      out.push({
+        id: child.path,
+        parentId: parent.path,
+        label: child.id,
+        fqn: child.fqn,
+        icon: iconFor(child.fqn),
+        ...(child.cfnType ? { cfnType: child.cfnType } : {}),
+      });
+      walk(child);
+    }
+  };
+  walk(tree);
+  return out;
+}
+
+/**
+ * For each hoisted Node, the Nodes that caused it: those from which a reference between resources leads to it,
+ * possibly through other hoisted Nodes (a default Cluster needs a default Vpc). A hoisted Node no Node
+ * leads to is tied to the Nodes it points at instead, as a policy attached to a Node is. Order follows `nodes`.
+ */
+function causes(nodes: readonly NodeView[], refs: readonly ResourceRef[]): Map<string, string[]> {
+  const units = new Set(nodes.map((n) => n.id));
+  /** The Node or hoisted Node a construct path lies in. */
+  const unitOf = (path: string): string | undefined => {
+    for (let at = path.length; at > 0; at = path.lastIndexOf('/', at - 1)) {
+      const prefix = path.slice(0, at);
+      if (units.has(prefix)) return prefix;
+    }
+    return undefined;
+  };
+  const hoisted = new Set(nodes.filter((n) => n.hoisted).map((n) => n.id));
+  const pointsAt = new Map<string, Set<string>>();
+  const attachedTo = new Map<string, Set<string>>();
+  for (const { from, to } of refs) {
+    const a = unitOf(from);
+    const b = unitOf(to);
+    if (a === undefined || b === undefined || a === b) continue;
+    if (hoisted.has(b)) (pointsAt.get(a) ?? pointsAt.set(a, new Set()).get(a)!).add(b);
+    else if (hoisted.has(a)) (attachedTo.get(a) ?? attachedTo.set(a, new Set()).get(a)!).add(b);
+  }
+  const causedBy = new Map<string, string[]>();
+  for (const origin of nodes) {
+    if (origin.hoisted) continue;
+    const seen = new Set<string>();
+    const reach = (from: string) => {
+      for (const to of pointsAt.get(from) ?? []) {
+        if (seen.has(to)) continue;
+        seen.add(to);
+        reach(to);
+      }
+    };
+    reach(origin.id);
+    for (const id of seen) (causedBy.get(id) ?? causedBy.set(id, []).get(id)!).push(origin.id);
+  }
+  for (const [id, nodeIds] of attachedTo) if (!causedBy.has(id)) causedBy.set(id, [...nodeIds]);
+  return causedBy;
+}
+
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
 export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): ViewBody {
   const envs = new Map(assembly.stacks.map((s) => [s.path, s.env]));
@@ -103,7 +190,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
   const stacks: StackBoxView[] = [];
   const nodes: NodeView[] = [];
 
-  const visit = (tree: TreeNode, stack: StackBoxView | undefined, stageId: string | undefined, insideNode: boolean) => {
+  const visit = (tree: TreeNode, stack: StackBoxView | undefined, stageId: string | undefined, insideNode: boolean, atStackScope: boolean) => {
     if (tree.fqn === STAGE_FQN && stageId === undefined) {
       // A Stage inside a Stage is part of the outer one: the canvas has one picker, not a tree of them.
       stages.push({ id: tree.path, label: tree.id });
@@ -125,6 +212,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
     } else if (stack && nodeFacts && !insideNode) {
       const saved = sidecar.nodes[tree.path];
       const editability = nodeEditability(tree.path, nodeFacts);
+      const children = layerOf(tree, envs);
       nodes.push({
         id: tree.path,
         stackId: stack.id,
@@ -137,12 +225,48 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
         ...(editability.editable ? {} : { lock: editability.reason }),
         ...(saved?.position ? { position: saved.position } : {}),
         ...(saved?.note ? { note: saved.note } : {}),
+        ...(children.length > 0 ? { children } : {}),
+      });
+      insideNode = true;
+    } else if (stack && atStackScope && !insideNode && !isStackPlumbing(tree)) {
+      // Something at Stack scope that no `new` of the app made directly: a construct another one created for itself.
+      const saved = sidecar.nodes[tree.path];
+      const children = layerOf(tree, envs);
+      nodes.push({
+        id: tree.path,
+        stackId: stack.id,
+        label: tree.id,
+        subtitle: lastSegment(tree.fqn),
+        fqn: tree.fqn,
+        icon: iconFor(tree.fqn),
+        hoisted: true,
+        // `lock` and the link to the Node that caused it are set once every Node is known.
+        lock: '',
+        ...(saved?.position ? { position: saved.position } : {}),
+        ...(saved?.note ? { note: saved.note } : {}),
+        ...(children.length > 0 ? { children } : {}),
       });
       insideNode = true;
     }
-    for (const child of withoutNestedStackPlumbing(tree.children)) visit(child, stack, stageId, insideNode);
+    for (const child of withoutNestedStackPlumbing(tree.children)) visit(child, stack, stageId, insideNode, isStack);
   };
-  visit(assembly.tree, undefined, undefined, false);
+  visit(assembly.tree, undefined, undefined, false, false);
+
+  const causedBy = causes(nodes, assembly.resourceRefs);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const node of nodes) {
+    if (!node.hoisted) continue;
+    const causers = causedBy.get(node.id) ?? [];
+    if (causers.length === 0) {
+      node.lock = 'Created by the library outside the subtree of any construct Truss can place';
+      continue;
+    }
+    node.causedBy = causers;
+    const names = causers.map((id) => byId.get(id)!.label).join(', ');
+    node.lock = `Created by the library for ${names}, outside its own subtree`;
+    const source = byId.get(causers[0]!)?.source;
+    if (source) node.source = source;
+  }
 
   return { stages, stacks, nodes };
 }

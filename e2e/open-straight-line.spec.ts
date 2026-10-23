@@ -241,9 +241,10 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await page.goto(truss.url);
     const loop = page.locator('.truss-node', { hasText: 'LoopOne' });
     await expect(loop).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator('.truss-node')).toHaveCount(25);
-    // 4 loop Nodes, 2 helper Nodes, 1 whose ID is a variable and 1 import.
-    await expect(page.locator('.node-lock')).toHaveCount(8);
+    // 25 of the app's own, and the notifications handler Outer's bucket brought with it.
+    await expect(page.locator('.truss-node')).toHaveCount(26);
+    // 4 loop Nodes, 2 helper Nodes, 1 whose ID is a variable, 1 import and the hoisted handler.
+    await expect(page.locator('.node-lock')).toHaveCount(9);
     await expect(loop.locator('.node-lock')).toHaveAttribute('title', 'Created in a loop');
     await expect(page.locator('.truss-node', { hasText: 'HelperA' }).locator('.node-lock')).toHaveAttribute('title', 'Created by the helper makeQueue');
     await expect(page.locator('.truss-node', { hasText: 'Plain' }).locator('.node-lock')).toHaveCount(0);
@@ -342,5 +343,62 @@ test('the palette searches the app\'s own Catalog by name, service or CloudForma
   } finally {
     truss.child.kill('SIGINT');
     expect(await truss.exited).toBe(0);
+  }
+});
+
+test('expanding a Node shows its read-only children down to the L1 with their CloudFormation type, and collapsing hides them', async ({ page }) => {
+  const dir = copyApp();
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    const uploads = page.locator('.truss-node', { hasText: 'Uploads' });
+    await expect(uploads).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('.layer-node')).toHaveCount(0);
+
+    await uploads.getByRole('button', { name: 'Expand Uploads' }).click();
+    const resource = page.locator('.layer-node', { hasText: 'AWS::S3::Bucket' });
+    await expect(resource).toBeVisible();
+    await expect(resource).toHaveAttribute('title', /^ShopStack\/Uploads\/Resource · AWS::S3::Bucket/);
+    // The child sits inside the Node's box.
+    const [outer, inner] = [(await uploads.boundingBox())!, (await resource.boundingBox())!];
+    expect(inner.x).toBeGreaterThanOrEqual(outer.x);
+    expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height);
+    // Still three Nodes of the app's own; a child is not one.
+    await expect(page.locator('.truss-node')).toHaveCount(3);
+
+    // A child is read-only: it can be selected for its path and type, but not dragged.
+    await resource.click();
+    const panel = page.getByRole('complementary').filter({ hasText: 'Construct path' });
+    await expect(panel).toContainText('ShopStack/Uploads/Resource');
+    await expect(panel).toContainText('Read-only');
+    await expect(page.locator('.react-flow__node-layer.draggable')).toHaveCount(0);
+
+    await uploads.getByRole('button', { name: 'Collapse Uploads' }).click();
+    await expect(page.locator('.layer-node')).toHaveCount(0);
+    // Expanding and collapsing is view state: nothing is written to the app.
+    expect(existsSync(join(dir, 'truss.json'))).toBe(false);
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('a resource a construct creates outside its own subtree is drawn at Stack scope, read-only and linked to the Node that caused it', async ({ page }) => {
+  const dir = copyApp(resolve(root, 'test/fixtures/shapes'));
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    const handler = page.locator('.truss-node.hoisted', { hasText: 'BucketNotificationsHandler' });
+    await expect(handler).toBeVisible({ timeout: 60_000 });
+    await expect(handler.locator('.node-lock')).toBeVisible();
+    await expect(page.locator('.react-flow__edge.cause-edge')).not.toHaveCount(0);
+    await handler.getByRole('button', { name: /^Expand/ }).click();
+    // The Role is itself a Layer, opened down to its L1.
+    await expect(page.locator('.layer-node', { hasText: 'AWS::IAM::Role' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand Role' }).click();
+    await expect(page.locator('.layer-node', { hasText: 'AWS::IAM::Role' })).toBeVisible();
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
   }
 });
