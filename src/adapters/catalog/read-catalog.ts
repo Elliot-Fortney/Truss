@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { gunzip } from 'node:zlib';
 import { buildCatalog, DIGEST_FORMAT, digestAssembly, type AssemblyDigest } from '../../core/catalog.ts';
-import type { CatalogLoad } from '../../core/ports.ts';
+import { OVERLAYS } from '../../core/overlays/index.ts';
+import type { CatalogLoad, LoadCatalog } from '../../core/ports.ts';
 import { checkSupported } from '../../core/support.ts';
 
 const gunzipAsync = promisify(gunzip);
@@ -73,7 +74,7 @@ async function readAssembly(pkgDir: string): Promise<unknown> {
 }
 
 const isDigest = (v: unknown, name: string, version: string): v is AssemblyDigest =>
-  isObject(v) && v['format'] === DIGEST_FORMAT && v['name'] === name && v['version'] === version && Array.isArray(v['classes']) && Array.isArray(v['structs']);
+  isObject(v) && v['format'] === DIGEST_FORMAT && v['name'] === name && v['version'] === version && Array.isArray(v['classes']) && Array.isArray(v['structs']) && Array.isArray(v['interfaces']) && Array.isArray(v['enums']);
 
 async function digestOf(pkgDir: string, name: string, version: string, cacheDir: string | undefined): Promise<AssemblyDigest> {
   const cacheFile = cacheDir && join(cacheDir, `${name.replace(/[\\/]/g, '__')}@${version}.json`);
@@ -95,13 +96,21 @@ async function digestOf(pkgDir: string, name: string, version: string, cacheDir:
   return digest;
 }
 
+/** One installed library whose assembly goes into the Catalog. */
+interface Library {
+  name: string;
+  version: string;
+  dir: string;
+}
+
+type Scan = { ok: true; cdkLib: Library; others: Library[]; schemaUnknown: boolean } | { ok: false; message: string };
+
 /**
- * Builds the Catalog from what the app has installed (ADR 0009, ADR 0010): `aws-cdk-lib`'s assembly,
- * resolved from the app folder as the app's own code would, and that of every direct dependency that
- * ships one. Refuses an app Truss can't support before it reads anything large. A library whose assembly
- * won't load is logged and left out, as if it were plain TypeScript; that is never a failure.
+ * Looks at what the app has installed, reading nothing large: refuses an app Truss can't support, and
+ * lists the libraries whose assemblies the Catalog is built from, `aws-cdk-lib` and every direct
+ * dependency that ships one (ADR 0009, ADR 0010). Cheap enough to run on every change to the app.
  */
-export async function loadCatalog(appDir: string, opts: LoadCatalogOptions): Promise<CatalogLoad> {
+async function scanApp(appDir: string): Promise<Scan> {
   const appPackage = (await readJsonIfThere(join(appDir, 'package.json'))) ?? {};
   const dependencyNames = new Set<string>();
   for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
@@ -115,7 +124,6 @@ export async function loadCatalog(appDir: string, opts: LoadCatalogOptions): Pro
   const schemaRange = isObject(cdkDeps) ? cdkDeps['@aws-cdk/cloud-assembly-schema'] : undefined;
   const version = cdkPackage?.['version'];
   const schemaMajor = await bundledSchemaMajor();
-  if (schemaMajor === Infinity) opts.log("Couldn't find the cloud assembly schema Truss bundles, so Truss can't tell whether this app's CDK is too new for it.");
   const cdkLibVersion = typeof version === 'string' ? version : undefined;
   const support = checkSupported(
     {
@@ -128,24 +136,64 @@ export async function loadCatalog(appDir: string, opts: LoadCatalogOptions): Pro
   if (!support.ok) return support;
   if (!cdkDir || cdkLibVersion === undefined) return { ok: false, message: `${CDK_LIB} isn't installed for this app.` };
 
-  const digests: AssemblyDigest[] = [];
-  try {
-    digests.push(await digestOf(cdkDir, CDK_LIB, cdkLibVersion, opts.cacheDir));
-  } catch (err) {
-    return { ok: false, message: `Couldn't read the constructs of ${CDK_LIB} ${cdkLibVersion}: ${err instanceof Error ? err.message : String(err)}` };
-  }
-
+  const others: Library[] = [];
   for (const name of [...dependencyNames].filter((n) => n !== CDK_LIB).sort()) {
     const dir = await findPackageDir(appDir, name);
     const libVersion = dir && (await readJsonIfThere(join(dir, 'package.json')))?.['version'];
     if (!dir || typeof libVersion !== 'string') continue;
     // Without an assembly it is a plain TypeScript library, which needs no word.
-    if (!(await exists(join(dir, '.jsii')))) continue;
+    if (await exists(join(dir, '.jsii'))) others.push({ name, version: libVersion, dir });
+  }
+  return { ok: true, cdkLib: { name: CDK_LIB, version: cdkLibVersion, dir: cdkDir }, others, schemaUnknown: schemaMajor === Infinity };
+}
+
+/** Builds the Catalog of a scanned app, with the Overlays laid over it. A library that won't load is logged and left out, except `aws-cdk-lib`, without which nothing could be placed. */
+async function buildFrom(scan: Extract<Scan, { ok: true }>, opts: LoadCatalogOptions): Promise<CatalogLoad> {
+  if (scan.schemaUnknown) opts.log("Couldn't find the cloud assembly schema Truss bundles, so Truss can't tell whether this app's CDK is too new for it.");
+  const { cdkLib } = scan;
+  const digests: AssemblyDigest[] = [];
+  try {
+    digests.push(await digestOf(cdkLib.dir, cdkLib.name, cdkLib.version, opts.cacheDir));
+  } catch (err) {
+    return { ok: false, message: `Couldn't read the constructs of ${CDK_LIB} ${cdkLib.version}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  for (const { dir, name, version } of scan.others) {
     try {
-      digests.push(await digestOf(dir, name, libVersion, opts.cacheDir));
+      digests.push(await digestOf(dir, name, version, opts.cacheDir));
     } catch (err) {
-      opts.log(`Couldn't read the constructs of ${name} ${libVersion}, so Truss treats it as plain TypeScript: ${err instanceof Error ? err.message : String(err)}`);
+      opts.log(`Couldn't read the constructs of ${name} ${version}, so Truss treats it as plain TypeScript: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  return { ok: true, catalog: buildCatalog(digests) };
+  const catalog = buildCatalog(digests, OVERLAYS);
+  // An Overlay is written against the CI baseline, so on another version some of its items may not resolve: that is for the terminal, never a Problem.
+  for (const line of catalog.dropped) opts.log(line);
+  return { ok: true, catalog };
+}
+
+/**
+ * Builds the Catalog from what the app has installed (ADR 0009, ADR 0010). Refuses an app Truss can't
+ * support before it reads anything large.
+ */
+export async function loadCatalog(appDir: string, opts: LoadCatalogOptions): Promise<CatalogLoad> {
+  const scan = await scanApp(appDir);
+  return scan.ok ? buildFrom(scan, opts) : scan;
+}
+
+/**
+ * A `loadCatalog` that can be asked again whenever the app changes. While the installed versions of
+ * `aws-cdk-lib` and the other libraries are the same it answers with the Catalog it already built; when
+ * one changes it builds a new one, from the cache when that version was read before (ADR 0009).
+ */
+export function createCatalogLoader(opts: LoadCatalogOptions): LoadCatalog {
+  const last = new Map<string, { versions: string; load: CatalogLoad }>();
+  return async (appDir) => {
+    const scan = await scanApp(appDir);
+    if (!scan.ok) return scan;
+    const versions = [scan.cdkLib, ...scan.others].map((l) => `${l.name}@${l.version}`).join(' ');
+    const before = last.get(appDir);
+    if (before?.versions === versions) return before.load;
+    const load = await buildFrom(scan, opts);
+    if (load.ok) last.set(appDir, { versions, load });
+    return load;
+  };
 }

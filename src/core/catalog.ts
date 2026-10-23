@@ -1,3 +1,4 @@
+import type { ConnectionHint, HintCall, Overlay, ResolvedOverlay, Snippet } from './overlay.ts';
 import { serviceName } from './services.ts';
 
 /**
@@ -37,20 +38,24 @@ export interface CatalogEntry {
   deprecated?: true;
   /** Every prop the construct takes, including those its props struct inherits; required ones are flagged. */
   props: CatalogProp[];
+  /** The hand-written presentation data for this construct, with the items that don't resolve in the app's libraries left out. */
+  overlay?: ResolvedOverlay;
 }
 
 export interface Catalog {
   /** Ordered by FQN. */
   entries: CatalogEntry[];
+  /** Each Overlay item that didn't resolve in the app's libraries and was dropped, as a line for the terminal. */
+  dropped: string[];
 }
 
-/** An entry as the palette lists it: everything but the props. */
-export type SearchHit = Omit<CatalogEntry, 'props'>;
+/** An entry as the palette lists it: everything but the props, with the Overlay's friendly name and whether it is featured. */
+export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay'> & { displayName?: string; featured?: true };
 
 // --- Digest ---------------------------------------------------------------------------------------------
 
 /** Bump when the digest's shape changes, so a cache written by an older Truss is ignored. */
-export const DIGEST_FORMAT = 1;
+export const DIGEST_FORMAT = 2;
 
 /** A jsii type reference. */
 export type TypeRef =
@@ -72,6 +77,20 @@ interface DigestClass {
   cfnType?: string;
   /** The struct the third constructor parameter takes. */
   propsFqn?: string;
+  /** The interfaces it implements directly. */
+  interfaces?: string[];
+  /** Names of the instance methods a caller can use, declared on this class and not on its bases. */
+  methods?: string[];
+  /** Instance properties a caller can use, by name, each with the FQN of its type, or `''` when the type isn't a class or interface. */
+  properties?: Record<string, string>;
+}
+
+/** A behavioural interface (not a props struct): what an Overlay call can be made on when a property is typed as one, e.g. `IResource`. */
+interface DigestInterface {
+  fqn: string;
+  bases: string[];
+  methods?: string[];
+  properties?: Record<string, string>;
 }
 
 interface DigestProp {
@@ -94,6 +113,9 @@ export interface AssemblyDigest {
   version: string;
   classes: DigestClass[];
   structs: DigestStruct[];
+  interfaces: DigestInterface[];
+  /** FQNs of the enums, which Overlay snippets may name. */
+  enums: string[];
 }
 
 type Json = Record<string, unknown>;
@@ -107,6 +129,8 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
   }
   const classes: DigestClass[] = [];
   const structs: DigestStruct[] = [];
+  const interfaces: DigestInterface[] = [];
+  const enums: string[] = [];
 
   for (const t of Object.values(raw['types'])) {
     if (!isObject(t) || !str(t['fqn'])) continue;
@@ -121,6 +145,8 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
       const base = str(t['base']);
       const summary = str(docs['summary']);
       const cfnType = str(custom['cloudformationResource']);
+      const { methods, properties } = digestMembers(t);
+      const implemented = stringList(t['interfaces']);
       classes.push({
         fqn,
         name: str(t['name']) ?? fqn.split('.').at(-1)!,
@@ -132,13 +158,35 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
         ...(summary ? { summary } : {}),
         ...(cfnType ? { cfnType } : {}),
         ...(propsType ? { propsFqn: propsType } : {}),
+        ...(implemented.length > 0 ? { interfaces: implemented } : {}),
+        ...(methods ? { methods } : {}),
+        ...(properties ? { properties } : {}),
       });
-    } else if (t['kind'] === 'interface' && t['datatype'] === true) {
-      const bases = Array.isArray(t['interfaces']) ? t['interfaces'].filter((b): b is string => typeof b === 'string') : [];
-      structs.push({ fqn, bases, props: (Array.isArray(t['properties']) ? t['properties'] : []).flatMap(digestProp) });
+    } else if (t['kind'] === 'enum') {
+      enums.push(fqn);
+    } else if (t['kind'] === 'interface') {
+      const bases = stringList(t['interfaces']);
+      if (t['datatype'] === true) structs.push({ fqn, bases, props: (Array.isArray(t['properties']) ? t['properties'] : []).flatMap(digestProp) });
+      else interfaces.push({ fqn, bases, ...digestMembers(t) });
     }
   }
-  return { format: DIGEST_FORMAT, name: raw['name'] as string, version: raw['version'] as string, classes, structs };
+  return { format: DIGEST_FORMAT, name: raw['name'] as string, version: raw['version'] as string, classes, structs, interfaces, enums };
+}
+
+const stringList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((b): b is string => typeof b === 'string') : []);
+
+/** The instance methods and properties of a class or interface, left out when it has none. */
+function digestMembers(t: Json): { methods?: string[]; properties?: Record<string, string> } {
+  const methods = (Array.isArray(t['methods']) ? t['methods'] : []).flatMap((m) => (isCallable(m) ? [m['name'] as string] : []));
+  const properties = Object.fromEntries(
+    (Array.isArray(t['properties']) ? t['properties'] : []).flatMap((p) => (isCallable(p) ? [[p['name'] as string, isObject(p['type']) ? (str(p['type']['fqn']) ?? '') : '']] : [])),
+  );
+  return { ...(methods.length > 0 ? { methods } : {}), ...(Object.keys(properties).length > 0 ? { properties } : {}) };
+}
+
+/** A method or property a caller can use on an instance: named, and neither static nor protected. */
+function isCallable(m: unknown): m is Json {
+  return isObject(m) && !!str(m['name']) && m['static'] !== true && m['protected'] !== true;
 }
 
 function digestProp(p: unknown): DigestProp[] {
@@ -203,13 +251,22 @@ const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const moduleKey = (namespace: string) => namespace.replace(/^aws_/, '').replace(/_patterns$/, '');
 
-/** Builds the Catalog from the digest of every library the app has installed. */
-export function buildCatalog(digests: readonly AssemblyDigest[]): Catalog {
+/**
+ * Builds the Catalog from the digest of every library the app has installed, then lays the Overlays
+ * over it. An Overlay item the libraries can't resolve is dropped and reported in `dropped`.
+ */
+export function buildCatalog(digests: readonly AssemblyDigest[], overlays: readonly Overlay[] = []): Catalog {
   const classes = new Map<string, { c: DigestClass; library: string }>();
   const structs = new Map<string, DigestStruct>();
+  const enums = new Set<string>();
+  /** What a call can be made on: every class and interface, with the types it inherits members from. */
+  const members = new Map<string, { bases: string[]; methods?: string[]; properties?: Record<string, string> }>();
   for (const d of digests) {
+    for (const c of d.classes) members.set(c.fqn, { bases: [...(c.base ? [c.base] : []), ...(c.interfaces ?? [])], ...(c.methods ? { methods: c.methods } : {}), ...(c.properties ? { properties: c.properties } : {}) });
+    for (const i of d.interfaces) members.set(i.fqn, i);
     for (const c of d.classes) classes.set(c.fqn, { c, library: d.name });
     for (const s of d.structs) structs.set(s.fqn, s);
+    for (const e of d.enums) enums.add(e);
   }
 
   /** The class's base classes, nearest first. The last one may be a class no loaded library defines, such as `constructs.Construct`. */
@@ -267,7 +324,133 @@ export function buildCatalog(digests: readonly AssemblyDigest[]): Catalog {
     if (cfnType) e.cfnType = cfnType;
   }
 
-  return { entries: entries.sort((a, b) => compare(a.fqn, b.fqn)) };
+  const dropped: string[] = [];
+  const world: World = {
+    hasType: (fqn) => members.has(fqn) || enums.has(fqn),
+    hasClass: (fqn) => classes.has(fqn),
+    hasMethod: (fqn, name) => supertypes(members, fqn).some((f) => members.get(f)?.methods?.includes(name)),
+    propertyType: (fqn, name) => {
+      for (const f of supertypes(members, fqn)) {
+        const type = members.get(f)?.properties?.[name];
+        if (type !== undefined) return type;
+      }
+      return undefined;
+    },
+  };
+  const byFqn = new Map(entries.map((e) => [e.fqn, e]));
+  for (const o of overlays) {
+    const entry = byFqn.get(o.fqn);
+    if (!entry) {
+      dropped.push(`Overlay for ${o.fqn} dropped: no such construct in the installed libraries.`);
+      continue;
+    }
+    if (o.tier) entry.tier = o.tier;
+    entry.overlay = resolveOverlay(o, entry, world, (what, why) => dropped.push(`Overlay for ${o.fqn}: dropped ${what}, ${why}.`));
+  }
+
+  return { entries: entries.sort((a, b) => compare(a.fqn, b.fqn)), dropped };
+}
+
+// --- Overlays -------------------------------------------------------------------------------------------
+
+/** What the installed libraries say exists, for checking the items of an Overlay. */
+interface World {
+  /** A class or an enum. */
+  hasType(fqn: string): boolean;
+  hasClass(fqn: string): boolean;
+  /** An instance method on the class or one of its bases. */
+  hasMethod(fqn: string, name: string): boolean;
+  /** The FQN of a property's type (`''` when it isn't a class or interface), or undefined when the class and its bases have no such property. */
+  propertyType(fqn: string, name: string): string | undefined;
+}
+
+/** The type and everything it inherits members from, nearest first; a cycle in the data ends the walk instead of looping. */
+function supertypes(members: ReadonlyMap<string, { bases: string[] }>, fqn: string): string[] {
+  const out: string[] = [];
+  for (let i = 0, queue = [fqn]; i < queue.length; i++) {
+    const at = queue[i]!;
+    if (out.includes(at)) continue;
+    out.push(at);
+    queue.push(...(members.get(at)?.bases ?? []));
+  }
+  return out;
+}
+
+/** Follows `path` through properties from the class `from`; the last step is checked by `last`. */
+function follows(world: World, from: string, path: readonly string[], last: (fqn: string, name: string) => boolean): boolean {
+  let at = from;
+  for (const name of path.slice(0, -1)) {
+    const type = world.propertyType(at, name);
+    if (!type) return false;
+    at = type;
+  }
+  const end = path.at(-1);
+  return end !== undefined && last(at, end);
+}
+
+const named = (path: readonly string[]) => path.join('.');
+
+function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (what: string, why: string) => void): ResolvedOverlay {
+  const propNames = new Set(entry.props.map((p) => p.name));
+  const noProp = (name: string) => `${entry.name} has no prop "${name}"`;
+  const missing = (uses: readonly string[] | undefined) => (uses ?? []).filter((f) => !world.hasType(f));
+
+  const snippets = (kind: string, given: Record<string, Snippet> | undefined) => {
+    const kept: Record<string, Snippet> = {};
+    for (const [prop, snippet] of Object.entries(given ?? {})) {
+      const gone = missing(snippet.uses);
+      if (!propNames.has(prop)) drop(`${kind} "${prop}"`, noProp(prop));
+      else if (gone.length > 0) drop(`${kind} "${prop}"`, `${gone.join(', ')} isn't in the installed libraries`);
+      else kept[prop] = snippet;
+    }
+    return kept;
+  };
+
+  const featuredProps: string[] = [];
+  for (const p of o.featuredProps ?? []) {
+    if (propNames.has(p)) featuredProps.push(p);
+    else drop(`featured prop "${p}"`, noProp(p));
+  }
+
+  /** The spellings of a call that resolve on every class in `receivers`. A spelling is only worth a line of its own when another one survives. */
+  const callForms = (forms: readonly string[][], receivers: readonly string[], label: string) => {
+    const resolves = (form: string[]) => receivers.every((r) => follows(world, r, form, (fqn, name) => world.hasMethod(fqn, name)));
+    const kept = forms.filter(resolves);
+    if (kept.length > 0) for (const form of forms.filter((f) => !kept.includes(f))) drop(`form ${named(form)} of ${label}`, `it doesn't resolve on ${receivers.join(', ')}`);
+    return kept;
+  };
+
+  const connections: ConnectionHint[] = [];
+  for (const hint of o.connections ?? []) {
+    const label = `hint "${hint.label}"`;
+    const peers = hint.peers.filter((p) => world.hasClass(p));
+    if (peers.length === 0) {
+      drop(label, 'none of its peers are in the installed libraries');
+      continue;
+    }
+    for (const gone of hint.peers.filter((p) => !peers.includes(p))) drop(`peer ${gone} of ${label}`, `it isn't in the installed libraries`);
+    const primaryGone = missing(hint.primary.uses);
+    const forms = callForms(hint.primary.forms, [entry.fqn], `${label}'s call`);
+    if (primaryGone.length > 0 || forms.length === 0) {
+      drop(label, primaryGone.length > 0 ? `${primaryGone.join(', ')} isn't in the installed libraries` : `its call ${hint.primary.forms.map(named).join(' or ')} doesn't resolve`);
+      continue;
+    }
+    const secondary: HintCall[] = [];
+    for (const call of hint.secondary ?? []) {
+      const gone = missing(call.uses);
+      const callForm = callForms(call.forms, call.on === 'self' ? [entry.fqn] : peers, `${label}'s call on ${call.on}`);
+      if (gone.length > 0) drop(`a call of ${label}`, `${gone.join(', ')} isn't in the installed libraries`);
+      else if (callForm.length === 0) drop(`a call of ${label}`, `${call.forms.map(named).join(' or ')} doesn't resolve`);
+      else secondary.push({ ...call, forms: callForm });
+    }
+    connections.push({ ...hint, peers, primary: { ...hint.primary, forms }, ...(hint.secondary ? { secondary } : {}) });
+  }
+
+  const accessors = (o.accessors ?? []).filter(
+    (a) => follows(world, entry.fqn, a.path, (fqn, name) => world.propertyType(fqn, name) !== undefined) || (drop(`accessor ${named(a.path)}`, `${entry.name} has no such property`), false),
+  );
+
+  return { displayName: o.displayName, featuredProps, defaults: snippets('default', o.defaults), fixtures: snippets('fixture', o.fixtures), connections, accessors };
 }
 
 const indexes = new WeakMap<Catalog, Map<string, CatalogEntry>>();
@@ -289,12 +472,13 @@ const TIER_ORDER: Record<Tier, number> = { L2: 0, L3: 1, L1: 2 };
 /** How well one word of the query matches an entry; 0 when it doesn't. */
 function scoreWord(word: string, e: CatalogEntry): number {
   const name = e.name.toLowerCase();
-  if (name === word) return 100;
+  const display = e.overlay?.displayName.toLowerCase();
+  if (name === word || display === word) return 100;
   const service = e.service?.toLowerCase();
   const module = e.module ? moduleKey(e.module) : undefined;
   if (service === word || module === word) return 70;
-  if (name.startsWith(word)) return 60;
-  if (name.includes(word)) return 40;
+  if (name.startsWith(word) || display?.startsWith(word)) return 60;
+  if (name.includes(word) || display?.includes(word)) return 40;
   const cfn = e.cfnType?.toLowerCase();
   if (cfn && (cfn.split('::').at(-1) === word || cfn === word)) return 30;
   if ([service, module, cfn, e.library.toLowerCase()].some((field) => field?.includes(word))) return 10;
@@ -326,9 +510,10 @@ export function searchCatalog(catalog: Catalog, query: string, limit = 50): Sear
     (a, b) =>
       Number(a.e.deprecated ?? false) - Number(b.e.deprecated ?? false) ||
       b.score - a.score ||
+      Number(b.e.overlay !== undefined) - Number(a.e.overlay !== undefined) ||
       TIER_ORDER[a.e.tier] - TIER_ORDER[b.e.tier] ||
       compare(a.e.name, b.e.name) ||
       compare(a.e.fqn, b.e.fqn),
   );
-  return scored.slice(0, limit).map(({ e: { props: _props, ...hit } }) => hit);
+  return scored.slice(0, limit).map(({ e: { props: _props, overlay, ...hit } }) => (overlay ? { ...hit, displayName: overlay.displayName, featured: true as const } : hit));
 }

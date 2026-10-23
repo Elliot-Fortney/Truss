@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadCatalog } from './adapters/catalog/read-catalog.ts';
+import { createCatalogLoader } from './adapters/catalog/read-catalog.ts';
 import { NodeFiles } from './adapters/files/node-files.ts';
 import { TsSource } from './adapters/source/ts-source.ts';
 import { ToolkitSynth } from './adapters/synth/toolkit-synth.ts';
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     synth,
     files: (appDir) => new NodeFiles(appDir),
     source: new TsSource(),
-    loadCatalog: (appDir) => loadCatalog(appDir, { cacheDir: join(homedir(), '.cache', 'truss', 'catalog'), log: (line) => console.log(line) }),
+    loadCatalog: createCatalogLoader({ cacheDir: join(homedir(), '.cache', 'truss', 'catalog'), log: (line) => console.log(line) }),
     token: randomBytes(24).toString('base64url'),
     ui: loadUi(fileURLToPath(new URL('./ui', import.meta.url))),
     open: openBrowser,

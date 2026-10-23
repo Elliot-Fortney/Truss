@@ -37,7 +37,7 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
   const loaded = await deps.loadCatalog(appDir);
   if (!loaded.ok) throw new Error(loaded.message);
 
-  const session = new Session({ appDir, synth: deps.synth, files: deps.files(appDir), source: deps.source, catalog: loaded.catalog });
+  const session = new Session({ appDir, synth: deps.synth, files: deps.files(appDir), source: deps.source, catalog: loaded.catalog, reloadCatalog: () => deps.loadCatalog(appDir) });
   const server = await startServer({
     source: session,
     token: deps.token,

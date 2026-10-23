@@ -14,7 +14,7 @@ function deps(overrides: Partial<RunDeps> = {}): RunDeps & { lines: string[] } {
     synth: { synth: async () => ({ ok: true, assembly: readFixtureAssembly('straight-line') }) },
     files: () => memoryFiles(readFixtureFiles('straight-line')),
     source: new TsSource(),
-    loadCatalog: async () => ({ ok: true, catalog: { entries: [] } }),
+    loadCatalog: async () => ({ ok: true, catalog: { entries: [], dropped: [] } }),
     token: 'tok123',
     ui: { '/': { type: 'text/html', body: '<p>ui</p>' } },
     open: vi.fn(),
@@ -59,7 +59,7 @@ describe('run', () => {
   });
 
   it('reads the Catalog of the app it found, before it opens anything', async () => {
-    const loadCatalog = vi.fn(async () => ({ ok: true as const, catalog: { entries: [] } }));
+    const loadCatalog = vi.fn(async () => ({ ok: true as const, catalog: { entries: [], dropped: [] } }));
     const d = deps({ loadCatalog });
     const running = await run({ open: false, port: 0 }, d);
     await running.stop();
