@@ -6,7 +6,7 @@ Open a TypeScript CDK app as an editable Design. See `CONTEXT.md` for the vocabu
 
 ```sh
 npm i -D truss-cdk   # placeholder package name: `truss` is taken on npm
-npx truss            # run inside a CDK app; --port <n>, --no-open
+npx truss            # run inside a CDK app; --port <n>, --no-open, --synth-timeout <seconds> (default 120)
 ```
 
 ## Develop

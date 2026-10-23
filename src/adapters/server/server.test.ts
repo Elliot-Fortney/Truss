@@ -1,11 +1,11 @@
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import type { View } from '../../core/view.ts';
 import { startServer, type RunningServer, type ViewSource } from './server.ts';
 
-const view = (version: number): View => ({ version, synthing: false, stacks: [], nodes: [] });
+const view = (version: number): View => ({ version, synthing: false, hasDesign: false, stacks: [], nodes: [] });
 
 function fakeSource(initial: View): ViewSource & { push(v: View): void } {
   let current = initial;
@@ -112,6 +112,61 @@ describe('startServer', () => {
     await new Promise((r) => blocker.once('listening', r));
     const taken = (blocker.address() as AddressInfo).port;
     await expect(startServer({ source: fakeSource(view(1)), port: taken, token: 't' })).rejects.toThrow(/in use/i);
+  });
+
+  describe('open-in-editor', () => {
+    const open = async (onOpenInEditor = vi.fn()) => {
+      const { server } = await start(undefined, { onOpenInEditor });
+      const conn = await connect(wsUrl(server), `http://127.0.0.1:${server.port}`);
+      if ('status' in conn) throw new Error('refused');
+      await conn.first;
+      return { ws: conn.ws, onOpenInEditor };
+    };
+
+    it('hands a request from the page to the handler', async () => {
+      const { ws, onOpenInEditor } = await open();
+      ws.send(JSON.stringify({ type: 'open-in-editor', file: 'lib/a.ts', line: 4, col: 2 }));
+      await vi.waitFor(() => expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'lib/a.ts', line: 4, col: 2 }));
+      ws.close();
+    });
+
+    it('accepts a request with no position', async () => {
+      const { ws, onOpenInEditor } = await open();
+      ws.send(JSON.stringify({ type: 'open-in-editor', file: 'lib/a.ts' }));
+      await vi.waitFor(() => expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'lib/a.ts' }));
+      ws.close();
+    });
+
+    it('ignores malformed frames and unknown messages, and keeps serving the client', async () => {
+      const { ws, onOpenInEditor } = await open();
+      for (const frame of [
+        'not json',
+        '[]',
+        'null',
+        JSON.stringify({ type: 'something-else' }),
+        JSON.stringify({ type: 'open-in-editor' }),
+        JSON.stringify({ type: 'open-in-editor', file: 42 }),
+        JSON.stringify({ type: 'open-in-editor', file: 'a.ts', line: 'x' }),
+        JSON.stringify({ type: 'open-in-editor', file: 'a.ts', col: 0 }),
+      ]) {
+        ws.send(frame);
+      }
+      ws.send(JSON.stringify({ type: 'open-in-editor', file: 'ok.ts' }));
+      await vi.waitFor(() => expect(onOpenInEditor).toHaveBeenCalledTimes(1));
+      expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'ok.ts' });
+      ws.close();
+    });
+
+    it('survives a handler that throws', async () => {
+      const throwing = vi.fn(() => {
+        throw new Error('no editor');
+      });
+      const { ws } = await open(throwing);
+      ws.send(JSON.stringify({ type: 'open-in-editor', file: 'a.ts' }));
+      await vi.waitFor(() => expect(throwing).toHaveBeenCalled());
+      expect(ws.readyState).toBe(ws.OPEN);
+      ws.close();
+    });
   });
 
   it('closes cleanly, dropping open connections', async () => {

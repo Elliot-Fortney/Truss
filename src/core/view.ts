@@ -1,4 +1,4 @@
-import type { Assembly, TreeNode } from './assembly.ts';
+import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import type { Facts } from './facts.ts';
 
 /** A Stack drawn as a group box. */
@@ -27,8 +27,13 @@ export interface View {
   version: number;
   /** True while a synth is running, so the Design may be out of date. */
   synthing: boolean;
-  /** The synth error, when there is no Design to show. */
-  error?: { message: string; output?: string };
+  /**
+   * The error from the latest synth. With `hasDesign` false there is nothing to show but the error;
+   * with it true the Design below is the last good one, and the canvas is dimmed under a banner.
+   */
+  error?: SynthError;
+  /** True once a synth has succeeded, so `stacks` and `nodes` are a Design rather than empty. */
+  hasDesign: boolean;
   stacks: StackBoxView[];
   nodes: NodeView[];
 }
@@ -74,4 +79,9 @@ export function buildView(facts: Facts, assembly: Assembly): ViewBody {
   visit(assembly.tree, undefined, false);
 
   return { stacks, nodes };
+}
+
+/** What the browser sends: the only message there is. */
+export interface OpenInEditorMessage extends EditorRequest {
+  type: 'open-in-editor';
 }

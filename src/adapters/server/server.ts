@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
+import type { EditorRequest } from '../../core/assembly.ts';
 import type { View } from '../../core/view.ts';
 
 /** What the server needs from the session: the current View and a feed of new ones. */
@@ -19,6 +20,8 @@ export interface ServerOptions {
   source: ViewSource;
   /** The random per-run secret the WebSocket upgrade requires. */
   token: string;
+  /** Called when the page asks to open a place in the code. Never trusted: the handler checks the path. */
+  onOpenInEditor?: (request: EditorRequest) => void;
   /** Static UI files by URL path. */
   ui?: Record<string, Asset>;
   /** An explicit port (`--port`). Fails when it is taken. */
@@ -118,6 +121,15 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       send(opts.source.view());
       const off = opts.source.subscribe(send);
       ws.once('close', off);
+      ws.on('message', (data) => {
+        const request = parseOpenInEditor(data.toString());
+        if (!request) return;
+        try {
+          opts.onOpenInEditor?.(request);
+        } catch {
+          // Failing to launch an editor must not drop the client.
+        }
+      });
       // A malformed frame or a reset must drop that client, not crash Truss.
       ws.on('error', () => ws.terminate());
     });
@@ -133,4 +145,20 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         server.close(() => resolve());
       }),
   };
+}
+
+/** The only message the page sends. Anything that isn't exactly that shape is dropped. */
+function parseOpenInEditor(text: string): EditorRequest | undefined {
+  let msg: unknown;
+  try {
+    msg = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof msg !== 'object' || msg === null) return undefined;
+  const { type, file, line, col } = msg as Record<string, unknown>;
+  if (type !== 'open-in-editor' || typeof file !== 'string' || file === '') return undefined;
+  const isPosition = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1;
+  if ((line !== undefined && !isPosition(line)) || (col !== undefined && !isPosition(col))) return undefined;
+  return { file, ...(line !== undefined ? { line } : {}), ...(col !== undefined ? { col } : {}) };
 }

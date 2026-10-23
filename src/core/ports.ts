@@ -16,4 +16,10 @@ export interface Source {
 export interface Files {
   /** Reads the app's TypeScript sources, keyed by path relative to the app folder. */
   read(): Promise<FileSet>;
+  /**
+   * Calls `onChange` when anything in the app folder that can change the Design is touched: an
+   * editor save, `git pull`, a formatter, a new `package-lock.json`. Events are already debounced.
+   * Returns a function that stops watching.
+   */
+  watch(onChange: () => void): () => void;
 }
