@@ -512,7 +512,7 @@ export function App() {
           ) : null}
           {error ? (
             <div className="banner error-banner" role="alert">
-              <strong>{error.kind === 'draft' ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.' : `Your app no longer synths. Showing the last good Design.${unsaved ? ' Your Draft is held as it was: Save is off until the app synths again, and Discard still works.' : ''}`}</strong>
+              <strong>{error.kind === 'draft' ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.' : `Your app no longer synths. Showing the last good Design.${unsaved ? ' Your Draft is held as it was: Save is paused until the app synths again, and Discard still works.' : ''}`}</strong>
               <span>{error.message}</span>
               <ErrorLocation error={error} onOpen={openInEditor} />
               {error.output ? (
@@ -550,7 +550,7 @@ export function App() {
           <Controls showInteractive={false} />
         </ReactFlow>
         <Palette search={search} />
-        {draft ? <DraftBar draft={draft} busy={view.synthing || saving} canSave={draft.problems.length === 0 && !error} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} /> : null}
+        {draft ? <DraftBar draft={draft} busy={view.synthing || saving} canSave={draft.problems.length === 0 && !error} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} /> : null}
         {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onOpen={openInEditor} /> : null}
         {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}

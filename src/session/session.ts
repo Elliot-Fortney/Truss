@@ -216,7 +216,8 @@ export class Session {
   private async deriveDraft(): Promise<void> {
     const base = this.base!;
     this.rebase(base);
-    if (this.draft.intents.length === 0) return this.serialised(async () => this.showBase());
+    // The base synthed, so an error shown from before it did is over, whatever the rebase left of the Draft.
+    if (this.draft.intents.length === 0) return this.serialised(async () => this.showBase(true));
     const planned = this.planned()!;
     if (!planned.ok) return this.fail({ message: planned.reason }, 'draft');
     const intents = this.draft.intents;
@@ -234,7 +235,7 @@ export class Session {
       dropped.push(`Dropped ${describeIntent(intent)} on ${intent.expect.literalId}: ${plan.reason}`);
       this.draft = { ...this.draft, intents: this.draft.intents.filter((_, i) => i !== plan.intent) };
     }
-    // Notices stay until the user next changes the Draft, so a later rebase adds to them rather than replacing them.
+    // Notices stay until the Draft is undone, redone, discarded or saved, so a later rebase adds to them rather than replacing them.
     this.notices = [...this.notices, ...dropped];
   }
 
@@ -364,6 +365,10 @@ export class Session {
     const { requestId } = message;
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
     if (message.type === 'setProp') return this.setProp(message);
+    // A Draft is held as it was while the code on disk doesn't synth, so only Discard can change it then.
+    if ((message.type === 'undo' || message.type === 'redo') && this.current.error && this.current.error.kind !== 'draft') {
+      return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
+    }
     if (message.type === 'undo' || message.type === 'redo' || message.type === 'discard') return this.changeDraft(message);
     // The Design on screen is the last good one, dimmed: editing it waits until the app synths again.
     if (this.current.error) {
@@ -459,6 +464,8 @@ export class Session {
     // A Draft is held, not rebased, while the code on disk doesn't synth: there is nothing to check it against.
     if (this.current.error?.kind === 'draft') return refuse(`Fix the Problem the Draft causes first: ${this.current.error.message}`);
     if (this.current.error) return refuse(`Save is paused until the app synths again: ${this.current.error.message}`);
+    // Files changed after Save began to wait: the Draft has not been planned on them.
+    if (this.cycle || this.baseVersion !== this.filesVersion) return refuse('Truss is still reading changes to your code. Try again in a moment.');
     // The screen has to show the Draft as it is now, because the checks were made on what it shows.
     if (this.shownIntents !== this.draft.intents || !this.snapshot) return refuse('Truss is still checking the Draft. Try again in a moment.');
     const planned = this.planned();

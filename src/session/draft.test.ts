@@ -435,7 +435,7 @@ describe('the Draft', () => {
       expect(r.synth.shadowCalls).toHaveLength(shadows);
     });
 
-    it('keeps the notices of earlier rebases until the Draft is changed', async () => {
+    it('keeps the notices of earlier rebases until the Draft is discarded', async () => {
       const r = await rig();
       await set(r, UPLOADS, 'versioned', bool(false));
       await set(r, 'ShopStack/Orders', 'fifo', bool(true));
@@ -497,6 +497,34 @@ describe('the Draft', () => {
       expect(r.session.view().draft?.notices[0]).toMatch(/Dropped versioned → false on Uploads/);
       expect(r.session.view().draft?.items.map((i) => i.id)).toEqual(['ShopStack/Orders']);
       expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+    });
+
+    it('clears the error when the app synths again and every edit is dropped', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await settled(r);
+
+      r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
+      await breakApp(r);
+      r.synth.result = () => good();
+      r.files.change();
+      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await settled(r);
+      expect(r.session.view().error).toBeUndefined();
+      expect(r.session.draftSize()).toBe(0);
+    });
+
+    it('takes no undo or redo, which would change a Draft that is not on the new code', async () => {
+      const r = await rig();
+      await set(r, UPLOADS, 'versioned', bool(false));
+      await set(r, 'ShopStack/Orders', 'fifo', bool(true));
+      await send(r, 'undo');
+      await settled(r);
+      await breakApp(r);
+
+      expect(refusal(await send(r, 'undo'))).toMatch(/paused.*boom/);
+      expect(refusal(await send(r, 'redo'))).toMatch(/paused.*boom/);
+      expect(r.session.draftSize()).toBe(1);
     });
 
     it('still lets the Draft be discarded', async () => {

@@ -45,6 +45,7 @@ export function DraftBar({
   draft,
   busy,
   canSave,
+  held,
   onUndo,
   onRedo,
   onSave,
@@ -55,6 +56,8 @@ export function DraftBar({
   busy: boolean;
   /** Whether the Draft has no Problem that stops Save. */
   canSave: boolean;
+  /** The app doesn't synth, so the Draft is kept as it was and only Discard can change it. */
+  held: boolean;
   onUndo(): void;
   onRedo(): void;
   onSave(): void;
@@ -66,10 +69,10 @@ export function DraftBar({
     <div className="draft-bar" role="region" aria-label="Draft">
       <div className="draft-controls">
         <strong>{count === 0 ? 'Draft is empty' : `Draft · ${count} ${count === 1 ? 'edit' : 'edits'}`}</strong>
-        <button type="button" onClick={onUndo} disabled={!draft.canUndo} title="Undo (Ctrl+Z)">
+        <button type="button" onClick={onUndo} disabled={!draft.canUndo || held} title="Undo (Ctrl+Z)">
           Undo
         </button>
-        <button type="button" onClick={onRedo} disabled={!draft.canRedo} title="Redo (Ctrl+Shift+Z)">
+        <button type="button" onClick={onRedo} disabled={!draft.canRedo || held} title="Redo (Ctrl+Shift+Z)">
           Redo
         </button>
         <button type="button" onClick={() => setReviewing(!reviewing)} aria-expanded={reviewing && count > 0} disabled={count === 0}>
