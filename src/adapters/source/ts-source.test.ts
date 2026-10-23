@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFixtureAssembly, readFixtureFiles } from '../../../test/support/fixture.ts';
+import type { Assembly } from '../../core/assembly.ts';
 import { emptySidecar } from '../../core/sidecar.ts';
 import { buildView } from '../../core/view.ts';
 import { TsSource } from './ts-source.ts';
@@ -208,6 +209,36 @@ describe('TsSource.analyse on the shapes fixture: classes, nested stacks, Stages
   });
 });
 
+describe('TsSource.analyse finds a `fromXxx` call in the constructor of a base class', () => {
+  const files = new Map([
+    ['bin/app.ts', "const app = new cdk.App();\nnew Child(app, 'S');\n"],
+    [
+      'lib/stacks.ts',
+      [
+        'export class Base extends cdk.Stack {',
+        '  constructor(scope: Construct, id: string) {',
+        '    super(scope, id);',
+        "    s3.Bucket.fromBucketName(this, 'Imp', 'x');",
+        '  }',
+        '}',
+        'export class Child extends Base {}',
+      ].join('\n'),
+    ],
+  ]);
+  const tree = (id: string, path: string, fqn: string, children: Assembly['tree'][] = []) => ({ id, path, fqn, children });
+  const assembly: Assembly = {
+    schemaVersion: '55.0.0',
+    stacks: [{ path: 'S' }],
+    creation: { S: [{ file: 'bin/app.ts', line: 2, col: 1 }] },
+    tree: tree('App', '', 'aws-cdk-lib.App', [tree('S', 'S', 'aws-cdk-lib.Stack', [tree('Imp', 'S/Imp', 'aws-cdk-lib.aws_s3.BucketBase')])]),
+  };
+
+  it('gives the subclass\'s instance the external, though the call is written in the base class', () => {
+    const facts = new TsSource().analyse(files, assembly);
+    expect(facts.nodes['S/Imp']).toMatchObject({ external: true, literalId: 'Imp', className: 's3.Bucket.fromBucketName', pathsOnSpan: 1 });
+  });
+});
+
 describe('the view of the shapes fixture', () => {
   const assembly = readFixtureAssembly('shapes');
   const facts = new TsSource().analyse(readFixtureFiles('shapes'), assembly);
@@ -235,7 +266,7 @@ describe('the view of the shapes fixture', () => {
       'Shapes/FromVariable': 'editable',
       'Shapes/Docs': 'editable',
       'Shapes/Audit2': 'editable',
-      'Shapes/Existing': 'editable',
+      'Shapes/Existing': 'Refers to an existing resource; the app does not create it',
       'Shapes/Nested/InnerQueue': 'editable',
       'Dev/Alerts': 'editable',
       'Prod/Alerts': 'editable',

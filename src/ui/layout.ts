@@ -42,7 +42,7 @@ export function layoutView(view: View): Layout {
   const nodes: NodeLayout[] = [];
 
   /** Lays out `stack` and everything nested in it, with its box meant to start at `(x, y)`. */
-  const place = (stack: StackBoxView, x: number, y: number): StackLayout => {
+  const placeStack = (stack: StackBoxView, x: number, y: number): StackLayout => {
     const members = view.nodes.filter((n) => n.stackId === stack.id);
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: 'LR', nodesep: 24, ranksep: 48, marginx: 0, marginy: 0 });
@@ -61,7 +61,7 @@ export function layoutView(view: View): Layout {
     const children = view.stacks
       .filter((s) => s.parentId === stack.id)
       .map((child) => {
-        const box = place(child, childX, y + STACK_HEADER);
+        const box = placeStack(child, childX, y + STACK_HEADER);
         childX = box.x + box.width + STACK_GAP;
         return box;
       });
@@ -93,7 +93,7 @@ export function layoutView(view: View): Layout {
   let cursor = 0;
   for (const stack of view.stacks) {
     if (stack.parentId) continue;
-    const box = place(stack, cursor, 0);
+    const box = placeStack(stack, cursor, 0);
     cursor = Math.max(cursor, box.x + box.width) + STACK_GAP;
   }
   return { stacks: view.stacks.flatMap((s) => boxes.get(s.id) ?? []), nodes };

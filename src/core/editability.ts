@@ -11,7 +11,8 @@ const locked = (reason: string): Editability => ({ editable: false, reason });
  * code and the Node. The reasons are what the canvas shows beside the lock.
  */
 export function nodeEditability(path: string, facts: NodeFacts): Editability {
-  const { enclosingClass, surround, literalId, pathsOnSpan } = facts;
+  const { enclosingClass, surround, literalId, pathsOnSpan, external } = facts;
+  if (external) return locked('Refers to an existing resource; the app does not create it');
   if (enclosingClass?.kind === 'construct') {
     return locked(`Created inside ${enclosingClass.name}, a construct class of your own`);
   }

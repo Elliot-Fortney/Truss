@@ -78,4 +78,11 @@ describe('nodeEditability', () => {
     const inClass = facts({ enclosingClass: { name: 'ApiService', kind: 'construct' }, surround: { kind: 'loop' }, literalId: undefined });
     expect(nodeEditability('Api/Service/Q', inClass)).toMatchObject({ reason: 'Created inside ApiService, a construct class of your own' });
   });
+
+  it('is locked for a resource the app refers to with a `fromXxx` call, which creates nothing to edit', () => {
+    expect(nodeEditability('Api/Existing', facts({ literalId: 'Existing', className: 's3.Bucket.fromBucketName', external: true }))).toEqual({
+      editable: false,
+      reason: 'Refers to an existing resource; the app does not create it',
+    });
+  });
 });
