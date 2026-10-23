@@ -9,9 +9,9 @@ const cli = resolve(root, 'dist/cli.js');
 const app = resolve(root, 'test/fixtures/straight-line');
 
 /** Starts `truss --no-open` in an app folder and resolves with its URL once it prints one. */
-function startTruss(cwd = app): Promise<{ child: ChildProcess; url: string; exited: Promise<number | null> }> {
+function startTruss(cwd = app, env: NodeJS.ProcessEnv = {}): Promise<{ child: ChildProcess; url: string; exited: Promise<number | null> }> {
   return new Promise((resolveStart, reject) => {
-    const child = spawn('node', [cli, '--no-open'], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('node', [cli, '--no-open'], { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
     let out = '';
     child.stdout!.on('data', (d) => {
@@ -67,10 +67,12 @@ test('refuses the WebSocket without the session token', async ({ page }) => {
 });
 
 /** A throwaway copy of the fixture app (without any truss.json) that a test may edit while Truss watches it. */
-function copyApp(): string {
+function copyApp(from = app): string {
   const dir = mkdtempSync(join(tmpdir(), 'truss-e2e-'));
-  cpSync(app, dir, { recursive: true, filter: (src) => !/node_modules|cdk\.out|truss\.json/.test(src) });
-  symlinkSync(join(app, 'node_modules'), join(dir, 'node_modules'));
+  cpSync(from, dir, { recursive: true, filter: (src) => !/node_modules|cdk\.out|truss\.json/.test(src) });
+  // The shapes fixture shares the straight-line fixture's install locally; in CI each has its own.
+  const installed = existsSync(join(from, 'node_modules')) ? join(from, 'node_modules') : join(app, 'node_modules');
+  symlinkSync(installed, join(dir, 'node_modules'));
   return dir;
 }
 
@@ -182,6 +184,42 @@ test('a truss.json from a newer Truss is refused with a clear message and left u
     await expect(page.getByRole('alert')).toContainText(/format 99.*newer.*Upgrade Truss/, { timeout: 60_000 });
     await expect(page.locator('.truss-node')).toHaveCount(0);
     expect(readFileSync(join(dir, 'truss.json'), 'utf8')).toBe(text);
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('Nodes Truss cannot edit show a lock with the reason, and every Node opens in the editor', async ({ page }) => {
+  const dir = copyApp(resolve(root, 'test/fixtures/shapes'));
+  const bin = mkdtempSync(join(tmpdir(), 'truss-editor-'));
+  // Named like VS Code's launcher so Truss passes `--goto file:line:col`.
+  const editor = join(bin, 'code');
+  const opened = join(bin, 'opened.txt');
+  writeFileSync(editor, `#!/bin/sh\necho "$@" > "${opened}"\n`, { mode: 0o755 });
+  const truss = await startTruss(dir, { TRUSS_EDITOR: editor });
+  try {
+    await page.goto(truss.url);
+    const loop = page.locator('.truss-node', { hasText: 'LoopOne' });
+    await expect(loop).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('.truss-node')).toHaveCount(20);
+    // 4 loop Nodes, 2 helper Nodes and 1 whose ID is a variable.
+    await expect(page.locator('.node-lock')).toHaveCount(7);
+    await expect(loop.locator('.node-lock')).toHaveAttribute('title', 'Created in a loop');
+    await expect(page.locator('.truss-node', { hasText: 'HelperA' }).locator('.node-lock')).toHaveAttribute('title', 'Created by the helper makeQueue');
+    await expect(page.locator('.truss-node', { hasText: 'Plain' }).locator('.node-lock')).toHaveCount(0);
+    // A locked Node stays fully opaque.
+    await expect(loop).toHaveCSS('opacity', '1');
+
+    await loop.click();
+    await expect(page.locator('.lock-reason')).toHaveText('Read-only: Created in a loop');
+    await page.getByRole('button', { name: 'Open in editor' }).click();
+    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/^--goto .*\/lib\/shapes-stack\.ts:38:7$/);
+
+    // An editable Node opens in the editor too, and says nothing about a lock.
+    await page.locator('.truss-node', { hasText: 'Plain' }).click();
+    await expect(page.locator('.lock-reason')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open in editor' })).toBeVisible();
   } finally {
     truss.child.kill('SIGINT');
     await truss.exited;

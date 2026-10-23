@@ -4,3 +4,4 @@ dist/
 test-results/
 playwright-report/
 cdk.out/
+/test/fixtures/*/node_modules
