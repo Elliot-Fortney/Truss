@@ -161,8 +161,10 @@ function digestProp(p: unknown): DigestProp[] {
 
 const CONSTRUCT = 'constructs.Construct';
 const CFN_RESOURCE = 'aws-cdk-lib.CfnResource';
-/** Never entries: the base every construct has, and the one every L1 has. */
-const NEVER_PLACED = new Set([CONSTRUCT, CFN_RESOURCE]);
+/** The base of everything in a template: resources, but also outputs, parameters and conditions. */
+const CFN_ELEMENT = 'aws-cdk-lib.CfnElement';
+/** Never entries: the base every construct has, the one every L1 has, and the root a construct tree hangs from. */
+const NEVER_PLACED = new Set([CONSTRUCT, CFN_RESOURCE, 'constructs.RootConstruct']);
 /** Stacks and Stages are drawn as boxes, never as Nodes (CONTEXT.md). */
 const BOXES = new Set(['aws-cdk-lib.Stack', 'aws-cdk-lib.Stage']);
 /** Where a `fqn` of `aws-cdk-lib.interfaces.*` lives: the `IxxxRef` types an L1 prop also accepts instead of a string. */
@@ -197,6 +199,8 @@ function flatten(fqn: string, structs: ReadonlyMap<string, DigestStruct>, seen =
   return out;
 }
 
+const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 const moduleKey = (namespace: string) => namespace.replace(/^aws_/, '').replace(/_patterns$/, '');
 
 /** Builds the Catalog from the digest of every library the app has installed. */
@@ -225,6 +229,8 @@ export function buildCatalog(digests: readonly AssemblyDigest[]): Catalog {
     if (c.abstract || c.protected || NEVER_PLACED.has(fqn)) continue;
     if (!above.includes(CONSTRUCT)) continue;
     if ([fqn, ...above].some((f) => BOXES.has(f))) continue;
+    // Outputs, parameters and the like are template elements, not resources a Node could be.
+    if (above.includes(CFN_ELEMENT) && !above.includes(CFN_RESOURCE)) continue;
 
     const tier: Tier = above.includes(CFN_RESOURCE) ? 'L1' : c.namespace?.endsWith('_patterns') ? 'L3' : 'L2';
     const key = c.namespace ? moduleKey(c.namespace) : undefined;
@@ -261,7 +267,7 @@ export function buildCatalog(digests: readonly AssemblyDigest[]): Catalog {
     if (cfnType) e.cfnType = cfnType;
   }
 
-  return { entries: entries.sort((a, b) => (a.fqn < b.fqn ? -1 : a.fqn > b.fqn ? 1 : 0)) };
+  return { entries: entries.sort((a, b) => compare(a.fqn, b.fqn)) };
 }
 
 const indexes = new WeakMap<Catalog, Map<string, CatalogEntry>>();
@@ -284,11 +290,11 @@ const TIER_ORDER: Record<Tier, number> = { L2: 0, L3: 1, L1: 2 };
 function scoreWord(word: string, e: CatalogEntry): number {
   const name = e.name.toLowerCase();
   if (name === word) return 100;
-  if (name.startsWith(word)) return 60;
-  if (name.includes(word)) return 40;
   const service = e.service?.toLowerCase();
   const module = e.module ? moduleKey(e.module) : undefined;
-  if (service === word || module === word) return 30;
+  if (service === word || module === word) return 70;
+  if (name.startsWith(word)) return 60;
+  if (name.includes(word)) return 40;
   const cfn = e.cfnType?.toLowerCase();
   if (cfn && (cfn.split('::').at(-1) === word || cfn === word)) return 30;
   if ([service, module, cfn, e.library.toLowerCase()].some((field) => field?.includes(word))) return 10;
@@ -321,8 +327,8 @@ export function searchCatalog(catalog: Catalog, query: string, limit = 50): Sear
       Number(a.e.deprecated ?? false) - Number(b.e.deprecated ?? false) ||
       b.score - a.score ||
       TIER_ORDER[a.e.tier] - TIER_ORDER[b.e.tier] ||
-      (a.e.name < b.e.name ? -1 : a.e.name > b.e.name ? 1 : 0) ||
-      (a.e.fqn < b.e.fqn ? -1 : 1),
+      compare(a.e.name, b.e.name) ||
+      compare(a.e.fqn, b.e.fqn),
   );
   return scored.slice(0, limit).map(({ e: { props: _props, ...hit } }) => hit);
 }

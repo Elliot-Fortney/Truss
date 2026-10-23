@@ -32,6 +32,10 @@ function cdkLib(version = '2.274.0') {
     cls('aws-cdk-lib.CfnElement', { base: 'constructs.Construct', abstract: true }),
     cls('aws-cdk-lib.CfnResource', { base: 'aws-cdk-lib.CfnElement', initializer: init() }),
     cls('aws-cdk-lib.Resource', { base: 'constructs.Construct', abstract: true }),
+    cls('aws-cdk-lib.CfnRefElement', { base: 'aws-cdk-lib.CfnElement', abstract: true }),
+    cls('aws-cdk-lib.CfnOutput', { base: 'aws-cdk-lib.CfnElement', initializer: init('aws-cdk-lib.CfnOutputProps') }),
+    cls('aws-cdk-lib.CfnParameter', { base: 'aws-cdk-lib.CfnElement', initializer: init() }),
+    cls('constructs.RootConstruct', { assembly: 'constructs', base: 'constructs.Construct', initializer: init() }),
     cls('aws-cdk-lib.Stack', { base: 'constructs.Construct', initializer: init() }),
     cls('aws-cdk-lib.Stage', { base: 'constructs.Construct', initializer: init() }),
     cls('aws-cdk-lib.App', { base: 'aws-cdk-lib.Stage', initializer: init() }),
@@ -77,6 +81,8 @@ function cdkLib(version = '2.274.0') {
     struct('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateServiceProps', [prop('cpu', { primitive: 'number' }, { optional: true })]),
 
     cls('aws-cdk-lib.aws_s3.Notifier', { base: 'constructs.Construct', initializer: { ...init(), protected: true } }),
+    cls('aws-cdk-lib.aws_sqs.Queue', { base: 'aws-cdk-lib.Resource', initializer: init() }),
+    cls('aws-cdk-lib.aws_stepfunctions_tasks.SqsSendMessage', { base: 'constructs.Construct', initializer: init() }),
     cls('aws-cdk-lib.aws_kms.OldKey', { base: 'aws-cdk-lib.Resource', initializer: init(), docs: doc('Old.', { stability: 'deprecated' }) }),
     cls('aws-cdk-lib.Duration', { initializer: undefined }),
   ];
@@ -165,9 +171,15 @@ describe('buildCatalog', () => {
       'constructs.Construct',
       'aws-cdk-lib.CfnResource',
       'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedServiceBase',
+      'constructs.RootConstruct',
     ]) {
       expect(fqns, gone).not.toContain(gone);
     }
+  });
+
+  it('leaves out template elements such as outputs and parameters, which are not resources', () => {
+    expect(entryFor(catalog, 'aws-cdk-lib.CfnOutput')).toBeUndefined();
+    expect(entryFor(catalog, 'aws-cdk-lib.CfnParameter')).toBeUndefined();
   });
 
   it('leaves out classes that are not constructs', () => {
@@ -269,6 +281,10 @@ describe('searchCatalog', () => {
   it('finds every construct of a service by the service name', () => {
     expect(names('s3')).toEqual(['aws-cdk-lib.aws_s3.Bucket', 'aws-cdk-lib.aws_s3.CfnBucket']);
     expect(names('lambda')).toEqual(['aws-cdk-lib.aws_lambda.Function', 'aws-cdk-lib.aws_lambda.CfnFunction']);
+  });
+
+  it('ranks the constructs of a service above one whose name merely starts with it', () => {
+    expect(names('sqs')).toEqual(['aws-cdk-lib.aws_sqs.Queue', 'aws-cdk-lib.aws_stepfunctions_tasks.SqsSendMessage']);
   });
 
   it('finds a construct by CloudFormation type, whole or in part', () => {

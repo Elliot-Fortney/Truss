@@ -29,15 +29,15 @@ function freshCache(withCdkLib = true): string {
 
 let appCount = 0;
 /** An app folder under the scratch dir with the given package.json and installed packages. */
-function makeApp(pkg: Record<string, unknown>, installed: Record<string, 'real-cdk-lib' | { version: string; files?: Record<string, string | Buffer>; deps?: Record<string, string> }> = {}): string {
+function makeApp(pkg: Record<string, unknown>, installed: Record<string, 'real-cdk-lib' | { link: string } | { version: string; files?: Record<string, string | Buffer>; deps?: Record<string, string> }> = {}): string {
   const dir = join(scratch, `app${appCount++}`);
   mkdirSync(join(dir, 'node_modules'), { recursive: true });
   writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
   for (const [name, what] of Object.entries(installed)) {
     const at = join(dir, 'node_modules', name);
     mkdirSync(join(at, '..'), { recursive: true });
-    if (what === 'real-cdk-lib') {
-      symlinkSync(installedCdkLib, at);
+    if (what === 'real-cdk-lib' || 'link' in what) {
+      symlinkSync(what === 'real-cdk-lib' ? installedCdkLib : what.link, at);
       continue;
     }
     mkdirSync(at);
@@ -101,6 +101,12 @@ describe('loadCatalog on the installed aws-cdk-lib', () => {
     }
   });
 
+  it('does not offer what is no resource at all, such as a template output or a parameter', () => {
+    for (const fqn of ['aws-cdk-lib.CfnOutput', 'aws-cdk-lib.CfnParameter', 'aws-cdk-lib.CfnCondition', 'constructs.RootConstruct']) {
+      expect(entryFor(catalog, fqn), fqn).toBeUndefined();
+    }
+  });
+
   it('flags the props a Function cannot be made without', () => {
     const required = entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.filter((p) => p.required).map((p) => p.name);
     expect(required).toEqual(expect.arrayContaining(['code', 'handler', 'runtime']));
@@ -124,6 +130,7 @@ describe('loadCatalog on the installed aws-cdk-lib', () => {
     expect(searchCatalog(catalog, 'dynamodb').map((h) => h.name)).toContain('Table');
     expect(searchCatalog(catalog, 'AWS::SQS::Queue').map((h) => h.fqn)).toEqual(expect.arrayContaining(['aws-cdk-lib.aws_sqs.Queue', 'aws-cdk-lib.aws_sqs.CfnQueue']));
     expect(searchCatalog(catalog, 'fargate').some((h) => h.tier === 'L3')).toBe(true);
+    expect(searchCatalog(catalog, 'sqs')[0]).toMatchObject({ fqn: 'aws-cdk-lib.aws_sqs.Queue' });
   });
 });
 
@@ -142,6 +149,18 @@ describe('loadCatalog with other libraries installed', () => {
     expect(entry).toMatchObject({ library: 'my-constructs', tier: 'L2', summary: 'A third-party construct.' });
     expect(entry!.props.map((p) => p.name)).toEqual(expect.arrayContaining(['timeout', 'queueName']));
     expect(searchCatalog(result.catalog, 'queueish')[0]?.fqn).toBe('my-constructs.Queueish');
+  });
+
+  it('reads the real `constructs` assembly quietly, and offers nothing from it, since its classes are bases rather than constructs to place', async () => {
+    const constructs = join(fixtureDir('straight-line'), 'node_modules', 'constructs');
+    const dir = makeApp(
+      { dependencies: { 'aws-cdk-lib': '^2.274.0', constructs: '^10.0.0' } },
+      { 'aws-cdk-lib': 'real-cdk-lib', constructs: { link: constructs } },
+    );
+    const { lines, log } = quiet();
+    const result = await loadCatalog(dir, { cacheDir: freshCache(), log });
+    expect(lines).toEqual([]);
+    expect(result.ok && result.catalog.entries.some((e) => e.library === 'constructs')).toBe(false);
   });
 
   it('reads an assembly a `.jsii` file redirects to a gzipped file', async () => {

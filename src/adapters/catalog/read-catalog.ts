@@ -1,5 +1,4 @@
-import { mkdirSync } from 'node:fs';
-import { access, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -50,7 +49,7 @@ async function findPackageDir(from: string, name: string): Promise<string | unde
   }
 }
 
-/** The major version of the cloud assembly schema the bundled toolkit-lib reads; infinite when it can't be found, which skips the check. */
+/** The major version of the cloud assembly schema the bundled toolkit-lib reads; infinite when it can't be found, which skips the check (the caller says so). */
 async function bundledSchemaMajor(): Promise<number> {
   const here = dirname(fileURLToPath(import.meta.url));
   const toolkit = await findPackageDir(here, '@aws-cdk/toolkit-lib');
@@ -85,7 +84,7 @@ async function digestOf(pkgDir: string, name: string, version: string, cacheDir:
   const digest = digestAssembly(await readAssembly(pkgDir));
   if (cacheDir && cacheFile) {
     try {
-      mkdirSync(cacheDir, { recursive: true });
+      await mkdir(cacheDir, { recursive: true });
       const tmp = `${cacheFile}.${process.pid}.tmp`;
       await writeFile(tmp, JSON.stringify(digest));
       await rename(tmp, cacheFile);
@@ -115,21 +114,25 @@ export async function loadCatalog(appDir: string, opts: LoadCatalogOptions): Pro
   const cdkDeps = cdkPackage?.['dependencies'];
   const schemaRange = isObject(cdkDeps) ? cdkDeps['@aws-cdk/cloud-assembly-schema'] : undefined;
   const version = cdkPackage?.['version'];
+  const schemaMajor = await bundledSchemaMajor();
+  if (schemaMajor === Infinity) opts.log("Couldn't find the cloud assembly schema Truss bundles, so Truss can't tell whether this app's CDK is too new for it.");
+  const cdkLibVersion = typeof version === 'string' ? version : undefined;
   const support = checkSupported(
     {
-      cdkLibVersion: typeof version === 'string' ? version : undefined,
+      cdkLibVersion,
       usesCdkV1: dependencyNames.has('@aws-cdk/core'),
       schemaRange: typeof schemaRange === 'string' ? schemaRange : undefined,
     },
-    { schemaMajor: await bundledSchemaMajor() },
+    { schemaMajor },
   );
   if (!support.ok) return support;
+  if (!cdkDir || cdkLibVersion === undefined) return { ok: false, message: `${CDK_LIB} isn't installed for this app.` };
 
   const digests: AssemblyDigest[] = [];
   try {
-    digests.push(await digestOf(cdkDir!, CDK_LIB, version as string, opts.cacheDir));
+    digests.push(await digestOf(cdkDir, CDK_LIB, cdkLibVersion, opts.cacheDir));
   } catch (err) {
-    return { ok: false, message: `Couldn't read the constructs of ${CDK_LIB} ${String(version)}: ${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, message: `Couldn't read the constructs of ${CDK_LIB} ${cdkLibVersion}: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   for (const name of [...dependencyNames].filter((n) => n !== CDK_LIB).sort()) {

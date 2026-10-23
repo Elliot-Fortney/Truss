@@ -30,7 +30,10 @@ export interface Files {
   watch(onChange: () => void): () => void;
 }
 
-/** Truss's answer to an app at startup: its Catalog, or why Truss can't open it (ADR 0009). */
+/**
+ * Truss's answer to an app at startup: its Catalog, or why Truss can't open it (ADR 0009). Not a port
+ * the session calls: the composition root asks once, and hands the session the Catalog as plain data.
+ */
 export type CatalogLoad = { ok: true; catalog: Catalog } | { ok: false; message: string };
 
 /** Reads the Catalog from the packages the app at `appDir` has installed. */
