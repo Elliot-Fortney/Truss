@@ -20,6 +20,14 @@ _Avoid_: Name, label, Node ID (when meaning the code ID)
 The picture of a Design (placed Nodes and Connections, Layers collapsed) that Truss writes next to the Sidecar whenever either changes, for review in PRs and READMEs. It's derived and never read back.
 _Avoid_: Thumbnail, screenshot, image Export
 
+**Stack**:
+A group of Nodes that deploy together as one CloudFormation stack, drawn as a group box around them. A Stack is never a Node: it can't be connected or dragged into another Stack. A nested stack is a box inside its parent Stack's box.
+_Avoid_: Environment, deployment, group (when meaning a Stack)
+
+**Stage**:
+A deployable copy of one or more Stacks, usually one per environment (Dev, Prod). The canvas shows one Stage at a time.
+_Avoid_: Environment (when meaning the Stage), account
+
 **Connection**:
 An edge between two Nodes that always becomes code: a Reference, Grant, Integration or Network Connection. Its arrow follows data or request flow, not code direction.
 _Avoid_: Link, wire, line, relationship
