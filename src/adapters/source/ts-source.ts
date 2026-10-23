@@ -3,21 +3,39 @@ import ts from '@typescript/typescript6';
 import type { Assembly, Frame, TreeNode } from '../../core/assembly.ts';
 import type { Binding, EnclosingClass, Facts, NodeFacts, PropFacts, PropsFacts, Span, Surround } from '../../core/facts.ts';
 import type { FileSet, Source } from '../../core/ports.ts';
+import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from '../../core/tree.ts';
 
 const frameKey = (f: Frame) => `${f.file}:${f.line}:${f.col}`;
+
+/** What `collectFrames` needs at every construct of the tree. */
+interface FrameContext {
+  assembly: Assembly;
+  /** The frame of the `new` that made each path that has a creation stack of its own. */
+  sites: Map<string, Frame>;
+  /** Construct paths of the stacks synth wrote an artifact for. */
+  stacks: Set<string>;
+  out: Map<string, Frame>;
+}
+
+/** A `Class.fromXxx(this, 'Id', ...)` call: the facts it gives each construct it makes, and where to look for them. */
+interface FromCall {
+  facts: Omit<NodeFacts, 'pathsOnSpan'>;
+  literalId: string;
+  enclosingClass: EnclosingClass;
+}
 
 export class TsSource implements Source {
   /** Parsed files, reused while a file's text is unchanged. */
   private parsed = new Map<string, { text: string; sf: ts.SourceFile }>();
 
   analyse(files: FileSet, assembly: Assembly): Facts {
-    const first = new Map<string, Frame>();
+    const sites = new Map<string, Frame>();
     for (const [path, list] of Object.entries(assembly.creation)) {
       const frame = this.creationSite(files, list);
-      if (frame) first.set(path, frame);
+      if (frame) sites.set(path, frame);
     }
     const frames = new Map<string, Frame>();
-    this.collectFrames(assembly.tree, assembly, first, new Set(assembly.stacks.map((s) => s.path)), undefined, frames);
+    this.collectFrames(assembly.tree, { assembly, sites, stacks: new Set(assembly.stacks.map((s) => s.path)), out: frames }, undefined);
 
     const nodes: Record<string, NodeFacts> = {};
     const perSpan = new Map<string, number>();
@@ -70,11 +88,10 @@ export class TsSource implements Source {
   /**
    * Adds the Nodes made by `Class.fromXxx(this, 'Id', ...)` calls. Such a construct has no creation
    * stack, so it is found the other way round: a call with a literal ID in the constructor of a class
-   * whose instances are already known gives each instance's child of that ID.
+   * (or of a class of the app's own that extends it) gives each instance's child of that ID.
    */
   private addExternals(files: FileSet, tree: TreeNode, nodes: Record<string, NodeFacts>): void {
-    const sources = new Set(Object.values(nodes).map((n) => n.span.file));
-    const calls = [...sources].flatMap((file) => this.fromCalls(files, file));
+    const calls = [...files.keys()].flatMap((file) => (files.get(file)?.includes('.from') ? this.fromCalls(files, file) : []));
     if (calls.length === 0) return;
     const children = new Map<string, TreeNode[]>();
     const index = (n: TreeNode) => {
@@ -82,22 +99,35 @@ export class TsSource implements Source {
       n.children.forEach(index);
     };
     index(tree);
+    // The constructs the app creates, before any external is added: an external is never another's parent.
+    const parents = Object.entries(nodes).map(([path, facts]) => ({ path, chain: this.classChain(files, facts.className.split('.').at(-1)!) }));
     for (const call of calls) {
-      const paths: string[] = [];
-      for (const [parentPath, parentFacts] of Object.entries(nodes)) {
-        if (parentFacts.className.split('.').at(-1) !== call.enclosingClass.name) continue;
-        const path = `${parentPath}/${call.literalId}`;
-        if (!nodes[path] && children.get(parentPath)?.some((c) => c.path === path)) paths.push(path);
-      }
+      const paths = parents
+        .filter((p) => p.chain.has(call.enclosingClass.name) && children.get(p.path)?.some((c) => c.path === `${p.path}/${call.literalId}`))
+        .map((p) => `${p.path}/${call.literalId}`)
+        .filter((path) => !nodes[path]);
       for (const path of paths) nodes[path] = { ...call.facts, pathsOnSpan: paths.length };
     }
   }
 
+  /** The class named `name` and the classes of the app's own it extends, by name. */
+  private classChain(files: FileSet, name: string): Set<string> {
+    const chain = new Set<string>();
+    for (let decl = this.findClass(files, name); decl && !chain.has(decl.name!.text); ) {
+      chain.add(decl.name!.text);
+      const base = decl.heritageClauses?.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
+      const baseName = base && (ts.isPropertyAccessExpression(base) ? base.name.text : ts.isIdentifier(base) ? base.text : undefined);
+      decl = baseName ? this.findClass(files, baseName) : undefined;
+    }
+    if (chain.size === 0) chain.add(name);
+    return chain;
+  }
+
   /** The `X.fromY(this, 'Id', ...)` calls written directly in a class body. */
-  private fromCalls(files: FileSet, file: string): { facts: Omit<NodeFacts, 'pathsOnSpan'>; literalId: string; enclosingClass: EnclosingClass }[] {
+  private fromCalls(files: FileSet, file: string): FromCall[] {
     const sf = this.parse(files, file);
     if (!sf) return [];
-    const found: { facts: Omit<NodeFacts, 'pathsOnSpan'>; literalId: string; enclosingClass: EnclosingClass }[] = [];
+    const found: FromCall[] = [];
     const visit = (n: ts.Node) => {
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && /^from[A-Z]/.test(n.expression.name.text)) {
         const [scope, id] = n.arguments;
@@ -129,17 +159,8 @@ export class TsSource implements Source {
    * construct class takes the call site of its constructor. Only the shallowest path on a frame is
    * kept, because the paths beneath it are that construct's own children.
    */
-  private collectFrames(
-    node: TreeNode,
-    assembly: Assembly,
-    first: Map<string, Frame>,
-    stacks: Set<string>,
-    parentFrame: Frame | undefined,
-    out: Map<string, Frame>,
-    stackPath?: string,
-    userDepth = 0,
-  ): void {
-    const isStack = stacks.has(node.path) || node.fqn === NESTED_STACK_FQN;
+  private collectFrames(node: TreeNode, ctx: FrameContext, parentFrame: Frame | undefined, stackPath?: string, userDepth = 0): void {
+    const isStack = ctx.stacks.has(node.path) || node.fqn === NESTED_STACK_FQN;
     if (isStack) stackPath = node.path;
     const isUserClass = stackPath !== undefined && !isStack && node.fqn === USER_CONSTRUCT_FQN;
     if (isUserClass) userDepth++;
@@ -148,18 +169,13 @@ export class TsSource implements Source {
       node.path === '' || isStack || node.fqn === STAGE_FQN
         ? undefined
         : isUserClass
-          ? userClassFrame(node, assembly, stackPath!, userDepth)
-          : agreedFrame(node, first);
-    const frame = first.get(node.path) ?? borrowed;
+          ? userClassFrame(node, ctx.assembly, stackPath!, userDepth)
+          : agreedFrame(node, ctx.sites);
+    const frame = ctx.sites.get(node.path) ?? borrowed;
     if (node.path !== '' && frame && (!parentFrame || frameKey(parentFrame) !== frameKey(frame))) {
-      out.set(node.path, frame);
+      ctx.out.set(node.path, frame);
     }
-    // Next to each nested stack the parent holds a construct that wraps the `CfnStack` resource pointing at it.
-    // It is the nested stack's plumbing, made by the same `new`, so it is no construct of the app's.
-    const nested = new Set(node.children.filter((c) => c.fqn === NESTED_STACK_FQN).map((c) => `${c.id}.NestedStack`));
-    for (const child of node.children) {
-      if (!nested.has(child.id)) this.collectFrames(child, assembly, first, stacks, frame, out, stackPath, userDepth);
-    }
+    for (const child of withoutNestedStackPlumbing(node.children)) this.collectFrames(child, ctx, frame, stackPath, userDepth);
   }
 
   private locateNew(files: FileSet, frame: Frame): Omit<NodeFacts, 'pathsOnSpan'> | undefined {
@@ -237,10 +253,6 @@ export class TsSource implements Source {
   }
 }
 
-/** What the tree calls a nested stack, which synth writes no stack artifact for, and a Stage. */
-const NESTED_STACK_FQN = 'aws-cdk-lib.NestedStack';
-const STAGE_FQN = 'aws-cdk-lib.Stage';
-
 /** What the tree calls a construct whose class the app defines and that extends `Construct` directly. */
 const USER_CONSTRUCT_FQN = 'constructs.Construct';
 
@@ -271,10 +283,10 @@ function firstCreated(node: TreeNode, assembly: Assembly): Frame[] | undefined {
 }
 
 /** The frame every descendant with a creation stack shares, if they all share one. */
-function agreedFrame(node: TreeNode, first: Map<string, Frame>): Frame | undefined {
+function agreedFrame(node: TreeNode, sites: Map<string, Frame>): Frame | undefined {
   const seen = new Map<string, Frame>();
   const walk = (n: TreeNode) => {
-    const f = first.get(n.path);
+    const f = sites.get(n.path);
     if (f) seen.set(frameKey(f), f);
     n.children.forEach(walk);
   };

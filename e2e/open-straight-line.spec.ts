@@ -37,6 +37,8 @@ test('npx truss opens a straight-line CDK app and shows its Nodes in the Stack b
       await expect(node).toContainText(cls!);
     }
     await expect(page.locator('.truss-node')).toHaveCount(3);
+    // An app without Stages has no Stage picker.
+    await expect(page.getByLabel('Stage')).toHaveCount(0);
   } finally {
     truss.child.kill('SIGINT');
     expect(await truss.exited).toBe(0);
@@ -203,8 +205,8 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     const loop = page.locator('.truss-node', { hasText: 'LoopOne' });
     await expect(loop).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('.truss-node')).toHaveCount(25);
-    // 4 loop Nodes, 2 helper Nodes and 1 whose ID is a variable.
-    await expect(page.locator('.node-lock')).toHaveCount(7);
+    // 4 loop Nodes, 2 helper Nodes, 1 whose ID is a variable and 1 import.
+    await expect(page.locator('.node-lock')).toHaveCount(8);
     await expect(loop.locator('.node-lock')).toHaveAttribute('title', 'Created in a loop');
     await expect(page.locator('.truss-node', { hasText: 'HelperA' }).locator('.node-lock')).toHaveAttribute('title', 'Created by the helper makeQueue');
     await expect(page.locator('.truss-node', { hasText: 'Plain' }).locator('.node-lock')).toHaveCount(0);

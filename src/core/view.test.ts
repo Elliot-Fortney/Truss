@@ -174,6 +174,8 @@ describe('buildView naming', () => {
         leaf('S/Table', 'aws-cdk-lib.aws_dynamodb.Table'),
         leaf('S/Api', 'constructs.Construct'),
         leaf('S/Existing', 'aws-cdk-lib.aws_s3.BucketBase'),
+        leaf('S/Stream', 'aws-cdk-lib.aws_kinesis.Stream'),
+        leaf('S/Web', 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService'),
       ]),
     ]),
   };
@@ -186,6 +188,8 @@ describe('buildView naming', () => {
         'S/Table': node('MyTable', 'Table'),
         'S/Api': node('ApiService', 'Api'),
         'S/Existing': node('s3.Bucket.fromBucketName', 'Existing', { external: true }),
+        'S/Stream': node('MyStream', 'Stream'),
+        'S/Web': node('MyWeb', 'Web'),
       },
     },
     assembly,
@@ -196,6 +200,11 @@ describe('buildView naming', () => {
   it('names a construct of the app\'s own class by that class and the type it is, "MyBucket · S3 Bucket"', () => {
     expect(byId('S/Docs').subtitle).toBe('MyBucket · S3 Bucket');
     expect(byId('S/Table').subtitle).toBe('MyTable · DynamoDB Table');
+  });
+
+  it('names the type by the service when its module is one word, and by the class alone when it is not', () => {
+    expect(byId('S/Stream').subtitle).toBe('MyStream · Kinesis Stream');
+    expect(byId('S/Web').subtitle).toBe('MyWeb');
   });
 
   it('names a class that only extends Construct by its own name', () => {

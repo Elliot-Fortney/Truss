@@ -158,3 +158,15 @@ describe('layoutView with nested stacks', () => {
     expect(c!.x + c!.width).toBeLessThanOrEqual(p!.x + p!.width - STACK_PADDING);
   });
 });
+
+describe('layoutView with nested stacks and saved positions', () => {
+  it('keeps a nested stack clear of a parent\'s Node dragged far to the right', () => {
+    const nodes = [{ ...node('P/own', 'P'), position: { x: 900, y: 40 } }, node('P/child/a', 'P/child')];
+    const l = layoutView(view(nodes, ['P', 'P/child'], { 'P/child': 'P' }));
+    const own = l.nodes.find((n) => n.id === 'P/own')!;
+    const p = l.stacks.find((s) => s.id === 'P')!;
+    const c = l.stacks.find((s) => s.id === 'P/child')!;
+    const ownLeft = p.x + own.x;
+    expect(ownLeft + NODE_WIDTH <= c.x || c.x + c.width <= ownLeft).toBe(true);
+  });
+});

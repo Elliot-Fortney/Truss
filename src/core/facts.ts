@@ -36,7 +36,7 @@ export type PropsFacts = { form: 'object'; props: PropFacts[] } | { form: 'other
 /** What the TypeScript source says about one construct path (ADR 0007). `span` is the `new` call, or the `fromXxx` call of an external. */
 export interface NodeFacts {
   span: Span;
-  /** The class as written, e.g. `s3.Bucket`. */
+  /** The class as written, e.g. `s3.Bucket`; for an external, the `fromXxx` call's callee, e.g. `s3.Bucket.fromBucketName`. */
   className: string;
   /** The Construct ID when it is a string literal. */
   literalId?: string;

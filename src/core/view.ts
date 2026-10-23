@@ -1,6 +1,7 @@
 import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
+import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
 /** A Stack drawn as a group box. */
@@ -70,9 +71,6 @@ export interface View {
 export type ViewBody = Pick<View, 'stages' | 'stacks' | 'nodes'>;
 
 const GENERIC_ICON = 'generic';
-/** What the construct tree calls a nested stack, which synth writes no stack artifact for, and a Stage. */
-const NESTED_STACK_FQN = 'aws-cdk-lib.NestedStack';
-const STAGE_FQN = 'aws-cdk-lib.Stage';
 
 function envLabel(env: string | undefined): string {
   const m = env && /^aws:\/\/([^/]+)\/(.+)$/.exec(env);
@@ -103,13 +101,14 @@ const SERVICE_NAMES: Record<string, string> = {
   stepfunctions: 'Step Functions',
 };
 
-/** `aws-cdk-lib.aws_s3.Bucket` as "S3 Bucket"; undefined for a type that names no service, such as `constructs.Construct`. */
+/** `aws-cdk-lib.aws_s3.Bucket` as "S3 Bucket"; undefined for a type with no service name to give, such as `constructs.Construct`. */
 function typeLabel(fqn: string): string | undefined {
   const m = /\.aws_([a-z0-9_]+)\.([A-Za-z0-9]+)$/.exec(fqn);
   if (!m) return undefined;
   const service = m[1]!;
-  const name = SERVICE_NAMES[service] ?? service.replace(/(^|_)([a-z])/g, (_, sep: string, c: string) => `${sep ? ' ' : ''}${c.toUpperCase()}`);
-  return `${name} ${m[2]}`;
+  // A module of several words (`ecs_patterns`) can't be turned into a service name by capitalising it.
+  const name = SERVICE_NAMES[service] ?? (/^[a-z0-9]+$/.test(service) ? service[0]!.toUpperCase() + service.slice(1) : undefined);
+  return name ? `${name} ${m[2]}` : undefined;
 }
 
 /** The line under a Node's name: the class as written and, for a class of the app's own, the type it builds on. */
@@ -165,11 +164,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
       });
       insideNode = true;
     }
-    // Next to a nested stack its parent holds a construct wrapping the resource that points at it: plumbing, not the app's.
-    const nested = new Set(tree.children.filter((c) => c.fqn === NESTED_STACK_FQN).map((c) => `${c.id}.NestedStack`));
-    for (const child of tree.children) {
-      if (!nested.has(child.id)) visit(child, stack, stageId, insideNode);
-    }
+    for (const child of withoutNestedStackPlumbing(tree.children)) visit(child, stack, stageId, insideNode);
   };
   visit(assembly.tree, undefined, undefined, false);
 

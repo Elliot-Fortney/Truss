@@ -75,10 +75,13 @@ const nodeTypes = { stack: StackBox, truss: TrussNode };
 
 function toFlowNodes(view: View): Node[] {
   const layout = layoutView(view);
+  const stacksById = new Map(view.stacks.map((s) => [s.id, s]));
+  const boxesById = new Map(layout.stacks.map((b) => [b.id, b]));
+  const nodesById = new Map(view.nodes.map((n) => [n.id, n]));
   const stackNodes: Node[] = layout.stacks.map((box) => {
-    const stack = view.stacks.find((s) => s.id === box.id)!;
+    const stack = stacksById.get(box.id)!;
     // React Flow places a child relative to its parent, and a nested box is laid out in canvas coordinates.
-    const parent = layout.stacks.find((b) => b.id === box.parentId);
+    const parent = boxesById.get(box.parentId ?? '');
     return {
       id: `stack:${box.id}`,
       type: 'stack',
@@ -91,7 +94,7 @@ function toFlowNodes(view: View): Node[] {
     };
   });
   const nodes: Node[] = layout.nodes.map((pos) => {
-    const n = view.nodes.find((v) => v.id === pos.id)!;
+    const n = nodesById.get(pos.id)!;
     return {
       id: n.id,
       type: 'truss',
@@ -107,8 +110,9 @@ function toFlowNodes(view: View): Node[] {
 
 /** Where a React Flow node sits on the canvas: its own position plus those of the boxes it is nested in. */
 function canvasPosition(node: Node, all: Node[]): { x: number; y: number } {
+  const byId = new Map(all.map((n) => [n.id, n]));
   let { x, y } = node.position;
-  for (let parent = all.find((n) => n.id === node.parentId); parent; parent = all.find((n) => n.id === parent!.parentId)) {
+  for (let parent = byId.get(node.parentId ?? ''); parent; parent = byId.get(parent.parentId ?? '')) {
     x += parent.position.x;
     y += parent.position.y;
   }
