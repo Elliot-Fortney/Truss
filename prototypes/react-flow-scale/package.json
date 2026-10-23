@@ -1,0 +1,20 @@
+{
+  "name": "truss-prototype-react-flow-scale",
+  "private": true,
+  "description": "PROTOTYPE, throwaway: React Flow scale spike for ticket #15",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.12.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.2",
+    "playwright": "1.64.1",
+    "vite": "8.3.5"
+  }
+}
