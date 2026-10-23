@@ -16,6 +16,7 @@ function fakeSource(initial: View): ViewSource & { push(v: View): void; handled:
     handled,
     handle: async (m) => {
       handled.push(m);
+      if (m.type === 'search') return { type: 'results', requestId: m.requestId, hits: [] };
       return m.id === 'unknown' ? { type: 'refused', requestId: m.requestId, reason: 'No Node' } : { type: 'ack', requestId: m.requestId };
     },
     view: () => current,
@@ -208,6 +209,12 @@ describe('startServer', () => {
       expect(source.handled).toEqual([message]);
     });
 
+    it('hands a search to the session and sends back its hits', async () => {
+      const source = fakeSource(view(1));
+      expect(await ask(source, JSON.stringify({ type: 'search', requestId: 's', query: 'queue' }))).toEqual({ type: 'results', requestId: 's', hits: [] });
+      expect(source.handled).toEqual([{ type: 'search', requestId: 's', query: 'queue' }]);
+    });
+
     it("sends back the session's refusal", async () => {
       const reply = await ask(fakeSource(view(1)), JSON.stringify({ type: 'move', requestId: 'r', id: 'unknown', x: 1, y: 1 }));
       expect(reply).toEqual({ type: 'refused', requestId: 'r', reason: 'No Node' });
@@ -221,6 +228,7 @@ describe('startServer', () => {
       ['a note that is not text', JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 5 }), 'r'],
       ['a note that is far too long', JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 'x'.repeat(10_001) }), 'r'],
       ['no request ID', JSON.stringify({ type: 'move', id: 'A', x: 1, y: 2 }), ''],
+      ['a search without a query', JSON.stringify({ type: 'search', requestId: 'r' }), 'r'],
     ])('refuses %s without troubling the session', async (_why, payload, requestId) => {
       const source = fakeSource(view(1));
       const reply = await ask(source, payload);

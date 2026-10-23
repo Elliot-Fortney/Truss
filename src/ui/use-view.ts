@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
+import type { SearchHit } from '../core/catalog.ts';
 import type { ClientRequest, Reply } from '../core/protocol.ts';
 import type { OpenInEditorMessage, View } from '../core/view.ts';
 import { applyPush } from './versions.ts';
@@ -8,18 +9,24 @@ export type Connection = 'connecting' | 'open' | 'closed';
 
 export type Outcome = { ok: true } | { ok: false; reason: string };
 
+export type SearchOutcome = { ok: true; hits: SearchHit[] } | { ok: false; reason: string };
+
+const DISCONNECTED: Reply = { type: 'refused', requestId: '', reason: 'Disconnected from Truss.' };
+
 /** Follows the server's pushes over the WebSocket, dropping any that are older than what it has. */
 export function useView(): {
   view: View | undefined;
   connection: Connection;
   /** Sends a request and resolves with the server's answer. Never rejects. */
   send(request: ClientRequest): Promise<Outcome>;
+  /** Searches the Catalog by name, service or CloudFormation type. Never rejects. */
+  search(query: string): Promise<SearchOutcome>;
   openInEditor(at: SourceLocation): void;
 } {
   const [view, setView] = useState<View>();
   const [connection, setConnection] = useState<Connection>('connecting');
   const socket = useRef<WebSocket | undefined>(undefined);
-  const pending = useRef(new Map<string, (outcome: Outcome) => void>());
+  const pending = useRef(new Map<string, (reply: Reply) => void>());
   const nextId = useRef(0);
 
   useEffect(() => {
@@ -30,7 +37,7 @@ export function useView(): {
     ws.onopen = () => setConnection('open');
     ws.onclose = () => {
       setConnection('closed');
-      for (const resolve of waiting.values()) resolve({ ok: false, reason: 'Disconnected from Truss.' });
+      for (const resolve of waiting.values()) resolve(DISCONNECTED);
       waiting.clear();
     };
     ws.onmessage = (event) => {
@@ -41,32 +48,49 @@ export function useView(): {
       }
       const resolve = waiting.get(msg.requestId);
       waiting.delete(msg.requestId);
-      resolve?.(msg.type === 'ack' ? { ok: true } : { ok: false, reason: msg.reason });
+      resolve?.(msg);
     };
     return () => {
       // React runs this twice in dev; the first socket's late `onclose` must not flip the live one.
       ws.onopen = ws.onclose = ws.onmessage = null;
       ws.close();
-      for (const resolve of waiting.values()) resolve({ ok: false, reason: 'Disconnected from Truss.' });
+      for (const resolve of waiting.values()) resolve(DISCONNECTED);
       waiting.clear();
       if (socket.current === ws) socket.current = undefined;
     };
   }, []);
 
-  const send = useCallback((request: ClientRequest) => {
+  const ask = useCallback((request: ClientRequest) => {
     const ws = socket.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.resolve<Outcome>({ ok: false, reason: 'Disconnected from Truss.' });
+    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.resolve(DISCONNECTED);
     const requestId = String(++nextId.current);
-    return new Promise<Outcome>((resolve) => {
+    return new Promise<Reply>((resolve) => {
       pending.current.set(requestId, resolve);
       ws.send(JSON.stringify({ ...request, requestId }));
     });
   }, []);
+
+  const send = useCallback(
+    async (request: ClientRequest): Promise<Outcome> => {
+      const reply = await ask(request);
+      return reply.type === 'refused' ? { ok: false, reason: reply.reason } : { ok: true };
+    },
+    [ask],
+  );
+
+  const search = useCallback(
+    async (query: string): Promise<SearchOutcome> => {
+      const reply = await ask({ type: 'search', query });
+      if (reply.type === 'results') return { ok: true, hits: reply.hits };
+      return { ok: false, reason: reply.type === 'refused' ? reply.reason : 'Unexpected reply to a search.' };
+    },
+    [ask],
+  );
 
   /** Asks Truss to show a place in the app's code in the user's editor. */
   const openInEditor = useCallback((at: SourceLocation) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
   }, []);
 
-  return { view, connection, send, openInEditor };
+  return { view, connection, send, search, openInEditor };
 }

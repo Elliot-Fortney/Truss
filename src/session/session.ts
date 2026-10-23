@@ -2,7 +2,7 @@ import type { Assembly, SynthError, SynthResult } from '../core/assembly.ts';
 import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { Facts } from '../core/facts.ts';
 import type { CatalogLoad, FileSet, Files, Source, Synth } from '../core/ports.ts';
-import type { ClientMessage, Reply } from '../core/protocol.ts';
+import type { ClientMessage, EditMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { locateError } from '../core/synth-error.ts';
 import { buildView, type View } from '../core/view.ts';
@@ -86,6 +86,10 @@ export class Session {
 
   /** Applies one request from the browser. Never throws: a failure is a refusal. */
   handle(message: ClientMessage): Promise<Reply> {
+    // A search only reads the Catalog, so it neither waits behind an edit nor stops when edits are paused.
+    if (message.type === 'search') {
+      return Promise.resolve({ type: 'results', requestId: message.requestId, hits: this.searchCatalog(message.query) });
+    }
     return this.serialised(() => this.apply(message));
   }
 
@@ -182,7 +186,7 @@ export class Session {
     return run;
   }
 
-  private async apply(message: ClientMessage): Promise<Reply> {
+  private async apply(message: EditMessage): Promise<Reply> {
     const { requestId } = message;
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
     // The Design on screen is the last good one, dimmed: editing it waits until the app synths again.

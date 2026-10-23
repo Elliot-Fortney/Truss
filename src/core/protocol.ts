@@ -1,16 +1,29 @@
-/** Messages the browser sends. Each carries a client request ID that the reply echoes. */
-export type ClientMessage =
+import type { SearchHit } from './catalog.ts';
+
+/** A change to one Node, named by its construct path. */
+export type EditMessage =
   | { type: 'move'; requestId: string; id: string; x: number; y: number }
   /** An empty `note` clears the note. */
   | { type: 'note'; requestId: string; id: string; note: string };
+
+/** The palette's search of the Catalog. An empty `query` lists the featured constructs first. */
+export type SearchMessage = { type: 'search'; requestId: string; query: string };
+
+/** Messages the browser sends. Each carries a client request ID that the reply echoes. */
+export type ClientMessage = EditMessage | SearchMessage;
 
 /** A request as the caller writes it; the transport adds the request ID. */
 export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ? Omit<M, 'requestId'> : never) : never;
 
 /** The server's answer to one request. */
-export type Reply = { type: 'ack'; requestId: string } | { type: 'refused'; requestId: string; reason: string };
+export type Reply =
+  | { type: 'ack'; requestId: string }
+  | { type: 'refused'; requestId: string; reason: string }
+  | { type: 'results'; requestId: string; hits: SearchHit[] };
 
 export const MAX_NOTE_LENGTH = 10_000;
+/** Bounds the work of one search: no construct name or CloudFormation type comes near this long. */
+export const MAX_QUERY_LENGTH = 200;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -26,6 +39,12 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
   const requestId = typeof raw['requestId'] === 'string' ? raw['requestId'] : '';
   const refuse = (reason: string) => ({ ok: false as const, requestId, reason });
   if (requestId === '') return refuse('A request needs a requestId');
+  if (raw['type'] === 'search') {
+    const query = raw['query'];
+    if (typeof query !== 'string') return refuse('A search needs a query');
+    if (query.length > MAX_QUERY_LENGTH) return refuse(`A search query can be at most ${MAX_QUERY_LENGTH} characters`);
+    return { ok: true, message: { type: 'search', requestId, query } };
+  }
   const id = raw['id'];
   if (typeof id !== 'string' || id === '') return refuse('A request needs the construct path as "id"');
 

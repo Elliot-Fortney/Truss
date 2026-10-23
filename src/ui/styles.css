@@ -63,3 +63,15 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .lock-reason { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .open-in-editor { margin-bottom: 8px; font: inherit; font-size: 12px; cursor: pointer; }
 .truss-node.external { border-style: dashed; background: transparent; }
+.palette { position: absolute; z-index: 10; top: 44px; right: 12px; display: flex; flex-direction: column; gap: 6px; width: 300px; max-height: 45%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.palette input { font: inherit; font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
+.palette ul { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.palette-hit { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 5px 4px; border-radius: 6px; font-size: 13px; }
+.palette-hit:hover { background: var(--bg); }
+.palette-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-detail { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.palette-deprecated { color: var(--error-fg); font-size: 11px; }
+.palette-empty { margin: 0; font-size: 12px; color: var(--muted); }
+.tier { align-self: start; padding: 0 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 11px; color: var(--muted); }
+.tier-L2 { color: var(--accent); border-color: var(--accent); }
+.tier-L3 { color: var(--fg); font-weight: 600; }

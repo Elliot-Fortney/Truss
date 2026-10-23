@@ -312,3 +312,35 @@ test('Stages show one at a time, nested stacks sit in their parent, imports are 
     await truss.exited;
   }
 });
+
+test('the palette searches the app\'s own Catalog by name, service or CloudFormation type and shows each tier', async ({ page }) => {
+  const truss = await startTruss();
+  try {
+    await page.goto(truss.url);
+    const palette = page.getByRole('complementary', { name: 'Palette' });
+    const search = palette.getByLabel('Search constructs');
+    await expect(search).toBeVisible({ timeout: 60_000 });
+
+    // By CloudFormation type: the L1 and the L2 built on it, each with its tier.
+    await search.fill('AWS::S3::Bucket');
+    await expect(palette.locator('[title="aws-cdk-lib.aws_s3.Bucket"]')).toBeVisible();
+    await expect(palette.locator('[title="aws-cdk-lib.aws_s3.Bucket"] .tier')).toHaveText('L2');
+    await expect(palette.locator('[title="aws-cdk-lib.aws_s3.CfnBucket"] .tier')).toHaveText('L1');
+
+    // By name, and by service.
+    await search.fill('queue');
+    await expect(palette.locator('[title="aws-cdk-lib.aws_sqs.Queue"]')).toBeVisible();
+    await search.fill('dynamodb');
+    await expect(palette.locator('[title="aws-cdk-lib.aws_dynamodb.Table"]')).toBeVisible();
+
+    // An L3 pattern is told from the rest by its tier.
+    await search.fill('ApplicationLoadBalancedFargateService');
+    await expect(palette.locator('[title="aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService"] .tier')).toHaveText('L3');
+
+    await search.fill('zzzzzz-nothing');
+    await expect(palette.getByText('No constructs match.')).toBeVisible();
+  } finally {
+    truss.child.kill('SIGINT');
+    expect(await truss.exited).toBe(0);
+  }
+});

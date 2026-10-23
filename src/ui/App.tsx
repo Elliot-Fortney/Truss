@@ -5,6 +5,7 @@ import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { NodeView, View, ViewError } from '../core/view.ts';
 import { layoutView, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
+import { Palette } from './palette.tsx';
 import { chooseStage, rememberStage, rememberedStage, showStage } from './stage.ts';
 import { useView } from './use-view.ts';
 import { namesShownAt } from './zoom.ts';
@@ -181,7 +182,7 @@ function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceL
 }
 
 export function App() {
-  const { view, connection, send, openInEditor } = useView();
+  const { view, connection, send, search, openInEditor } = useView();
   // The picked Stage is only a preference of this browser; with none picked, or a gone one, the first Stage shows.
   const [pickedStage, setPickedStage] = useState(rememberedStage);
   const stageId = view ? chooseStage(view.stages, pickedStage) : undefined;
@@ -292,6 +293,7 @@ export function App() {
           <Background />
           <Controls showInteractive={false} />
         </ReactFlow>
+        <Palette search={search} />
         {selected ? <NodePanel node={selected} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
       </div>
     </div>

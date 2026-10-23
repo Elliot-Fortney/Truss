@@ -373,6 +373,18 @@ describe('Session Catalog', () => {
   it('finds nothing when it was handed no Catalog', () => {
     expect(session().searchCatalog('bucket')).toEqual([]);
   });
+
+  it('answers a search request from the browser with the hits and its request ID', async () => {
+    const s = session(catalog);
+    expect(await s.handle({ type: 'search', requestId: 's1', query: 'queue' })).toEqual({ type: 'results', requestId: 's1', hits: s.searchCatalog('queue') });
+  });
+
+  it('answers a search even before the first synth, and while the app does not synth', async () => {
+    const failing = new Session({ appDir: '/work/app', synth: fakeSynth(bad()), files: new FakeFiles(readFixtureFiles('straight-line')), source: new TsSource(), catalog });
+    await failing.start();
+    expect(failing.view().error).toBeDefined();
+    expect(await failing.handle({ type: 'search', requestId: 's2', query: 'bucket' })).toMatchObject({ type: 'results', hits: [{ name: 'Bucket', tier: 'L2' }] });
+  });
 });
 
 describe('Session Catalog refresh', () => {
