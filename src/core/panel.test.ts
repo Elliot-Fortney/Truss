@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Catalog, CatalogEntry } from './catalog.ts';
 import type { Facts, NodeFacts, PropsFacts } from './facts.ts';
 import type { Intent } from './intents.ts';
-import { buildPanel, editableAs, inputFor } from './panel.ts';
+import { buildPanel, editableAs, inputFor, intentForEdit } from './panel.ts';
 import type { NodeView, StackBoxView, ViewBody } from './view.ts';
 
 const span = { file: 'lib/a.ts', start: { line: 3, col: 5 }, end: { line: 3, col: 40 } };
@@ -232,6 +232,42 @@ describe('buildPanel for editing', () => {
       expect(inputFor(panel, ['versioned', 'x'])).toBeUndefined();
       const odd = panelOf(object({ name: 'partitionKey', kind: 'object', text: '', fields: [{ name: 'name', kind: 'expression', text: 'id()' }] }), { intents: [] });
       expect(inputFor(odd, ['partitionKey', 'name'])).toBeUndefined();
+    });
+  });
+
+  describe('intentForEdit', () => {
+    const flag = { kind: 'boolean' as const, value: true };
+    const open = () => panelOf(undefined, { intents: [] });
+    const refusal = (r: ReturnType<typeof intentForEdit>) => (r.ok ? undefined : r.reason);
+
+    it('returns the intent to stage for a value the input takes', () => {
+      expect(intentForEdit(open(), 'App/Logs', ['versioned'], flag)).toEqual({ ok: true, intent: intent(['versioned'], flag) });
+      const retain = { kind: 'enum' as const, type: 'aws-cdk-lib.RemovalPolicy', member: 'RETAIN' };
+      expect(intentForEdit(open(), 'App/Logs', ['removalPolicy'], retain)).toEqual({ ok: true, intent: intent(['removalPolicy'], retain) });
+    });
+
+    it('refuses when there is no panel', () => {
+      expect(refusal(intentForEdit(undefined, 'App/Nope', ['versioned'], flag))).toBe('No Node or Stack at App/Nope');
+    });
+
+    it('refuses with the reason when the panel is read-only', () => {
+      expect(refusal(intentForEdit(panelOf(undefined, { intents: [], blocked: 'no build script' }), 'App/Logs', ['versioned'], flag))).toBe('no build script');
+    });
+
+    it('refuses a prop the panel has no input for', () => {
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['lifecycleRules'], flag))).toBe("lifecycleRules can't be edited here");
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['partitionKey', 'nope'], flag))).toBe("partitionKey.nope can't be edited here");
+    });
+
+    it('refuses a value of the wrong kind, and an enum of another type or member', () => {
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['versioned'], { kind: 'string', value: 'yes' }))).toBe('versioned takes a boolean, not a string');
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.Other', member: 'RETAIN' }))).toBe('removalPolicy takes a enum, not a enum');
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'NOPE' }))).toBe('removalPolicy takes a enum, not a enum');
+    });
+
+    it('refuses when the code gives the Node no Construct ID to edit by', () => {
+      const noId = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), facts({ 'App/Logs': { className: 's3.Bucket' } }), cat, { intents: [] })!;
+      expect(refusal(intentForEdit(noId, 'App/Logs', ['versioned'], flag))).toBe('App/Logs has no Construct ID in the code to edit by');
     });
   });
 });

@@ -1,7 +1,7 @@
 import { entryFor, type Catalog, type CatalogEntry, type CatalogProp, type PropInput } from './catalog.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts, PropFacts } from './facts.ts';
-import { withIntents, type Intent } from './intents.ts';
+import { withIntents, type Intent, type PropValue } from './intents.ts';
 import type { ViewBody } from './view.ts';
 
 /**
@@ -211,4 +211,27 @@ export function inputFor(panel: PanelView, prop: readonly string[]): PropInput |
     input = declared?.input && editableAs(declared.input, written) ? declared.input : undefined;
   }
   return input;
+}
+
+/**
+ * What a panel edit means for the Draft: the intent to stage, or why the edit is refused. The panel is the one the user edited in,
+ * so a prop it offers no input for, or a value its input doesn't take, is turned away here and never reaches the code.
+ */
+export function intentForEdit(
+  panel: PanelView | undefined,
+  id: string,
+  prop: string[],
+  value: PropValue,
+): { ok: true; intent: Intent } | { ok: false; reason: string } {
+  if (!panel) return { ok: false, reason: `No Node or Stack at ${id}` };
+  if (panel.readOnly) return { ok: false, reason: panel.readOnly };
+  const input = inputFor(panel, prop);
+  const named = prop.join('.');
+  if (!input) return { ok: false, reason: `${named} can't be edited here` };
+  const fits =
+    input.kind === value.kind &&
+    (input.kind !== 'enum' || (value.kind === 'enum' && value.type === input.fqn && input.members.includes(value.member)));
+  if (!fits) return { ok: false, reason: `${named} takes a ${input.kind}, not a ${value.kind}` };
+  if (panel.literalId === undefined) return { ok: false, reason: `${id} has no Construct ID in the code to edit by` };
+  return { ok: true, intent: { type: 'setProp', path: id, expect: { className: panel.className, literalId: panel.literalId }, prop, value } };
 }

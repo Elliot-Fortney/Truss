@@ -5,7 +5,7 @@ import { targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import { describeIntent, emptyDraft, redo, stage, undo, type Draft, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
-import { buildPanel, inputFor } from '../core/panel.ts';
+import { buildPanel, intentForEdit } from '../core/panel.ts';
 import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { annotationProblems, buildReport, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
@@ -469,18 +469,9 @@ export class Session {
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
     if (!this.base || !this.snapshot) return refuse('There is no Design to edit yet.');
     const panel = buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...this.editBlock() });
-    if (!panel) return refuse(`No Node or Stack at ${id}`);
-    if (panel.readOnly) return refuse(panel.readOnly);
-    const input = inputFor(panel, prop);
-    const named = prop.join('.');
-    if (!input) return refuse(`${named} can't be edited here`);
-    const fits =
-      input.kind === value.kind &&
-      (input.kind !== 'enum' || (value.kind === 'enum' && value.type === input.fqn && input.members.includes(value.member)));
-    if (!fits) return refuse(`${named} takes a ${input.kind}, not a ${value.kind}`);
-    if (panel.literalId === undefined) return refuse(`${id} has no Construct ID in the code to edit by`);
-
-    const intent: Intent = { type: 'setProp', path: id, expect: { className: panel.className, literalId: panel.literalId }, prop, value };
+    const edit = intentForEdit(panel, id, prop, value);
+    if (!edit.ok) return refuse(edit.reason);
+    const { intent } = edit;
     const before = this.draft;
     this.draft = stage(before, intent);
     const planned = this.planned()!;
