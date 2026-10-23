@@ -37,11 +37,45 @@ test('npx truss opens a straight-line CDK app and shows its Nodes in the Stack b
       await expect(node).toContainText(cls!);
     }
     await expect(page.locator('.truss-node')).toHaveCount(3);
+    // Each Node shows the official icon for its type, and it really loaded.
+    for (const [label, icon] of [['Uploads', 'Res_Amazon-Simple-Storage-Service_Bucket_48'], ['Orders', 'Res_Amazon-Simple-Queue-Service_Queue_48'], ['Catalog', 'Res_Amazon-DynamoDB_Table_48']]) {
+      const img = page.locator('.truss-node', { hasText: label }).locator('img.node-icon');
+      await expect(img).toHaveAttribute('src', new RegExp(icon!));
+      expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
+    }
     // An app without Stages has no Stage picker.
     await expect(page.getByLabel('Stage')).toHaveCount(0);
   } finally {
     truss.child.kill('SIGINT');
     expect(await truss.exited).toBe(0);
+  }
+});
+
+test('Node names show when zoomed in and drop away, leaving the icon, when zoomed out', async ({ page }) => {
+  const truss = await startTruss();
+  try {
+    await page.goto(truss.url);
+    const uploads = page.locator('.truss-node', { hasText: 'Uploads' });
+    await expect(uploads).toBeVisible({ timeout: 60_000 });
+    const name = uploads.locator('.node-label');
+    // Three Nodes fit the view at a high zoom.
+    await expect(uploads).not.toHaveClass(/icon-only/);
+    await expect(name).toBeVisible();
+
+    for (let i = 0; i < 8; i++) await page.locator('.react-flow__controls-zoomout').click();
+    await expect(uploads).toHaveClass(/icon-only/);
+    await expect(uploads.locator('img.node-icon')).toBeVisible();
+    await expect(name).not.toBeInViewport();
+    // The name is still in the page for a screen reader, and in the tooltip.
+    await expect(name).toHaveText('Uploads');
+    await expect(uploads).toHaveAttribute('title', /^Uploads · aws-cdk-lib\.aws_s3\.Bucket/);
+
+    for (let i = 0; i < 3; i++) await page.locator('.react-flow__controls-zoomin').click();
+    await expect(uploads).not.toHaveClass(/icon-only/);
+    await expect(name).toBeInViewport();
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
   }
 });
 
@@ -260,6 +294,9 @@ test('Stages show one at a time, nested stacks sit in their parent, imports are 
     await expect(page.locator('.truss-node.external')).toContainText('Existing');
     await expect(page.locator('.truss-node', { hasText: 'Plain' })).not.toHaveClass(/external/);
     await expect(page.locator('.truss-node', { hasText: 'Docs' })).toContainText('MyBucket · S3 Bucket');
+
+    // A construct with no service to name gets the generic icon, drawn through a mask that must have parsed.
+    await expect(page.locator('.node-icon.generic').first()).toHaveCSS('mask-image', /^url\(/);
 
     // Picking the other Stage swaps its Stacks in, and the choice survives a reload.
     await picker.selectOption('StageProd');

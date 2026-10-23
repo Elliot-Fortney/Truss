@@ -1,11 +1,13 @@
-import { applyNodeChanges, Background, Controls, ReactFlow, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
+import { applyNodeChanges, Background, Controls, ReactFlow, useStore, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { NodeView, View, ViewError } from '../core/view.ts';
 import { layoutView, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
+import { NodeIcon } from './node-icon.tsx';
 import { chooseStage, rememberStage, rememberedStage, showStage } from './stage.ts';
 import { useView } from './use-view.ts';
+import { namesShownAt } from './zoom.ts';
 
 interface StackData extends Record<string, unknown> {
   label: string;
@@ -15,6 +17,7 @@ interface TrussNodeData extends Record<string, unknown> {
   label: string;
   subtitle: string;
   fqn: string;
+  icon: string;
   note?: string;
   lock?: string;
   external?: boolean;
@@ -31,15 +34,6 @@ function StackBox({ data }: NodeProps<Node<StackData>>) {
   );
 }
 
-function GenericIcon() {
-  return (
-    <svg className="node-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-      <rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
 function LockIcon() {
   return (
     <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -49,10 +43,19 @@ function LockIcon() {
   );
 }
 
+/** Icon sizes in px: larger when the Node is only its icon. */
+const ICON_SIZE = 36;
+const ICON_ONLY_SIZE = 44;
+
 function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
+  // Zoomed out, a name is too small to read, so the Node is its icon; the full name stays in the tooltip.
+  const showName = useStore((s) => namesShownAt(s.transform[2]));
+  const className = ['truss-node', data.external ? 'external' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
+  const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
   return (
-    <div className={data.external ? 'truss-node external' : 'truss-node'} title={data.external ? `${data.fqn} · refers to an existing resource` : data.fqn}>
-      <GenericIcon />
+    <div className={className} title={tooltip}>
+      <NodeIcon icon={data.icon} size={showName ? ICON_SIZE : ICON_ONLY_SIZE} />
+      {/* Always in the page, so screen readers have the name; zoomed out it is clipped away rather than removed. */}
       <div className="node-text">
         <div className="node-label">{data.label}</div>
         <div className="node-subtitle">{data.subtitle}</div>
@@ -101,7 +104,7 @@ function toFlowNodes(view: View): Node[] {
       parentId: `stack:${n.stackId}`,
       position: { x: pos.x, y: pos.y },
       style: { width: NODE_WIDTH, height: NODE_HEIGHT },
-      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, ...(n.note ? { note: n.note } : {}), ...(n.lock ? { lock: n.lock } : {}), ...(n.external ? { external: true } : {}) },
+      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, icon: n.icon, ...(n.note ? { note: n.note } : {}), ...(n.lock ? { lock: n.lock } : {}), ...(n.external ? { external: true } : {}) },
     };
   });
   // React Flow needs a parent to come before its children.

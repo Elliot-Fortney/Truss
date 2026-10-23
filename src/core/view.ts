@@ -1,6 +1,7 @@
 import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
+import { iconFor } from './icons.ts';
 import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
@@ -69,8 +70,6 @@ export interface View {
 
 /** The part of a View that is derived from the app. */
 export type ViewBody = Pick<View, 'stages' | 'stacks' | 'nodes'>;
-
-const GENERIC_ICON = 'generic';
 
 function envLabel(env: string | undefined): string {
   const m = env && /^aws:\/\/([^/]+)\/(.+)$/.exec(env);
@@ -155,7 +154,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
         label: nodeFacts.literalId ?? tree.id,
         subtitle: subtitleOf(nodeFacts, tree.fqn),
         fqn: tree.fqn,
-        icon: GENERIC_ICON,
+        icon: iconFor(tree.fqn),
         ...(nodeFacts.external ? { external: true as const } : {}),
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
         ...(editability.editable ? {} : { lock: editability.reason }),

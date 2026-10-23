@@ -31,7 +31,10 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .stack-header { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; font-size: 13px; }
 .stack-header span { color: var(--muted); font-size: 12px; }
 .truss-node { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
-.node-icon { flex: none; color: var(--accent); }
+.node-icon { flex: none; }
+.node-icon.generic { display: inline-block; background-color: var(--accent); mask-size: contain; mask-repeat: no-repeat; mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+.truss-node.icon-only { justify-content: center; }
+.truss-node.icon-only .node-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .node-text { min-width: 0; }
 .node-label { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-subtitle { font-size: 12px; color: var(--muted); }

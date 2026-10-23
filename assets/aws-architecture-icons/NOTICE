@@ -1,0 +1,15 @@
+AWS Architecture Icons
+======================
+
+The .svg files in this directory are the AWS Architecture Icons, release 2026-07-31,
+copyright (c) Amazon Web Services, Inc. or its affiliates. All rights reserved.
+
+Source:   https://aws.amazon.com/architecture/icons/
+Terms:    AWS allows customers and partners to use these assets to create architecture
+          diagrams. AWS publishes the same artwork under the Creative Commons
+          Attribution-NoDerivs 2.0 licence (CC BY-ND 2.0) in awslabs/aws-icons-for-plantuml:
+          https://creativecommons.org/licenses/by-nd/2.0/legalcode
+
+The icons are copied byte for byte from the package by scripts/vendor-aws-icons.ts. They are
+not modified, recoloured or cropped, and they are NOT covered by Truss's Apache-2.0 licence.
+They are not sublicensed. Truss is not affiliated with, sponsored by or endorsed by AWS.
