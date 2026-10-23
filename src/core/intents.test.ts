@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeIntent, emptyDraft, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
+import { describeIntent, emptyDraftHistory, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
 
 const set = (prop: string[], value: PropValue, path = 'A/B'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'B' }, prop, value });
 const bool = (value: boolean): PropValue => ({ kind: 'boolean', value });
@@ -8,7 +8,7 @@ describe('the Draft', () => {
   it('stages intents in order, and undo pops while redo pushes', () => {
     const a = set(['versioned'], bool(true));
     const b = set(['bucketName'], { kind: 'string', value: 'x' });
-    let draft = stage(stage(emptyDraft, a), b);
+    let draft = stage(stage(emptyDraftHistory, a), b);
     expect(draft.intents).toEqual([a, b]);
     draft = undo(draft);
     expect(draft).toEqual({ intents: [a], redo: [b] });
@@ -17,17 +17,17 @@ describe('the Draft', () => {
   });
 
   it('does nothing to undo an empty Draft or redo with nothing undone', () => {
-    expect(undo(emptyDraft)).toBe(emptyDraft);
-    expect(redo(emptyDraft)).toBe(emptyDraft);
+    expect(undo(emptyDraftHistory)).toBe(emptyDraftHistory);
+    expect(redo(emptyDraftHistory)).toBe(emptyDraftHistory);
   });
 
   it('ends redo with a new edit', () => {
-    const draft = stage(undo(stage(emptyDraft, set(['a'], bool(true)))), set(['b'], bool(true)));
+    const draft = stage(undo(stage(emptyDraftHistory, set(['a'], bool(true)))), set(['b'], bool(true)));
     expect(draft.redo).toEqual([]);
   });
 
   it('replaces the last intent when the same prop is set again, and not when another prop or Node comes between', () => {
-    const first = stage(emptyDraft, set(['a'], bool(true)));
+    const first = stage(emptyDraftHistory, set(['a'], bool(true)));
     expect(stage(first, set(['a'], bool(false))).intents).toEqual([set(['a'], bool(false))]);
     expect(stage(first, set(['a', 'b'], bool(false))).intents).toHaveLength(2);
     expect(stage(first, set(['a'], bool(false), 'A/Other')).intents).toHaveLength(2);

@@ -1,18 +1,19 @@
 import type { Assembly, SourceLocation, SynthError, SynthResult } from '../core/assembly.ts';
 import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
-import { unifiedDiff, type FileDiff, type TextChange } from '../core/diff.ts';
+import type { TextChange } from '../core/diff.ts';
 import { targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
-import { describeIntent, emptyDraft, redo, stage, undo, type Draft, type Intent } from '../core/intents.ts';
+import type { Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
 import { buildPanel, intentForEdit } from '../core/panel.ts';
 import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
-import { annotationProblems, buildReport, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
+import { annotationProblems, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
 import { locateError } from '../core/synth-error.ts';
 import { commit } from './commit.ts';
-import { checkEditOn, planEdit, type Base, type Planned } from './edit-check.ts';
-import { buildView, type DraftView, type View } from '../core/view.ts';
+import { Draft } from './draft.ts';
+import { checkEditOn, type Base } from './edit-check.ts';
+import { buildView, type View } from '../core/view.ts';
 
 export interface SessionDeps {
   appDir: string;
@@ -55,22 +56,10 @@ export class Session {
   /** What the Design on screen was derived from; absent until a synth has succeeded with a usable Sidecar. */
   private snapshot: { facts: Facts; assembly: Assembly } | undefined;
 
-  /** The app as the files hold it, from the last synth of them. */
-  private base: Base | undefined;
-  /** Bumped when the files may have changed; the base is out of date until a synth has read the version it was bumped to. */
+  /** Bumped when the files may have changed; the Draft's Base is out of date until a synth has read the version it was bumped to. */
   private filesVersion = 0;
   private baseVersion = -1;
-  private draft: Draft = emptyDraft;
-  /** The intents the Design on screen was synthed with, so that Save knows the screen shows the Draft as it is now. */
-  private shownIntents: readonly Intent[] | undefined;
-  /** Edits dropped when the code changed under the Draft, and why. */
-  private notices: string[] = [];
-  /** Everything found wrong with the Design on screen: the app's own annotations and cycles, and what the checks of the shown Draft found. */
-  private found: Problem[] = [];
-  /** The intents the Draft last synthed with, so that those staged since are the ones that may have broken it. */
-  private lastGood: readonly Intent[] = [];
-  /** The error the Draft's synth gave, while it is the latest word on the Draft. */
-  private draftError: string | undefined;
+  private readonly draft: Draft;
   /** TypeScript diagnostics of the files on disk, by the files a Draft touches, for the length of one base. */
   private baseDiagnostics = new Map<string, Diagnostic[]>();
   /** Why the app can't be synthed with a Draft applied, when it can't. */
@@ -82,6 +71,7 @@ export class Session {
   constructor(private readonly deps: SessionDeps) {
     this.migrations = deps.migrations ?? MIGRATIONS;
     this.catalog = deps.catalog;
+    this.draft = new Draft(deps.source);
   }
 
   view(): View {
@@ -137,7 +127,7 @@ export class Session {
   private panel({ requestId, id }: PanelMessage): Reply {
     const panel = this.snapshot && buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...this.editBlock() });
     if (!panel) return { type: 'refused', requestId, reason: `No Node or Stack at ${id}` };
-    const here = this.found.filter((p) => p.path === id || p.path?.startsWith(`${id}/`));
+    const here = this.draft.problems().filter((p) => p.path === id || p.path?.startsWith(`${id}/`));
     if (here.length > 0) panel.problems = here.map((p) => ({ severity: p.severity, message: p.message, draft: p.draft }));
     return { type: 'panel', requestId, panel };
   }
@@ -184,7 +174,7 @@ export class Session {
     this.push({ synthing: true });
     try {
       if (!(await this.refreshCatalog()) || this.stopped) return;
-      if (!this.base || this.baseVersion !== this.filesVersion) {
+      if (!this.draft.base || this.baseVersion !== this.filesVersion) {
         if (!(await this.deriveBase())) return;
       }
       if (this.draft.intents.length === 0) return;
@@ -207,7 +197,7 @@ export class Session {
         this.fail(result.error);
         return false;
       }
-      this.base = { files, facts: this.deps.source.analyse(files, result.assembly), assembly: result.assembly };
+      this.draft.rebase({ files, facts: this.deps.source.analyse(files, result.assembly), assembly: result.assembly });
       this.baseDiagnostics = new Map();
       this.baseVersion = version;
       if (this.draft.intents.length === 0) this.showBase(true);
@@ -217,29 +207,16 @@ export class Session {
 
   /** The Draft's text synthed in a shadow copy of the app, after the Draft is planned again on the base: an edit the code has changed under is dropped. */
   private async deriveDraft(): Promise<void> {
-    const base = this.base!;
-    this.rebase(base);
+    const base = this.draft.base!;
+    this.draft.rebase(base);
     // The base synthed, so an error shown from before it did is over, whatever the rebase left of the Draft.
     if (this.draft.intents.length === 0) return this.serialised(async () => this.showBase(true));
-    const planned = this.planned()!;
+    const planned = this.draft.plan()!;
     if (!planned.ok) return this.failDraft({ message: planned.reason });
     const intents = this.draft.intents;
     const result = await this.deps.synth.synth(this.deps.appDir, { overlay: planned.overlay });
     if (this.stopped || this.isStale()) return;
     await this.serialised(() => this.show(result, planned.merged, { intents, changes: planned.changes, base }));
-  }
-
-  /** Plans the Draft on `base` again, dropping each intent that no longer finds its target and noting why. */
-  private rebase(base: Base): void {
-    const dropped: string[] = [];
-    for (let plan = this.deps.source.plan(base.files, base.facts, this.draft.intents); !plan.ok; plan = this.deps.source.plan(base.files, base.facts, this.draft.intents)) {
-      const intent = this.draft.intents[plan.intent];
-      if (!intent) break;
-      dropped.push(`Dropped ${describeIntent(intent)} on ${intent.expect.literalId}: ${plan.reason}`);
-      this.draft = { ...this.draft, intents: this.draft.intents.filter((_, i) => i !== plan.intent) };
-    }
-    // Notices stay until the Draft is undone, redone, discarded or saved, so a later rebase adds to them rather than replacing them.
-    this.notices = [...this.notices, ...dropped];
   }
 
   /** Whether the app can be synthed with a Draft, and if not, why. */
@@ -269,7 +246,7 @@ export class Session {
     const parsed = sidecarText === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(sidecarText, this.migrations);
     if (!parsed.ok) {
       this.snapshot = undefined;
-      this.found = [];
+      this.draft.setProblems([]);
       this.push({ synthing: false, hasDesign: false, error: { kind: 'sidecar', message: parsed.message }, stages: [], stacks: [], nodes: [] });
       return false;
     }
@@ -285,14 +262,11 @@ export class Session {
     if (!result.ok) return this.failDraft(result.error, { ...shown, merged: files });
     const facts = this.deps.source.analyse(files, result.assembly);
     this.snapshot = { facts, assembly: result.assembly };
-    this.shownIntents = shown.intents;
-    this.lastGood = shown.intents;
-    this.draftError = undefined;
-    this.found = [
+    this.draft.checked(shown.intents, [
       ...annotationProblems(result.assembly, shown.base.assembly),
       ...cycleProblems(result.assembly, shown.base.assembly),
       ...this.editProblems(shown, files, result),
-    ];
+    ]);
     this.push({ synthing: false, hasDesign: true, error: undefined, ...this.body(), ...this.draftFields() });
   }
 
@@ -321,7 +295,8 @@ export class Session {
 
   /** The Problems of the app on disk, which are the ones that are not the Draft's. */
   private baseProblems(): Problem[] {
-    return this.base ? [...annotationProblems(this.base.assembly), ...cycleProblems(this.base.assembly)] : [];
+    const base = this.draft.base;
+    return base ? [...annotationProblems(base.assembly), ...cycleProblems(base.assembly)] : [];
   }
 
   /** The Problem that a synth error is. */
@@ -331,61 +306,21 @@ export class Session {
 
   /** Shows the files as they are on disk, with the Draft empty. An error the Draft caused is gone with it, and with `fresh` (a synth just succeeded) so is any other. */
   private showBase(fresh = false): void {
-    const base = this.base!;
+    const base = this.draft.base!;
     this.snapshot = { facts: base.facts, assembly: base.assembly };
-    this.shownIntents = undefined;
-    this.lastGood = [];
-    this.draftError = undefined;
     const error = fresh || this.current.error?.kind === 'draft' ? undefined : this.current.error;
-    this.found = [...(error ? this.found.filter((p) => p.source === 'synth' && !p.draft) : []), ...this.baseProblems()];
+    this.draft.checked(this.draft.intents, [...(error ? this.draft.problems().filter((p) => p.source === 'synth' && !p.draft) : []), ...this.baseProblems()]);
     this.push({ synthing: false, hasDesign: true, error, ...this.body(), ...this.draftFields() });
   }
 
   /** The View of the Design on screen, with the Nodes the Draft changes marked. */
   private body() {
-    return buildView(this.snapshot!.facts, this.snapshot!.assembly, this.sidecar, this.base ? targetPaths(this.base.facts, this.draft.intents) : new Set());
+    return buildView(this.snapshot!.facts, this.snapshot!.assembly, this.sidecar, this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set());
   }
 
   /** The parts of the View that speak of the Draft, always all of them so that a push clears what no longer holds. */
   private draftFields(): Pick<View, 'draft' | 'draftBlocked'> {
-    return { draft: this.draftView(), draftBlocked: this.blocked };
-  }
-
-  private draftView(): DraftView | undefined {
-    const { intents, redo: undone } = this.draft;
-    if (intents.length === 0 && undone.length === 0 && this.notices.length === 0) return undefined;
-    const planned = this.planned();
-    const diffs: FileDiff[] = [];
-    if (planned?.ok && this.base) {
-      for (const [file, text] of planned.overlay) {
-        const diff = unifiedDiff(file, this.base.files.get(file) ?? '', text);
-        if (diff) diffs.push(diff);
-      }
-    }
-    const suspects = this.draftError === undefined ? [] : intents.filter((i) => !this.lastGood.includes(i));
-    const bugs = this.found.filter((p) => p.trussBug).map((p) => p.message);
-    return {
-      items: intents.map((i) => ({
-        id: i.path,
-        label: i.expect.literalId,
-        summary: describeIntent(i),
-        ...(suspects.includes(i) ? { suspect: true as const } : {}),
-        ...(suspects.length === 1 && suspects[0] === i ? { error: this.draftError! } : {}),
-        ...(suspects.length === 1 && suspects[0] === i && intents.at(-1) === i ? { undoable: true as const } : {}),
-      })),
-      canUndo: intents.length > 0,
-      canRedo: undone.length > 0,
-      diffs,
-      problems: this.found.filter((p) => p.blocking).map((p) => p.message),
-      notices: this.notices,
-      ...(bugs.length > 0 ? { report: buildReport(intents, diffs, bugs) } : {}),
-    };
-  }
-
-  /** Plans the Draft's intents on the base. Undefined with no base to plan on. */
-  private planned(): Planned | undefined {
-    if (!this.base) return undefined;
-    return planEdit(this.deps.source, this.base, this.draft.intents);
+    return { draft: this.draft.view(), draftBlocked: this.blocked };
   }
 
   /** Stale means the files changed during the run, so the next run reads newer ones; but only so many in a row. */
@@ -401,8 +336,8 @@ export class Session {
   /** Shows the error. The last good Design, if there is one, stays so the user keeps their bearings. */
   private fail(error: SynthError): void {
     const location = error.location ?? locateError(error, this.deps.appDir);
-    this.draftError = undefined;
-    this.found = [this.errorProblem({ ...error, ...(location ? { location } : {}) }, false)];
+    this.draft.setError(undefined);
+    this.draft.setProblems([this.errorProblem({ ...error, ...(location ? { location } : {}) }, false)]);
     this.push({ synthing: false, error: { ...error, ...(location ? { location } : {}) }, ...this.draftFields() });
   }
 
@@ -414,8 +349,8 @@ export class Session {
     const raw = error.location ?? locateError(error, this.deps.appDir);
     const traced = raw && shown ? this.traceToBase(raw, shown) : raw ? { location: raw } : undefined;
     const withPlace = { ...error, ...(traced ? { location: traced.location } : {}) };
-    this.draftError = error.message;
-    this.found = [this.errorProblem(withPlace, true, traced && 'path' in traced ? traced.path : undefined), ...this.baseProblems()];
+    this.draft.setError(error.message);
+    this.draft.setProblems([this.errorProblem(withPlace, true, traced && 'path' in traced ? traced.path : undefined), ...this.baseProblems()]);
     this.push({ synthing: false, error: { ...withPlace, kind: 'draft' }, ...this.draftFields() });
   }
 
@@ -467,37 +402,19 @@ export class Session {
   private setProp(message: Extract<DraftMessage, { type: 'setProp' }>): Reply {
     const { requestId, id, prop, value } = message;
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
-    if (!this.base || !this.snapshot) return refuse('There is no Design to edit yet.');
+    if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
     const panel = buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...this.editBlock() });
     const edit = intentForEdit(panel, id, prop, value);
     if (!edit.ok) return refuse(edit.reason);
-    const { intent } = edit;
-    const before = this.draft;
-    this.draft = stage(before, intent);
-    const planned = this.planned()!;
-    if (!planned.ok) {
-      this.draft = before;
-      return refuse(planned.reason);
-    }
-    // A Draft that changes no code, as when a value is put back, holds nothing.
-    if (Object.keys(planned.changes).length === 0) this.draft = { intents: [], redo: this.draft.redo };
+    const staged = this.draft.stage(edit.intent);
+    if (!staged.ok) return refuse(staged.reason);
     this.afterDraftChange();
     return { type: 'ack', requestId };
   }
 
   private changeDraft({ requestId, type }: { requestId: string; type: 'undo' | 'redo' | 'discard' }): Reply {
-    const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
-    if (!this.base) return refuse('There is no Design to edit yet.');
-    if (type === 'undo') {
-      if (this.draft.intents.length === 0) return refuse('Nothing to undo.');
-      this.draft = undo(this.draft);
-    } else if (type === 'redo') {
-      if (this.draft.redo.length === 0) return refuse('Nothing to redo.');
-      this.draft = redo(this.draft);
-    } else {
-      this.draft = emptyDraft;
-    }
-    this.notices = [];
+    const changed = this.draft[type]();
+    if (!changed.ok) return { type: 'refused', requestId, reason: changed.reason };
     this.afterDraftChange();
     return { type: 'ack', requestId };
   }
@@ -508,9 +425,8 @@ export class Session {
       this.showBase();
       return;
     }
-    this.shownIntents = undefined;
     // The checks were of the Draft as it was; the error stays, with its suspects, until synth has another word.
-    this.found = this.found.filter((p) => !p.blocking || p.source === 'synth');
+    this.draft.setProblems(this.draft.problems().filter((p) => !p.blocking || p.source === 'synth'));
     this.push({ ...this.body(), ...this.draftFields() });
     void this.request();
   }
@@ -518,29 +434,26 @@ export class Session {
   /** Writes the Draft to the user's files, all of them or none (ADR 0006). */
   private async save(requestId: string): Promise<Reply> {
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
-    const base = this.base;
+    const base = this.draft.base;
     if (!base || this.draft.intents.length === 0) return refuse('There is nothing in the Draft to save.');
     // A Draft is held, not rebased, while the code on disk doesn't synth: there is nothing to check it against.
     if (this.current.error?.kind === 'draft') return refuse(`Fix the Problem the Draft causes first: ${this.current.error.message}`);
     if (this.current.error) return refuse(`Save is paused until the app synths again: ${this.current.error.message}`);
     // Files changed after Save began to wait: the Draft has not been planned on them.
     if (this.cycle || this.baseVersion !== this.filesVersion) return refuse('Truss is still reading changes to your code. Try again in a moment.');
-    // The screen has to show the Draft as it is now, because the checks were made on what it shows.
-    if (this.shownIntents !== this.draft.intents || !this.snapshot) return refuse('Truss is still checking the Draft. Try again in a moment.');
-    const planned = this.planned();
+    const block = this.draft.saveBlock();
+    if (block || !this.snapshot) return refuse(block ?? 'Truss is still checking the Draft. Try again in a moment.');
+    const planned = this.draft.plan();
     if (!planned?.ok) return refuse(planned ? planned.reason : 'There is no Design to save.');
 
     const checked = checkEditOn(this.deps, base, this.draft.intents, { ok: true, assembly: this.snapshot.assembly }, this.baseDiagnostics);
-    const failures = [...this.found.filter((p) => p.blocking && p.source !== 'typescript' && p.source !== 'truss').map((p) => p.message), ...checked.failures.map((f) => f.message)];
+    const failures = [...this.draft.problems().filter((p) => p.blocking && p.source !== 'typescript' && p.source !== 'truss').map((p) => p.message), ...checked.failures.map((f) => f.message)];
     if (failures.length > 0) return refuse(`The Draft can't be saved: ${failures.join('; ')}`);
 
     const written = await commit(this.deps.files, planned.overlay, base.files);
     if (!written.ok) return refuse(written.reason);
 
-    this.draft = emptyDraft;
-    this.notices = [];
-    this.found = [];
-    this.lastGood = [];
+    this.draft.saved();
     // What was written is now the base, but only a synth of it can say so.
     this.filesVersion++;
     this.push({ ...this.body(), ...this.draftFields() });
@@ -549,7 +462,7 @@ export class Session {
   }
 
   private push(change: Partial<Omit<View, 'version'>>): void {
-    const next: View = { ...this.current, problems: this.found, ...change, version: this.current.version + 1 };
+    const next: View = { ...this.current, problems: this.draft.problems(), ...change, version: this.current.version + 1 };
     // A field set to undefined is a field cleared.
     if (next.error === undefined) delete next.error;
     if (next.draft === undefined) delete next.draft;

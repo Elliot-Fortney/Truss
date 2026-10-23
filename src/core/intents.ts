@@ -29,29 +29,29 @@ export interface SetPropIntent {
 
 export type Intent = SetPropIntent;
 
-/** The Draft (CONTEXT.md): intents in the order they were made, and the undone ones that redo can bring back. */
-export interface Draft {
+/** The history of the Draft (CONTEXT.md): intents in the order they were made, and the undone ones that redo can bring back. */
+export interface DraftHistory {
   intents: readonly Intent[];
   redo: readonly Intent[];
 }
 
-export const emptyDraft: Draft = { intents: [], redo: [] };
+export const emptyDraftHistory: DraftHistory = { intents: [], redo: [] };
 
 const sameTarget = (a: Intent, b: Intent) => a.path === b.path && a.prop.length === b.prop.length && a.prop.every((p, i) => p === b.prop[i]);
 
 /** Adds an intent. Setting the same prop again replaces the last intent, so one run of edits to a field is one undo step. A new edit ends redo. */
-export function stage(draft: Draft, intent: Intent): Draft {
+export function stage(draft: DraftHistory, intent: Intent): DraftHistory {
   const last = draft.intents.at(-1);
   const kept = last && sameTarget(last, intent) ? draft.intents.slice(0, -1) : draft.intents;
   return { intents: [...kept, intent], redo: [] };
 }
 
-export function undo(draft: Draft): Draft {
+export function undo(draft: DraftHistory): DraftHistory {
   const last = draft.intents.at(-1);
   return last ? { intents: draft.intents.slice(0, -1), redo: [...draft.redo, last] } : draft;
 }
 
-export function redo(draft: Draft): Draft {
+export function redo(draft: DraftHistory): DraftHistory {
   const next = draft.redo.at(-1);
   return next ? { intents: [...draft.intents, next], redo: draft.redo.slice(0, -1) } : draft;
 }
