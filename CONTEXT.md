@@ -84,6 +84,10 @@ _Avoid_: Template, new project
 The canvas edits not yet saved to the app's code. Truss shows the Design as it would be with the Draft applied; Save writes it to the user's files, Discard drops it.
 _Avoid_: Staged changes, changeset, pending edits
 
+**Base**:
+The app as its files hold it on disk, from the last synth of them. The Draft's edits are planned against it, and when the files change Truss reads a new Base and plans the Draft on it again.
+_Avoid_: Snapshot, baseline, original
+
 **Problem**:
 An error or warning Truss shows on a Design, from synth, type-checking, CDK annotations or a dependency cycle (or, rarely, a check that the edit Truss planned is the edit the Draft means, which is a bug in Truss, not in the user's code). Errors introduced by the Draft block Save.
 _Avoid_: Issue, diagnostic, lint, finding
