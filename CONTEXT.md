@@ -13,7 +13,7 @@ One box on the canvas, corresponding to exactly one CDK construct.
 _Avoid_: Service, shape, component, resource (unless it is literally an L1 resource)
 
 **Construct ID**:
-The literal ID a Node, or the Design as a whole, gets in the exported code. Users see and edit it, and it decides the deployed resource's identity, so changing it replaces the resource. It is not the Node's identity inside Truss.
+The literal ID a Node, or the Design as a whole, gets in the exported code. It is unique within its Design. Users see and edit it, and it decides the deployed resource's identity, so changing it replaces the resource. It is not the Node's identity inside Truss.
 _Avoid_: Name, label, Node ID (when meaning the code ID)
 
 **Preview**:
