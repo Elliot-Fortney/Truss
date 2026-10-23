@@ -57,10 +57,10 @@ describe('buildView', () => {
     ]);
   });
 
-  it('puts each construct the app wrote in its Stack box as a Node, with a generic icon', () => {
+  it('puts each construct the app wrote in its Stack box as a Node, with the icon its type has', () => {
     expect(view.nodes.map((n) => [n.id, n.stackId, n.label, n.subtitle, n.icon])).toEqual([
-      ['Api/Jobs', 'Api', 'Jobs', 'Queue', 'generic'],
-      ['Web/Site', 'Web', 'Site', 'Bucket', 'generic'],
+      ['Api/Jobs', 'Api', 'Jobs', 'Queue', 'sqs-queue'],
+      ['Web/Site', 'Web', 'Site', 'Bucket', 's3-bucket'],
     ]);
   });
 

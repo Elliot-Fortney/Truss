@@ -8,7 +8,10 @@
     "truss": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets/aws-architecture-icons/NOTICE",
+    "assets/tabler-icons/LICENSE",
+    "assets/tabler-icons/NOTICE"
   ],
   "engines": {
     "node": ">=20"
