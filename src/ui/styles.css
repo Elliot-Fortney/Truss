@@ -31,8 +31,16 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .node-text { min-width: 0; }
 .node-label { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-subtitle { font-size: 12px; color: var(--muted); }
-.synthing, .banner { position: absolute; z-index: 10; top: 12px; right: 12px; padding: 4px 10px; border-radius: 6px; font-size: 12px; background: var(--card); border: 1px solid var(--border); }
-.banner { left: 12px; right: auto; }
+.synthing, .banner { padding: 4px 10px; border-radius: 6px; font-size: 12px; background: var(--card); border: 1px solid var(--border); }
+.synthing { position: absolute; z-index: 10; top: 12px; right: 12px; }
+.banners { position: absolute; z-index: 10; top: 12px; left: 12px; right: 110px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.error-banner { display: flex; flex-direction: column; gap: 4px; max-width: 720px; background: var(--error-bg); color: var(--error-fg); border-color: var(--error-fg); }
+.error-banner p { margin: 0; }
+.error-banner pre { max-height: 240px; overflow: auto; margin: 4px 0 0; white-space: pre-wrap; }
+.dimmed .react-flow { opacity: 0.45; filter: grayscale(0.7); }
+.error-location code { font-size: 12px; }
+.error-location button { font: inherit; font-size: 12px; cursor: pointer; }
+.page-error .muted { color: var(--muted); }
 .page-message { display: grid; place-items: center; height: 100%; color: var(--muted); }
 .page-error { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
 .page-error p { color: var(--error-fg); }

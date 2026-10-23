@@ -42,8 +42,20 @@ export type SynthResult =
   | { ok: true; assembly: Assembly }
   | { ok: false; error: SynthError };
 
+/** A place in the app's own source (1-based line and column), file relative to the app folder. */
+export interface SourceLocation {
+  file: string;
+  line: number;
+  col: number;
+}
+
+/** A request to show a place in the app's code in the user's editor; the position is optional. */
+export type EditorRequest = Pick<SourceLocation, 'file'> & Partial<Omit<SourceLocation, 'file'>>;
+
 export interface SynthError {
   message: string;
   /** Raw stdout/stderr from the app, for display. */
   output?: string;
+  /** Where in the app's code the trace points, when it does. */
+  location?: SourceLocation;
 }

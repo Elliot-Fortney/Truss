@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { SourceLocation } from '../core/assembly.ts';
 import type { ClientRequest, Reply } from '../core/protocol.ts';
-import type { View } from '../core/view.ts';
+import type { OpenInEditorMessage, View } from '../core/view.ts';
 import { applyPush } from './versions.ts';
 
 export type Connection = 'connecting' | 'open' | 'closed';
@@ -13,6 +14,7 @@ export function useView(): {
   connection: Connection;
   /** Sends a request and resolves with the server's answer. Never rejects. */
   send(request: ClientRequest): Promise<Outcome>;
+  openInEditor(at: SourceLocation): void;
 } {
   const [view, setView] = useState<View>();
   const [connection, setConnection] = useState<Connection>('connecting');
@@ -47,6 +49,7 @@ export function useView(): {
       ws.close();
       for (const resolve of waiting.values()) resolve({ ok: false, reason: 'Disconnected from Truss.' });
       waiting.clear();
+      if (socket.current === ws) socket.current = undefined;
     };
   }, []);
 
@@ -60,5 +63,10 @@ export function useView(): {
     });
   }, []);
 
-  return { view, connection, send };
+  /** Asks Truss to show a place in the app's code in the user's editor. */
+  const openInEditor = useCallback((at: SourceLocation) => {
+    if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
+  }, []);
+
+  return { view, connection, send, openInEditor };
 }

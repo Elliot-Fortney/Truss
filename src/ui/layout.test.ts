@@ -15,6 +15,7 @@ const node = (id: string, stackId: string): NodeView => ({
 const view = (nodes: NodeView[], stackIds: string[]): View => ({
   version: 1,
   synthing: false,
+  hasDesign: true,
   stacks: stackIds.map((id) => ({ id, label: id, env: 'env-agnostic' })),
   nodes,
 });

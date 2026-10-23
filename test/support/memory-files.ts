@@ -19,5 +19,6 @@ export function memoryFiles(sources: Map<string, string> = new Map(), texts: Rec
       writes.push(name);
       store.set(name, text);
     },
+    watch: () => () => undefined,
   };
 }

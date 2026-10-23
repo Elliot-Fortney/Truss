@@ -1,7 +1,8 @@
 import { applyNodeChanges, Background, Controls, ReactFlow, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SourceLocation } from '../core/assembly.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
-import type { NodeView, View } from '../core/view.ts';
+import type { NodeView, View, ViewError } from '../core/view.ts';
 import { layoutView, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 import { useView } from './use-view.ts';
 
@@ -105,8 +106,23 @@ function NotePanel({ node, onSave }: { node: NodeView; onSave: (note: string) =>
   );
 }
 
+function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceLocation): void }) {
+  if (!error.location) return null;
+  const { file, line, col } = error.location;
+  return (
+    <p className="error-location">
+      <code>
+        {file}:{line}:{col}
+      </code>{' '}
+      <button type="button" onClick={() => onOpen(error.location!)}>
+        Open in editor
+      </button>
+    </p>
+  );
+}
+
 export function App() {
-  const { view, connection, send } = useView();
+  const { view, connection, send, openInEditor } = useView();
   const flowNodes = useMemo(() => (view ? toFlowNodes(view) : []), [view]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
@@ -144,24 +160,44 @@ export function App() {
   if (!view) {
     return <div className="page-message">{connection === 'closed' ? 'Disconnected from Truss.' : 'Connecting…'}</div>;
   }
-  if (view.error) {
+  const { error } = view;
+  // Nothing has ever synthed, so there is no Design to keep: the error is the whole page.
+  if (error && !view.hasDesign) {
     return (
       <div className="page-error" role="alert">
-        <h1>{view.error.kind === 'sidecar' ? 'Truss can’t use your truss.json' : 'Your app didn’t synth'}</h1>
-        <p>{view.error.message}</p>
-        {view.error.output ? <pre>{view.error.output}</pre> : null}
+        <h1>{error.kind === 'sidecar' ? 'Truss can’t use your truss.json' : 'Your app didn’t synth'}</h1>
+        <p>{error.message}</p>
+        <ErrorLocation error={error} onOpen={openInEditor} />
+        {error.output ? <pre>{error.output}</pre> : null}
+        {error.kind === 'sidecar' ? null : view.synthing ? <p className="muted">synthing…</p> : <p className="muted">Truss is watching your files and will load the Design as soon as the app synths.</p>}
       </div>
     );
   }
   return (
-    <div className="canvas">
+    // With an error here the Design is the last good one: dimmed, and not editable until synth works again.
+    <div className={error ? 'canvas dimmed' : 'canvas'}>
       {view.synthing ? <div className="synthing">synthing…</div> : null}
-      {connection === 'closed' ? <div className="banner">Disconnected from Truss.</div> : null}
-      {notice ? (
-        <div className="banner notice" role="alert">
-          {notice}
-        </div>
-      ) : null}
+      <div className="banners">
+        {connection === 'closed' ? <div className="banner">Disconnected from Truss.</div> : null}
+        {error ? (
+          <div className="banner error-banner" role="alert">
+            <strong>Your app no longer synths. Showing the last good Design.</strong>
+            <span>{error.message}</span>
+            <ErrorLocation error={error} onOpen={openInEditor} />
+            {error.output ? (
+              <details>
+                <summary>Synth output</summary>
+                <pre>{error.output}</pre>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+        {notice ? (
+          <div className="banner notice" role="alert">
+            {notice}
+          </div>
+        ) : null}
+      </div>
       <ReactFlow
         // fitView only runs on mount, so re-mount when the set of boxes changes (the first push has none).
         key={fitKey}

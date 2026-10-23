@@ -1,4 +1,4 @@
-import type { Assembly, TreeNode } from './assembly.ts';
+import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
 import type { Facts } from './facts.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
@@ -27,13 +27,22 @@ export interface NodeView {
   note?: string;
 }
 
+/** A synth error, or (`kind: 'sidecar'`) a `truss.json` that is invalid or from a newer Truss. */
+export type ViewError = SynthError & { kind?: 'sidecar' };
+
 /** Everything the browser draws. The server pushes the whole of it, tagged with a version. */
 export interface View {
   version: number;
   /** True while a synth is running, so the Design may be out of date. */
   synthing: boolean;
-  /** The synth error, when there is no Design to show. */
-  error?: { kind: 'synth' | 'sidecar'; message: string; output?: string };
+  /**
+   * The error from the latest synth, or a Sidecar Truss refuses to use. With `hasDesign` false there
+   * is nothing to show but the error; with it true the Design below is the last good one, and the
+   * canvas is dimmed under a banner.
+   */
+  error?: ViewError;
+  /** True once a synth has succeeded, so `stacks` and `nodes` are a Design rather than empty. */
+  hasDesign: boolean;
   stacks: StackBoxView[];
   nodes: NodeView[];
 }
@@ -82,4 +91,9 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
   visit(assembly.tree, undefined, false);
 
   return { stacks, nodes };
+}
+
+/** What the browser sends: the only message there is. */
+export interface OpenInEditorMessage extends EditorRequest {
+  type: 'open-in-editor';
 }

@@ -20,4 +20,11 @@ export interface Files {
   readText(name: string): Promise<string | undefined>;
   /** Writes one file next to `cdk.json`, whole or not at all. */
   writeText(name: string, text: string): Promise<void>;
+
+  /**
+   * Calls `onChange` when anything in the app folder that can change the Design is touched: an
+   * editor save, `git pull`, a formatter, a new `package-lock.json`. Events are already debounced.
+   * Returns a function that stops watching.
+   */
+  watch(onChange: () => void): () => void;
 }

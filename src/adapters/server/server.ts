@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
+import type { EditorRequest } from '../../core/assembly.ts';
 import { parseClientMessage, type ClientMessage, type Reply } from '../../core/protocol.ts';
 import type { View } from '../../core/view.ts';
 
@@ -21,6 +22,8 @@ export interface ServerOptions {
   source: ViewSource;
   /** The random per-run secret the WebSocket upgrade requires. */
   token: string;
+  /** Called when the page asks to open a place in the code. Never trusted: the handler checks the path. */
+  onOpenInEditor?: (request: EditorRequest) => void;
   /** Static UI files by URL path. */
   ui?: Record<string, Asset>;
   /** An explicit port (`--port`). Fails when it is taken. */
@@ -123,8 +126,18 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       const off = opts.source.subscribe(send);
       ws.once('close', off);
       ws.on('message', (data) => {
+        const text = data.toString();
+        const editorRequest = parseOpenInEditor(text);
+        if (editorRequest) {
+          try {
+            opts.onOpenInEditor?.(editorRequest);
+          } catch {
+            // Failing to launch an editor must not drop the client.
+          }
+          return;
+        }
         const reply = (r: Reply) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(r));
-        const parsed = parseClientMessage(String(data));
+        const parsed = parseClientMessage(text);
         if (!parsed.ok) return reply({ type: 'refused', requestId: parsed.requestId, reason: parsed.reason });
         opts.source.handle(parsed.message).then(reply, (err) =>
           reply({ type: 'refused', requestId: parsed.message.requestId, reason: err instanceof Error ? err.message : String(err) }),
@@ -145,4 +158,20 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         server.close(() => resolve());
       }),
   };
+}
+
+/** The page's request to open a place in the code. Anything that isn't exactly that shape is not one. */
+function parseOpenInEditor(text: string): EditorRequest | undefined {
+  let msg: unknown;
+  try {
+    msg = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof msg !== 'object' || msg === null) return undefined;
+  const { type, file, line, col } = msg as Record<string, unknown>;
+  if (type !== 'open-in-editor' || typeof file !== 'string' || file === '') return undefined;
+  const isPosition = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1;
+  if ((line !== undefined && !isPosition(line)) || (col !== undefined && !isPosition(col))) return undefined;
+  return { file, ...(line !== undefined ? { line } : {}), ...(col !== undefined ? { col } : {}) };
 }

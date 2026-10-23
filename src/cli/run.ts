@@ -1,8 +1,10 @@
+import { isAbsolute, join, relative } from 'node:path';
 import type { Asset } from '../adapters/server/server.ts';
 import { startServer } from '../adapters/server/server.ts';
 import type { Files, Source, Synth } from '../core/ports.ts';
 import { Session } from '../session/session.ts';
 import type { CliArgs } from './args.ts';
+import type { EditorTarget } from './editor.ts';
 
 export interface RunDeps {
   cwd: string;
@@ -13,6 +15,8 @@ export interface RunDeps {
   token: string;
   ui: Record<string, Asset>;
   open(url: string): void;
+  /** Opens `file` (absolute) in the user's editor. */
+  openInEditor(target: EditorTarget): void;
   log(line: string): void;
 }
 
@@ -33,6 +37,10 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
     source: session,
     token: deps.token,
     ui: deps.ui,
+    onOpenInEditor: ({ file, ...at }) => {
+      const inside = resolveInside(appDir, file);
+      if (inside) deps.openInEditor({ file: inside, ...at });
+    },
     ...(args.port !== undefined ? { port: args.port } : {}),
   });
   const url = `http://${server.host}:${server.port}/?token=${deps.token}`;
@@ -46,8 +54,17 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
   return {
     url,
     stop: async () => {
+      session.stop();
       deps.synth.dispose?.();
       await server.close();
     },
   };
+}
+
+/** The absolute path of `file` under `dir`, or undefined when it names something outside it. The page is never trusted with more. */
+function resolveInside(dir: string, file: string): string | undefined {
+  if (isAbsolute(file)) return undefined;
+  const full = join(dir, file);
+  const rel = relative(dir, full);
+  return /^\.\.(?:[\\/]|$)/.test(rel) || isAbsolute(rel) ? undefined : full;
 }
