@@ -16,6 +16,7 @@ function makeQueue(scope: Construct, id: string): sqs.Queue {
 
 export class ShapesStack extends cdk.Stack {
   private readonly audit: s3.Bucket;
+  private readonly initialised = new sns.Topic(this, 'Initialised');
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -24,6 +25,7 @@ export class ShapesStack extends cdk.Stack {
     new sns.Topic(this, 'Plain', { displayName: 'Plain', fifo: false });
     const bound = new sqs.Queue(this, 'Bound', { retentionPeriod: cdk.Duration.days(1) });
     this.audit = new s3.Bucket(this, 'Audit');
+    const wrapped = (new sns.Topic(this, 'Wrapped') as sns.Topic);
 
     // Two constructs on one line.
     new sns.Topic(this, 'SameLineA'); new sns.Topic(this, 'SameLineB');
@@ -51,6 +53,6 @@ export class ShapesStack extends cdk.Stack {
     // Props given as a variable.
     new dynamodb.Table(this, 'FromVariable', tableProps);
 
-    bound.node.addMetadata('keep', this.audit.bucketName);
+    bound.node.addMetadata('keep', this.audit.bucketName + wrapped.topicArn + this.initialised.topicArn);
   }
 }

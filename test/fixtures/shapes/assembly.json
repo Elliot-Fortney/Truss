@@ -11,6 +11,20 @@
         "fqn": "aws-cdk-lib.Stack",
         "children": [
           {
+            "id": "Initialised",
+            "path": "Shapes/Initialised",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Initialised/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
             "id": "Plain",
             "path": "Shapes/Plain",
             "fqn": "aws-cdk-lib.aws_sns.Topic",
@@ -48,6 +62,20 @@
                 "path": "Shapes/Audit/Resource",
                 "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
                 "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Wrapped",
+            "path": "Shapes/Wrapped",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Wrapped/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
                 "children": []
               }
             ]
@@ -463,11 +491,37 @@
         "col": 39
       }
     ],
+    "Shapes/Initialised/Resource": [
+      {
+        "fn": "ShapesStack.<instance_members_initializer>",
+        "file": "lib/shapes-stack.ts",
+        "line": 19,
+        "col": 34
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 22,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
     "Shapes/Plain/Resource": [
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 24,
+        "line": 25,
         "col": 5
       },
       {
@@ -487,7 +541,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 25,
+        "line": 26,
         "col": 19
       },
       {
@@ -507,8 +561,28 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 26,
+        "line": 27,
         "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Wrapped/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 28,
+        "col": 22
       },
       {
         "fn": "<anonymous>",
@@ -527,7 +601,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 29,
+        "line": 31,
         "col": 5
       },
       {
@@ -547,7 +621,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 29,
+        "line": 31,
         "col": 39
       },
       {
@@ -567,7 +641,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 32,
+        "line": 34,
         "col": 86
       },
       {
@@ -587,7 +661,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 32,
+        "line": 34,
         "col": 5
       },
       {
@@ -607,7 +681,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 36,
+        "line": 38,
         "col": 7
       },
       {
@@ -627,7 +701,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 36,
+        "line": 38,
         "col": 7
       },
       {
@@ -647,13 +721,13 @@
       {
         "fn": "<anonymous>",
         "file": "lib/shapes-stack.ts",
-        "line": 38,
+        "line": 40,
         "col": 41
       },
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 38,
+        "line": 40,
         "col": 23
       },
       {
@@ -673,13 +747,13 @@
       {
         "fn": "<anonymous>",
         "file": "lib/shapes-stack.ts",
-        "line": 38,
+        "line": 40,
         "col": 41
       },
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 38,
+        "line": 40,
         "col": 23
       },
       {
@@ -705,7 +779,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 41,
+        "line": 43,
         "col": 5
       },
       {
@@ -731,7 +805,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 42,
+        "line": 44,
         "col": 5
       },
       {
@@ -751,7 +825,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 49,
+        "line": 51,
         "col": 5
       },
       {
@@ -771,7 +845,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 52,
+        "line": 54,
         "col": 5
       },
       {
@@ -791,7 +865,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 32,
+        "line": 34,
         "col": 5
       },
       {
@@ -811,7 +885,7 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 45,
+        "line": 47,
         "col": 5
       },
       {

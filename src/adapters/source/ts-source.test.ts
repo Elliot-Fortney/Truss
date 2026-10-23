@@ -60,6 +60,11 @@ describe('TsSource.analyse on the shapes fixture', () => {
     expect(at('Shapes/Plain').binding).toBe('none');
     expect(at('Shapes/Bound').binding).toBe('const');
     expect(at('Shapes/Audit').binding).toBe('field');
+    expect(at('Shapes/Initialised').binding).toBe('field');
+  });
+
+  it('sees through parentheses and a cast when finding what the `new` is bound to', () => {
+    expect(at('Shapes/Wrapped').binding).toBe('const');
   });
 
   it('reports the class whose body holds the `new`, and whether it is a Stack, a Stage or a construct', () => {
@@ -88,7 +93,7 @@ describe('TsSource.analyse on the shapes fixture', () => {
 
   it('finds the `new` of an app-defined construct class, which synth gives no stack of its own', () => {
     expect(at('Shapes/Api')).toMatchObject({
-      span: { file: 'lib/shapes-stack.ts', start: { line: 45, col: 5 } },
+      span: { file: 'lib/shapes-stack.ts', start: { line: 47, col: 5 } },
       className: 'ApiService',
       literalId: 'Api',
       enclosingClass: { name: 'ShapesStack', kind: 'stack' },
@@ -162,6 +167,8 @@ describe('the view of the shapes fixture', () => {
       'Shapes/Plain': 'editable',
       'Shapes/Bound': 'editable',
       'Shapes/Audit': 'editable',
+      'Shapes/Initialised': 'editable',
+      'Shapes/Wrapped': 'editable',
       'Shapes/SameLineA': 'editable',
       'Shapes/SameLineB': 'editable',
       'Shapes/Outer': 'editable',

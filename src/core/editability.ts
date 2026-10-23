@@ -23,6 +23,6 @@ export function nodeEditability(path: string, facts: NodeFacts): Editability {
   }
   // A Stack or Stage class created more than once puts one path per instance on every span inside it,
   // and an edit in the class body applies to all of them (ADR 0008).
-  if (pathsOnSpan > 1 && enclosingClass === undefined) return locked(`The same line of code creates ${pathsOnSpan} constructs`);
+  if (pathsOnSpan > 1 && enclosingClass === undefined) return locked(`The same \`new\` call creates ${pathsOnSpan} constructs`);
   return { editable: true };
 }

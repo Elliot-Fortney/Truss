@@ -59,7 +59,7 @@ describe('nodeEditability', () => {
   it('is locked when several paths come from one span outside a Stack or Stage class', () => {
     expect(nodeEditability('Api/Jobs', facts({ pathsOnSpan: 3, enclosingClass: undefined }))).toEqual({
       editable: false,
-      reason: 'The same line of code creates 3 constructs',
+      reason: 'The same `new` call creates 3 constructs',
     });
   });
 

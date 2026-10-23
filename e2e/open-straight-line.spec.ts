@@ -193,7 +193,8 @@ test('a truss.json from a newer Truss is refused with a clear message and left u
 test('Nodes Truss cannot edit show a lock with the reason, and every Node opens in the editor', async ({ page }) => {
   const dir = copyApp(resolve(root, 'test/fixtures/shapes'));
   const bin = mkdtempSync(join(tmpdir(), 'truss-editor-'));
-  const editor = join(bin, 'editor.sh');
+  // Named like VS Code's launcher so Truss passes `--goto file:line:col`.
+  const editor = join(bin, 'code');
   const opened = join(bin, 'opened.txt');
   writeFileSync(editor, `#!/bin/sh\necho "$@" > "${opened}"\n`, { mode: 0o755 });
   const truss = await startTruss(dir, { TRUSS_EDITOR: editor });
@@ -201,7 +202,7 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await page.goto(truss.url);
     const loop = page.locator('.truss-node', { hasText: 'LoopOne' });
     await expect(loop).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator('.truss-node')).toHaveCount(18);
+    await expect(page.locator('.truss-node')).toHaveCount(20);
     // 4 loop Nodes, 2 helper Nodes and 1 whose ID is a variable.
     await expect(page.locator('.node-lock')).toHaveCount(7);
     await expect(loop.locator('.node-lock')).toHaveAttribute('title', 'Created in a loop');
@@ -213,7 +214,7 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await loop.click();
     await expect(page.locator('.lock-reason')).toHaveText('Read-only: Created in a loop');
     await page.getByRole('button', { name: 'Open in editor' }).click();
-    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/lib\/shapes-stack\.ts$/);
+    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/^--goto .*\/lib\/shapes-stack\.ts:38:7$/);
 
     // An editable Node opens in the editor too, and says nothing about a lock.
     await page.locator('.truss-node', { hasText: 'Plain' }).click();

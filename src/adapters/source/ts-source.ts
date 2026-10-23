@@ -77,7 +77,7 @@ export class TsSource implements Source {
     if (!found) return undefined;
 
     const id = found.arguments?.[1];
-    const literalId = id && (ts.isStringLiteral(id) || ts.isNoSubstitutionTemplateLiteral(id)) ? id.text : undefined;
+    const literalId = id && isStringLike(id) ? id.text : undefined;
     const enclosingClass = this.enclosingClassOf(files, found);
     const surround = surroundOf(found);
     const propsArg = found.arguments?.[2];
@@ -100,6 +100,10 @@ export class TsSource implements Source {
     return undefined;
   }
 
+  /**
+   * Stack, Stage or construct, from the name each `extends` clause ends in, followed through the app's
+   * own classes. A base class from a library other than CDK itself counts as a construct, which locks.
+   */
   private classKind(files: FileSet, decl: ts.ClassDeclaration, seen: Set<string>): EnclosingClass['kind'] {
     const base = decl.heritageClauses?.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
     const baseName = base && (ts.isPropertyAccessExpression(base) ? base.name.text : ts.isIdentifier(base) ? base.text : undefined);
@@ -112,6 +116,7 @@ export class TsSource implements Source {
     return this.classKind(files, own, seen);
   }
 
+  /** The top-level class declared with `name` in the first file that has one. */
   private findClass(files: FileSet, name: string): ts.ClassDeclaration | undefined {
     for (const file of files.keys()) {
       const sf = this.parse(files, file);
@@ -173,6 +178,7 @@ function agreedFrame(node: TreeNode, assembly: Assembly): Frame | undefined {
   return seen.size === 1 ? [...seen.values()][0] : undefined;
 }
 
+/** The props argument as written: an object literal prop by prop, anything else as one piece of text. */
 function propsOf(sf: ts.SourceFile, arg: ts.Expression): PropsFacts {
   if (!ts.isObjectLiteralExpression(arg)) return { form: 'other', text: arg.getText(sf) };
   const props: PropFacts[] = arg.properties.map((p) => {
@@ -184,10 +190,13 @@ function propsOf(sf: ts.SourceFile, arg: ts.Expression): PropsFacts {
   return { form: 'object', props };
 }
 
+function isStringLike(n: ts.Node): n is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
+  return ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n);
+}
+
 function isLiteral(n: ts.Expression): boolean {
   return (
-    ts.isStringLiteral(n) ||
-    ts.isNoSubstitutionTemplateLiteral(n) ||
+    isStringLike(n) ||
     ts.isNumericLiteral(n) ||
     n.kind === ts.SyntaxKind.TrueKeyword ||
     n.kind === ts.SyntaxKind.FalseKeyword ||
@@ -196,9 +205,14 @@ function isLiteral(n: ts.Expression): boolean {
   );
 }
 
+/** `const q = new Queue(...)`, `this.q = new Queue(...)` or a class property initializer, through any parentheses or `as`. */
 function bindingOf(n: ts.NewExpression): Binding {
-  const parent = n.parent;
+  let parent = n.parent;
+  while (ts.isParenthesizedExpression(parent) || ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent) || ts.isNonNullExpression(parent)) {
+    parent = parent.parent;
+  }
   if (ts.isVariableDeclaration(parent)) return 'const';
+  if (ts.isPropertyDeclaration(parent)) return 'field';
   const assignedToThis =
     ts.isBinaryExpression(parent) &&
     parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
