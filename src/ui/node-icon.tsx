@@ -6,7 +6,7 @@ const awsUrls = import.meta.glob<string>('../../assets/aws-architecture-icons/*.
 const urlByFile = new Map(Object.entries(awsUrls).map(([path, url]) => [path.slice(path.lastIndexOf('/') + 1), url]));
 
 /** The AWS icon for an icon id from the View, or undefined for the generic icon (and an id this build has no file for). */
-export function awsIconUrl(icon: string): string | undefined {
+function awsIconUrl(icon: string): string | undefined {
   const file = ICON_FILES[icon];
   return file ? urlByFile.get(file) : undefined;
 }

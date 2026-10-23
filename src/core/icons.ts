@@ -74,6 +74,7 @@ export const ICON_FILES: Readonly<Record<string, string>> = {
 /** Featured constructs and common L2s, by FQN. A resource icon shows the thing; a service icon only names its service. */
 export const CONSTRUCT_ICONS: Readonly<Record<string, string>> = {
   'aws-cdk-lib.aws_lambda.Function': 'lambda-function',
+  'aws-cdk-lib.aws_lambda.DockerImageFunction': 'lambda-function',
   'aws-cdk-lib.aws_lambda_nodejs.NodejsFunction': 'lambda-function',
   'aws-cdk-lib.aws_dynamodb.Table': 'dynamodb-table',
   'aws-cdk-lib.aws_dynamodb.TableV2': 'dynamodb-table',
@@ -83,6 +84,7 @@ export const CONSTRUCT_ICONS: Readonly<Record<string, string>> = {
   'aws-cdk-lib.aws_iam.Role': 'iam-role',
   'aws-cdk-lib.aws_elasticloadbalancingv2.ApplicationLoadBalancer': 'application-load-balancer',
   'aws-cdk-lib.aws_elasticloadbalancingv2.NetworkLoadBalancer': 'network-load-balancer',
+  'aws-cdk-lib.aws_ec2.Vpc': 'vpc',
   'aws-cdk-lib.aws_events.Rule': 'eventbridge-rule',
   'aws-cdk-lib.aws_events.EventBus': 'eventbridge-bus',
   'aws-cdk-lib.aws_ecs.FargateService': 'fargate',

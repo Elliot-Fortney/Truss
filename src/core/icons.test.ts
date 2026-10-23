@@ -1,5 +1,6 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { Assembly, TreeNode } from './assembly.ts';
 import { CONSTRUCT_ICONS, GENERIC_ICON, ICON_FILES, iconFor, SERVICE_ICONS } from './icons.ts';
 
 describe('iconFor', () => {
@@ -32,12 +33,26 @@ describe('iconFor', () => {
     expect(iconFor('')).toBe(GENERIC_ICON);
   });
 
-  it('never returns an icon the vendored set does not have', () => {
-    const fqns = ['aws-cdk-lib.aws_lambda.Function', 'aws-cdk-lib.aws_ec2.Vpc', 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService', 'constructs.Construct'];
+  it('gives the featured constructs a specific icon, not just their service’s', () => {
+    expect(iconFor('aws-cdk-lib.aws_ec2.Vpc')).toBe('vpc');
+    expect(iconFor('aws-cdk-lib.aws_lambda.DockerImageFunction')).toBe('lambda-function');
+    expect(iconFor('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService')).toBe('fargate');
+  });
+
+  it('never returns an icon the vendored set does not have, for every FQN in the recorded assemblies', () => {
+    const fqns = new Set<string>();
+    const walk = (n: TreeNode) => {
+      fqns.add(n.fqn);
+      n.children.forEach(walk);
+    };
+    for (const name of ['straight-line', 'shapes']) walk((JSON.parse(readFileSync(`test/fixtures/${name}/assembly.json`, 'utf8')) as Assembly).tree);
+    expect(fqns.size).toBeGreaterThan(5);
     for (const fqn of fqns) {
       const icon = iconFor(fqn);
       expect(icon === GENERIC_ICON || icon in ICON_FILES, fqn).toBe(true);
     }
+    // The shape apps are built from S3, SQS and DynamoDB, so none of those is left generic.
+    for (const fqn of fqns) if (/\.aws_(s3|sqs|dynamodb)\./.test(fqn)) expect(iconFor(fqn), fqn).not.toBe(GENERIC_ICON);
   });
 });
 

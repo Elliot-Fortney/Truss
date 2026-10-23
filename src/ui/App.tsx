@@ -43,6 +43,10 @@ function LockIcon() {
   );
 }
 
+/** Icon sizes in px: larger when the Node is only its icon. */
+const ICON_SIZE = 36;
+const ICON_ONLY_SIZE = 44;
+
 function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
   // Zoomed out, a name is too small to read, so the Node is its icon; the full name stays in the tooltip.
   const showName = useStore((s) => namesShownAt(s.transform[2]));
@@ -50,7 +54,7 @@ function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
   const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
   return (
     <div className={className} title={tooltip}>
-      <NodeIcon icon={data.icon} size={showName ? 36 : 44} />
+      <NodeIcon icon={data.icon} size={showName ? ICON_SIZE : ICON_ONLY_SIZE} />
       {/* Always in the page, so screen readers have the name; zoomed out it is clipped away rather than removed. */}
       <div className="node-text">
         <div className="node-label">{data.label}</div>
