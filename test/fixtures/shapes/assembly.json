@@ -336,6 +336,88 @@
             ]
           },
           {
+            "id": "Docs",
+            "path": "Shapes/Docs",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Docs/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Audit2",
+            "path": "Shapes/Audit2",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Audit2/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Nested",
+            "path": "Shapes/Nested",
+            "fqn": "aws-cdk-lib.NestedStack",
+            "children": [
+              {
+                "id": "InnerQueue",
+                "path": "Shapes/Nested/InnerQueue",
+                "fqn": "aws-cdk-lib.aws_sqs.Queue",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Shapes/Nested/InnerQueue/Resource",
+                    "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                    "cfnType": "AWS::SQS::Queue",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "CDKMetadata",
+                "path": "Shapes/Nested/CDKMetadata",
+                "fqn": "constructs.Construct",
+                "children": [
+                  {
+                    "id": "Default",
+                    "path": "Shapes/Nested/CDKMetadata/Default",
+                    "fqn": "aws-cdk-lib.CfnResource",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "Nested.NestedStack",
+            "path": "Shapes/Nested.NestedStack",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Nested.NestedStackResource",
+                "path": "Shapes/Nested.NestedStack/Nested.NestedStackResource",
+                "fqn": "aws-cdk-lib.CfnStack",
+                "cfnType": "AWS::CloudFormation::Stack",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Existing",
+            "path": "Shapes/Existing",
+            "fqn": "aws-cdk-lib.aws_s3.BucketBase",
+            "children": []
+          },
+          {
             "id": "CDKMetadata",
             "path": "Shapes/CDKMetadata",
             "fqn": "constructs.Construct",
@@ -455,6 +537,112 @@
         ]
       },
       {
+        "id": "StageDev",
+        "path": "StageDev",
+        "fqn": "aws-cdk-lib.Stage",
+        "children": [
+          {
+            "id": "Core",
+            "path": "StageDev/Core",
+            "fqn": "aws-cdk-lib.Stack",
+            "children": [
+              {
+                "id": "Events",
+                "path": "StageDev/Core/Events",
+                "fqn": "aws-cdk-lib.aws_sns.Topic",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "StageDev/Core/Events/Resource",
+                    "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                    "cfnType": "AWS::SNS::Topic",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "CDKMetadata",
+                "path": "StageDev/Core/CDKMetadata",
+                "fqn": "constructs.Construct",
+                "children": [
+                  {
+                    "id": "Default",
+                    "path": "StageDev/Core/CDKMetadata/Default",
+                    "fqn": "aws-cdk-lib.CfnResource",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "BootstrapVersion",
+                "path": "StageDev/Core/BootstrapVersion",
+                "fqn": "aws-cdk-lib.CfnParameter",
+                "children": []
+              },
+              {
+                "id": "CheckBootstrapVersion",
+                "path": "StageDev/Core/CheckBootstrapVersion",
+                "fqn": "aws-cdk-lib.CfnRule",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "StageProd",
+        "path": "StageProd",
+        "fqn": "aws-cdk-lib.Stage",
+        "children": [
+          {
+            "id": "Core",
+            "path": "StageProd/Core",
+            "fqn": "aws-cdk-lib.Stack",
+            "children": [
+              {
+                "id": "Events",
+                "path": "StageProd/Core/Events",
+                "fqn": "aws-cdk-lib.aws_sns.Topic",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "StageProd/Core/Events/Resource",
+                    "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                    "cfnType": "AWS::SNS::Topic",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "CDKMetadata",
+                "path": "StageProd/Core/CDKMetadata",
+                "fqn": "constructs.Construct",
+                "children": [
+                  {
+                    "id": "Default",
+                    "path": "StageProd/Core/CDKMetadata/Default",
+                    "fqn": "aws-cdk-lib.CfnResource",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "BootstrapVersion",
+                "path": "StageProd/Core/BootstrapVersion",
+                "fqn": "aws-cdk-lib.CfnParameter",
+                "children": []
+              },
+              {
+                "id": "CheckBootstrapVersion",
+                "path": "StageProd/Core/CheckBootstrapVersion",
+                "fqn": "aws-cdk-lib.CfnRule",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
         "id": "Tree",
         "path": "Tree",
         "fqn": "constructs.Construct",
@@ -463,6 +651,14 @@
     ]
   },
   "stacks": [
+    {
+      "path": "StageDev/Core",
+      "env": "aws://123456789012/us-east-1"
+    },
+    {
+      "path": "StageProd/Core",
+      "env": "aws://123456789012/us-east-1"
+    },
     {
       "path": "Shapes",
       "env": "aws://123456789012/us-east-1"
@@ -477,17 +673,117 @@
     }
   ],
   "creation": {
-    "Shapes": [
+    "StageDev/Core": [
+      {
+        "fn": "new AppStage",
+        "file": "lib/app-stage.ts",
+        "line": 9,
+        "col": 18
+      },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 11,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "StageDev/Core/Events/Resource": [
+      {
+        "fn": "new AppStage",
+        "file": "lib/app-stage.ts",
+        "line": 10,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 11,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "StageProd/Core": [
+      {
+        "fn": "new AppStage",
+        "file": "lib/app-stage.ts",
         "line": 9,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "StageProd/Core/Events/Resource": [
+      {
+        "fn": "new AppStage",
+        "file": "lib/app-stage.ts",
+        "line": 10,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/Nested": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 62,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
         "col": 39
       }
     ],
@@ -495,29 +791,9 @@
       {
         "fn": "ShapesStack.<instance_members_initializer>",
         "file": "lib/shapes-stack.ts",
-        "line": 19,
+        "line": 22,
         "col": 34
       },
-      {
-        "fn": "new ShapesStack",
-        "file": "lib/shapes-stack.ts",
-        "line": 22,
-        "col": 5
-      },
-      {
-        "fn": "<anonymous>",
-        "file": "bin/app.ts",
-        "line": 7,
-        "col": 1
-      },
-      {
-        "fn": "<anonymous>",
-        "file": "bin/app.ts",
-        "line": 9,
-        "col": 39
-      }
-    ],
-    "Shapes/Plain/Resource": [
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
@@ -527,13 +803,33 @@
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/Plain/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 28,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
         "col": 39
       }
     ],
@@ -541,19 +837,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 26,
+        "line": 29,
         "col": 19
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -561,19 +857,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 27,
+        "line": 30,
         "col": 18
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -581,19 +877,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 28,
+        "line": 31,
         "col": 22
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -601,19 +897,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 31,
+        "line": 34,
         "col": 5
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -621,19 +917,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 31,
+        "line": 34,
         "col": 39
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -641,19 +937,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 34,
+        "line": 37,
         "col": 86
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -661,19 +957,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 34,
+        "line": 37,
         "col": 5
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -681,19 +977,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 38,
+        "line": 41,
         "col": 7
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -701,19 +997,19 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 38,
+        "line": 41,
         "col": 7
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -721,25 +1017,25 @@
       {
         "fn": "<anonymous>",
         "file": "lib/shapes-stack.ts",
-        "line": 40,
+        "line": 43,
         "col": 41
       },
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 40,
+        "line": 43,
         "col": 23
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -747,25 +1043,25 @@
       {
         "fn": "<anonymous>",
         "file": "lib/shapes-stack.ts",
-        "line": 40,
+        "line": 43,
         "col": 41
       },
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 40,
+        "line": 43,
         "col": 23
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -773,25 +1069,25 @@
       {
         "fn": "makeQueue",
         "file": "lib/shapes-stack.ts",
-        "line": 14,
+        "line": 17,
         "col": 10
       },
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 43,
+        "line": 46,
         "col": 5
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -799,49 +1095,29 @@
       {
         "fn": "makeQueue",
         "file": "lib/shapes-stack.ts",
-        "line": 14,
+        "line": 17,
         "col": 10
       },
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 44,
+        "line": 47,
         "col": 5
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
     "Shapes/Orders/Resource": [
-      {
-        "fn": "new ShapesStack",
-        "file": "lib/shapes-stack.ts",
-        "line": 51,
-        "col": 5
-      },
-      {
-        "fn": "<anonymous>",
-        "file": "bin/app.ts",
-        "line": 7,
-        "col": 1
-      },
-      {
-        "fn": "<anonymous>",
-        "file": "bin/app.ts",
-        "line": 9,
-        "col": 39
-      }
-    ],
-    "Shapes/FromVariable/Resource": [
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
@@ -851,13 +1127,111 @@
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/FromVariable/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 57,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/Docs/Resource": [
+      {
+        "fn": "new MyBucket",
+        "file": "lib/my-bucket.ts",
+        "line": 3,
+        "col": 8
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 60,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/Audit2/Resource": [
+      {
+        "fn": "new AuditedTopic",
+        "file": "lib/audited-topic.ts",
+        "line": 6,
+        "col": 5
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 61,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/Nested.NestedStack/Nested.NestedStackResource": [
+      {
+        "fn": "new InnerStack",
+        "file": "lib/inner-stack.ts",
+        "line": 7,
+        "col": 5
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 62,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
         "col": 39
       }
     ],
@@ -865,13 +1239,13 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 34,
+        "line": 37,
         "col": 5
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 7,
+        "line": 8,
         "col": 1
       }
     ],
@@ -885,23 +1259,9 @@
       {
         "fn": "new ShapesStack",
         "file": "lib/shapes-stack.ts",
-        "line": 47,
+        "line": 50,
         "col": 5
       },
-      {
-        "fn": "<anonymous>",
-        "file": "bin/app.ts",
-        "line": 7,
-        "col": 1
-      },
-      {
-        "fn": "<anonymous>",
-        "file": "bin/app.ts",
-        "line": 9,
-        "col": 39
-      }
-    ],
-    "Dev": [
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
@@ -911,7 +1271,47 @@
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Shapes/Nested/InnerQueue/Resource": [
+      {
+        "fn": "new InnerStack",
+        "file": "lib/inner-stack.ts",
         "line": 9,
+        "col": 5
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 62,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
+        "col": 39
+      }
+    ],
+    "Dev": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 12,
         "col": 39
       }
     ],
@@ -925,13 +1325,13 @@
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 8,
+        "line": 9,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -939,13 +1339,13 @@
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 10,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ],
@@ -959,13 +1359,13 @@
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 10,
         "col": 1
       },
       {
         "fn": "<anonymous>",
         "file": "bin/app.ts",
-        "line": 9,
+        "line": 12,
         "col": 39
       }
     ]

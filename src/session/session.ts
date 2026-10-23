@@ -23,7 +23,7 @@ export interface SessionDeps {
 const MAX_STALE_IN_A_ROW = 2;
 
 export class Session {
-  private current: View = { version: 0, synthing: true, hasDesign: false, stacks: [], nodes: [] };
+  private current: View = { version: 0, synthing: true, hasDesign: false, stages: [], stacks: [], nodes: [] };
   private listeners = new Set<(view: View) => void>();
   private unwatch: (() => void) | undefined;
   private stopped = false;
@@ -118,7 +118,7 @@ export class Session {
     const parsed = sidecarText === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(sidecarText, this.migrations);
     if (!parsed.ok) {
       this.snapshot = undefined;
-      this.push({ synthing: false, hasDesign: false, error: { kind: 'sidecar', message: parsed.message }, stacks: [], nodes: [] });
+      this.push({ synthing: false, hasDesign: false, error: { kind: 'sidecar', message: parsed.message }, stages: [], stacks: [], nodes: [] });
       return;
     }
     this.sidecar = parsed.sidecar;
