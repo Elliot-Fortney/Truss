@@ -1,0 +1,47 @@
+:root {
+  --bg: #f7f8fa;
+  --fg: #1c2330;
+  --muted: #5d6676;
+  --border: #c9ced8;
+  --card: #ffffff;
+  --accent: #3b6df0;
+  --error-bg: #fdf0ef;
+  --error-fg: #8d1f17;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d;
+    --fg: #e6e9ef;
+    --muted: #98a1b3;
+    --border: #384050;
+    --card: #1d222b;
+    --accent: #7c9cf6;
+    --error-bg: #301917;
+    --error-fg: #f3b3ad;
+  }
+}
+html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+.canvas { position: relative; height: 100%; }
+.stack-box { width: 100%; height: 100%; box-sizing: border-box; border: 1.5px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--card) 55%, transparent); }
+.stack-header { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; font-size: 13px; }
+.stack-header span { color: var(--muted); font-size: 12px; }
+.truss-node { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.node-icon { flex: none; color: var(--accent); }
+.node-text { min-width: 0; }
+.node-label { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-subtitle { font-size: 12px; color: var(--muted); }
+.synthing, .banner { padding: 4px 10px; border-radius: 6px; font-size: 12px; background: var(--card); border: 1px solid var(--border); }
+.synthing { position: absolute; z-index: 10; top: 12px; right: 12px; }
+.banners { position: absolute; z-index: 10; top: 12px; left: 12px; right: 110px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.error-banner { display: flex; flex-direction: column; gap: 4px; max-width: 720px; background: var(--error-bg); color: var(--error-fg); border-color: var(--error-fg); }
+.error-banner p { margin: 0; }
+.error-banner pre { max-height: 240px; overflow: auto; margin: 4px 0 0; white-space: pre-wrap; }
+.dimmed .react-flow { opacity: 0.45; filter: grayscale(0.7); }
+.error-location code { font-size: 12px; }
+.error-location button { font: inherit; font-size: 12px; cursor: pointer; }
+.page-error .muted { color: var(--muted); }
+.page-message { display: grid; place-items: center; height: 100%; color: var(--muted); }
+.page-error { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+.page-error p { color: var(--error-fg); }
+.page-error pre { overflow: auto; padding: 12px; border-radius: 8px; background: var(--error-bg); color: var(--error-fg); font-size: 12px; white-space: pre-wrap; }
