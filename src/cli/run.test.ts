@@ -14,6 +14,7 @@ function deps(overrides: Partial<RunDeps> = {}): RunDeps & { lines: string[] } {
     synth: { synth: async () => ({ ok: true, assembly: readFixtureAssembly('straight-line') }) },
     files: () => memoryFiles(readFixtureFiles('straight-line')),
     source: new TsSource(),
+    loadCatalog: async () => ({ ok: true, catalog: { entries: [] } }),
     token: 'tok123',
     ui: { '/': { type: 'text/html', body: '<p>ui</p>' } },
     open: vi.fn(),
@@ -49,6 +50,20 @@ describe('run', () => {
   it('refuses to start outside a CDK app', async () => {
     const d = deps({ findApp: () => undefined });
     await expect(run({ open: false }, d)).rejects.toThrow(/cdk\.json/);
+  });
+
+  it('refuses to start, saying why, when the app is one Truss cannot open', async () => {
+    const d = deps({ loadCatalog: async () => ({ ok: false, message: 'aws-cdk-lib 2.100.0 is older than the minimum' }) });
+    await expect(run({ open: false, port: 0 }, d)).rejects.toThrow('aws-cdk-lib 2.100.0 is older than the minimum');
+    expect(d.open).not.toHaveBeenCalled();
+  });
+
+  it('reads the Catalog of the app it found, before it opens anything', async () => {
+    const loadCatalog = vi.fn(async () => ({ ok: true as const, catalog: { entries: [] } }));
+    const d = deps({ loadCatalog });
+    const running = await run({ open: false, port: 0 }, d);
+    await running.stop();
+    expect(loadCatalog).toHaveBeenCalledWith('/work/app');
   });
 
   it('stops its synth when it stops', async () => {

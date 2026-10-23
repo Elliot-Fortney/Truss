@@ -1,7 +1,7 @@
 import { isAbsolute, join, relative } from 'node:path';
 import type { Asset } from '../adapters/server/server.ts';
 import { startServer } from '../adapters/server/server.ts';
-import type { Files, Source, Synth } from '../core/ports.ts';
+import type { Files, LoadCatalog, Source, Synth } from '../core/ports.ts';
 import { Session } from '../session/session.ts';
 import type { CliArgs } from './args.ts';
 import type { EditorTarget } from './editor.ts';
@@ -12,6 +12,7 @@ export interface RunDeps {
   synth: Synth & { dispose?(): void };
   files(appDir: string): Files;
   source: Source;
+  loadCatalog: LoadCatalog;
   token: string;
   ui: Record<string, Asset>;
   open(url: string): void;
@@ -32,7 +33,11 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
     throw new Error(`No cdk.json found in ${deps.cwd} or any folder above it. Run truss inside a TypeScript CDK app.`);
   }
 
-  const session = new Session({ appDir, synth: deps.synth, files: deps.files(appDir), source: deps.source });
+  // Refuses an app Truss can't open before anything else starts, and reads what the app's libraries offer.
+  const loaded = await deps.loadCatalog(appDir);
+  if (!loaded.ok) throw new Error(loaded.message);
+
+  const session = new Session({ appDir, synth: deps.synth, files: deps.files(appDir), source: deps.source, catalog: loaded.catalog });
   const server = await startServer({
     source: session,
     token: deps.token,

@@ -3,6 +3,7 @@ import type { SynthResult } from '../core/assembly.ts';
 import type { Files, Synth } from '../core/ports.ts';
 import type { Migration } from '../core/sidecar.ts';
 import type { View } from '../core/view.ts';
+import { buildCatalog, digestAssembly, type Catalog } from '../core/catalog.ts';
 import { TsSource } from '../adapters/source/ts-source.ts';
 import { readFixtureAssembly, readFixtureFiles } from '../../test/support/fixture.ts';
 import { Session } from './session.ts';
@@ -329,6 +330,31 @@ const started = async (files: Files, migrations?: readonly Migration[]) => {
   await session.start();
   return session;
 };
+
+describe('Session Catalog', () => {
+  const catalog = buildCatalog([
+    digestAssembly({
+      name: 'lib',
+      version: '1.0.0',
+      types: {
+        'lib.s3.Bucket': { kind: 'class', fqn: 'lib.s3.Bucket', name: 'Bucket', namespace: 's3', base: 'constructs.Construct' },
+        'lib.sqs.Queue': { kind: 'class', fqn: 'lib.sqs.Queue', name: 'Queue', namespace: 'sqs', base: 'constructs.Construct' },
+      },
+    }),
+  ]);
+  const session = (c?: Catalog) =>
+    new Session({ appDir: '/work/app', synth: fakeSynth(good()), files: new FakeFiles(readFixtureFiles('straight-line')), source: new TsSource(), ...(c ? { catalog: c } : {}) });
+
+  it('searches the Catalog it was handed', () => {
+    expect(session(catalog).searchCatalog('bucket').map((h) => h.fqn)).toEqual(['lib.s3.Bucket']);
+    expect(session(catalog).searchCatalog('').map((h) => h.name)).toEqual(['Bucket', 'Queue']);
+    expect(session(catalog).searchCatalog('', 1)).toHaveLength(1);
+  });
+
+  it('finds nothing when it was handed no Catalog', () => {
+    expect(session().searchCatalog('bucket')).toEqual([]);
+  });
+});
 
 describe('Session Sidecar', () => {
   it('writes a dragged Node position to truss.json keyed by construct path, and shows it in the View', async () => {
