@@ -87,6 +87,19 @@ export class MyStack extends Stack {
     expect(text).toContain(`const handler = new lambda.Function(this, 'Handler', { runtime: lambda.Runtime.NODEJS_22_X, handler: 'index.handler' });`);
   });
 
+  it('imports a module once however many of its names are used, in either style', () => {
+    const lambda = add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_lambda.Function', 'Handler', [
+      { name: 'runtime', snippet: { code: 'Runtime.NODEJS_22_X', uses: ['aws-cdk-lib.aws_lambda.Runtime'] } },
+      { name: 'code', snippet: { code: "Code.fromInline('x')", uses: ['aws-cdk-lib.aws_lambda.Code'] } },
+    ]);
+    const text = out(run(files, facts, lambda, add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_lambda.Function', 'Other')), 'lib/stack.ts');
+    expect(text.match(/aws-cdk-lib\/aws-lambda/g)).toHaveLength(1);
+    expect(text).toContain('lambda.Code.fromInline');
+    const named = stack.replace("import * as s3 from 'aws-cdk-lib/aws-s3';", "import { Bucket } from 'aws-cdk-lib/aws-s3';").replaceAll('s3.Bucket', 'Bucket');
+    const namedText = out(run({ ...files, 'lib/stack.ts': named }, { nodes: { ...facts.nodes, 'Dev/Uploads': { ...facts.nodes['Dev/Uploads']!, span: spanAt('lib/stack.ts', named, "new Bucket(this, 'Uploads'") }, 'Dev/Logs': { ...facts.nodes['Dev/Logs']!, span: spanAt('lib/stack.ts', named, "new Bucket(this, 'Logs'") } } }, lambda), 'lib/stack.ts');
+    expect(namedText).toContain("import { Function, Runtime, Code } from 'aws-cdk-lib/aws-lambda';");
+  });
+
   it('adds several in the order given, each with a binding of its own', () => {
     const r = run(files, facts, add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive'), add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive2'));
     const text = out(r, 'lib/stack.ts');

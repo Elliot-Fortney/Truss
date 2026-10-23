@@ -52,7 +52,8 @@ class FileEdit {
   readonly quote: string;
   private identifiers: Set<string> | undefined;
   private readonly namedAdds = new Map<ts.ImportDeclaration, string[]>();
-  private readonly newImports: string[] = [];
+  /** The imports this plan adds, by module: one line each, however many of its names are used. */
+  private readonly newImports = new Map<string, { named: string[] } | { alias: string }>();
   private readonly refs = new Map<string, string>();
 
   constructor(
@@ -77,11 +78,15 @@ class FileEdit {
       const separator = between.includes('\n') ? `,${this.newline}${this.indentOf(last)}` : ', ';
       this.changes.push({ start: last.getEnd(), end: last.getEnd(), text: names.map((n) => separator + n).join(''), purpose: 'import' });
     }
-    if (this.newImports.length > 0) {
+    if (this.newImports.size > 0) {
       const imports = this.sf.statements.filter(ts.isImportDeclaration);
       const lastImport = imports.at(-1);
       const at = lastImport ? lastImport.getEnd() : 0;
-      const lines = this.newImports.join(this.newline);
+      const quoted = (m: string) => `${this.importQuote()}${m}${this.importQuote()}`;
+      const semi = this.importSemicolon();
+      const lines = [...this.newImports]
+        .map(([module, i]) => ('alias' in i ? `import * as ${i.alias} from ${quoted(module)}${semi}` : `import { ${i.named.join(', ')} } from ${quoted(module)}${semi}`))
+        .join(this.newline);
       this.changes.push({ start: at, end: at, text: lastImport ? this.newline + lines : lines + this.newline, purpose: 'import' });
     }
     return this.changes.sort((a, b) => a.start - b.start);
@@ -124,14 +129,17 @@ class FileEdit {
       this.refs.set(`${module}:${type}`, found);
       return found;
     }
-    const quoted = (m: string) => `${this.importQuote()}${m}${this.importQuote()}`;
-    const semi = this.importSemicolon();
     // Named when the module is the root or the file's imports of CDK modules are named; a namespace import otherwise.
     const named = module === CDK_LIB || this.namedStyle();
-    const bound = named ? type : alias;
-    if (this.used(bound)) throw new Refusal(intent, `The file already uses the name ${bound} for something else, so ${type} can't be imported as it`);
-    this.newImports.push(named ? `import { ${type} } from ${quoted(module)}${semi}` : `import * as ${alias} from ${quoted(module)}${semi}`);
-    const result = named ? type : `${alias}.${type}`;
+    const added = this.newImports.get(module);
+    // One import per module: a second name of it joins the line, or reuses the namespace, this plan already added.
+    const bound = named ? type : added && 'alias' in added ? added.alias : alias;
+    if (this.used(bound) && !(added && 'alias' in added)) throw new Refusal(intent, `The file already uses the name ${bound} for something else, so ${type} can't be imported as it`);
+    if (named) {
+      if (added && 'named' in added) added.named.push(type);
+      else this.newImports.set(module, { named: [type] });
+    } else if (!added) this.newImports.set(module, { alias });
+    const result = named ? type : `${bound}.${type}`;
     this.refs.set(`${module}:${type}`, result);
     return result;
   }
