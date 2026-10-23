@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { createInterface } from 'node:readline';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { extname, join } from 'node:path';
@@ -13,6 +14,7 @@ import type { Asset } from './adapters/server/server.ts';
 import { parseCliArgs } from './cli/args.ts';
 import { editorCommand, type EditorTarget } from './cli/editor.ts';
 import { findAppDir } from './cli/find-app.ts';
+import { mayQuit } from './cli/quit.ts';
 import { run } from './cli/run.ts';
 
 const TYPES: Record<string, string> = {
@@ -75,7 +77,25 @@ async function main(): Promise<void> {
     stopping = true;
     void running.stop().then(() => process.exit(0));
   };
-  process.on('SIGINT', stop);
+  /** Asks on the terminal. Without one there is nobody to ask, and Truss quits. */
+  const ask = (question: string) =>
+    new Promise<string>((resolve) => {
+      if (!process.stdin.isTTY) return resolve('y');
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      // Ctrl+C again at the question means it.
+      rl.on('SIGINT', () => (rl.close(), resolve('y')));
+      rl.question(question, (answer) => (rl.close(), resolve(answer)));
+    });
+  let asking = false;
+  process.on('SIGINT', () => {
+    if (asking) return;
+    asking = true;
+    void mayQuit(running.draftSize(), ask).then((quit) => {
+      asking = false;
+      if (quit) stop();
+      else console.log('Still running.');
+    });
+  });
   process.on('SIGTERM', stop);
 }
 

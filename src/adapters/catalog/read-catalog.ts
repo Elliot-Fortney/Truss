@@ -74,7 +74,7 @@ async function readAssembly(pkgDir: string): Promise<unknown> {
 }
 
 const isDigest = (v: unknown, name: string, version: string): v is AssemblyDigest =>
-  isObject(v) && v['format'] === DIGEST_FORMAT && v['name'] === name && v['version'] === version && Array.isArray(v['classes']) && Array.isArray(v['structs']) && Array.isArray(v['interfaces']) && Array.isArray(v['enums']);
+  isObject(v) && v['format'] === DIGEST_FORMAT && v['name'] === name && v['version'] === version && Array.isArray(v['classes']) && Array.isArray(v['structs']) && Array.isArray(v['interfaces']) && Array.isArray(v['enums']) && isObject(v['enumMembers']);
 
 async function digestOf(pkgDir: string, name: string, version: string, cacheDir: string | undefined): Promise<AssemblyDigest> {
   const cacheFile = cacheDir && join(cacheDir, `${name.replace(/[\\/]/g, '__')}@${version}.json`);

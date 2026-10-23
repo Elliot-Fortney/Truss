@@ -403,7 +403,7 @@ test('a resource a construct creates outside its own subtree is drawn at Stack s
   }
 });
 
-test('selecting a Node lists its props, literals as values and expressions as greyed source, and a Stack header opens the Stack\'s props', async ({ page }) => {
+test('selecting a Node lists its props with an input for each literal, and a Stack header opens the Stack\'s props', async ({ page }) => {
   const truss = await startTruss();
   try {
     await page.goto(truss.url);
@@ -412,7 +412,7 @@ test('selecting a Node lists its props, literals as values and expressions as gr
 
     await page.locator('.truss-node', { hasText: 'Uploads' }).click();
     const versioned = props.locator('.prop-row', { has: page.getByText('versioned', { exact: true }) });
-    await expect(versioned.locator('.prop-value.literal')).toHaveText('true');
+    await expect(versioned.getByRole('checkbox', { name: 'versioned' })).toBeChecked();
     await expect(versioned).toContainText('boolean');
 
     // Props the code doesn't set are one click away, with their CDK default as text.
@@ -420,14 +420,16 @@ test('selecting a Node lists its props, literals as values and expressions as gr
     await props.getByRole('button', { name: /more props?$/ }).click();
     await expect(props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) })).toContainText('Default:');
 
-    // An expression is shown as the source it is written as, not as a value.
+    // A Duration is an amount and a unit.
     await page.locator('.truss-node', { hasText: 'Orders' }).click();
-    await expect(props.locator('.prop-value.source')).toHaveText('cdk.Duration.seconds(30)');
+    await expect(props.getByLabel('visibilityTimeout amount')).toHaveValue('30');
+    await expect(props.getByLabel('visibilityTimeout unit')).toHaveValue('seconds');
 
-    // A struct is not a literal either: it is source text, and its docs come from the Catalog.
+    // A struct is a group of inputs for its fields, and its docs come from the Catalog.
     await page.locator('.truss-node', { hasText: 'Catalog' }).click();
     const partitionKey = props.locator('.prop-row', { has: page.getByText('partitionKey', { exact: true }) });
-    await expect(partitionKey.locator('.prop-value.source')).toContainText("name: 'sku'");
+    await expect(partitionKey.getByLabel('partitionKey.name')).toHaveValue('sku');
+    await expect(partitionKey.getByLabel('partitionKey.type')).toHaveValue('STRING');
     await expect(partitionKey).toContainText('Partition key attribute definition.');
 
     await page.locator('.stack-header', { hasText: 'ShopStack' }).click();
@@ -438,5 +440,108 @@ test('selecting a Node lists its props, literals as values and expressions as gr
   } finally {
     truss.child.kill('SIGINT');
     expect(await truss.exited).toBe(0);
+  }
+});
+
+test('an edit is staged in the Draft, shown with its diff, undone, redone and saved into the user\'s own file', async ({ page }) => {
+  const dir = copyApp();
+  const stackFile = join(dir, 'lib/shop-stack.ts');
+  const original = readFileSync(stackFile, 'utf8');
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    const props = page.getByRole('region', { name: 'Properties' });
+    const draft = page.getByRole('region', { name: 'Draft' });
+    const uploads = page.locator('.truss-node', { hasText: 'Uploads' });
+    await expect(uploads).toBeVisible({ timeout: 60_000 });
+    await expect(draft).toHaveCount(0);
+
+    // Untick `versioned` and type a bucket name: both are staged, neither is written.
+    await uploads.click();
+    await props.getByRole('checkbox', { name: 'versioned' }).uncheck();
+    await expect(draft).toContainText('Draft · 1 edit');
+    await expect(uploads).toHaveClass(/changed/);
+    await props.getByRole('button', { name: /more props?$/ }).click();
+    await props.getByLabel('bucketName', { exact: true }).fill('uploads-bucket');
+    await props.getByLabel('bucketName', { exact: true }).blur();
+    await expect(draft).toContainText('Draft · 2 edits');
+    expect(readFileSync(stackFile, 'utf8')).toBe(original);
+
+    // The review shows the exact diff Save will write.
+    await draft.getByRole('button', { name: 'Review changes' }).click();
+    const diff = draft.getByLabel('Changes to lib/shop-stack.ts');
+    await expect(diff).toContainText('-      versioned: true,');
+    await expect(diff).toContainText('+      versioned: false,');
+    await expect(diff).toContainText("+      bucketName: 'uploads-bucket',");
+
+    // Undo steps back through the Draft; redo brings the edit back.
+    await draft.getByRole('button', { name: 'Undo' }).click();
+    await expect(draft).toContainText('Draft · 1 edit');
+    await expect(diff).not.toContainText('bucketName');
+    await draft.getByRole('button', { name: 'Redo' }).click();
+    await expect(draft).toContainText('Draft · 2 edits');
+
+    // The Design is re-synthed with the Draft applied, then Save writes it.
+    await expect(page.getByText('synthing…')).toHaveCount(0, { timeout: 60_000 });
+    await draft.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => readFileSync(stackFile, 'utf8')).toContain("bucketName: 'uploads-bucket'");
+    expect(readFileSync(stackFile, 'utf8')).toBe(original.replace('versioned: true,', "versioned: false,\n      bucketName: 'uploads-bucket',"));
+    await expect(draft).toHaveCount(0);
+    await expect(uploads).not.toHaveClass(/changed/);
+    // What was saved is what the Design shows, from a fresh synth of the user's files.
+    await expect(page.getByText('synthing…')).toHaveCount(0, { timeout: 60_000 });
+    await uploads.click();
+    await expect(props.getByRole('checkbox', { name: 'versioned' })).not.toBeChecked();
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('Discard drops the whole Draft, and the user\'s files are never touched', async ({ page }) => {
+  const dir = copyApp();
+  const stackFile = join(dir, 'lib/shop-stack.ts');
+  const original = readFileSync(stackFile, 'utf8');
+  const truss = await startTruss(dir);
+  try {
+    await page.goto(truss.url);
+    const draft = page.getByRole('region', { name: 'Draft' });
+    await page.locator('.truss-node', { hasText: 'Orders' }).click();
+    const amount = page.getByLabel('visibilityTimeout amount');
+    await amount.fill('90');
+    await amount.blur();
+    await expect(draft).toContainText('Draft · 1 edit', { timeout: 60_000 });
+    await expect(draft).toContainText('visibilityTimeout → 90 seconds');
+    await page.getByLabel('visibilityTimeout unit').selectOption('minutes');
+    await expect(draft).toContainText('visibilityTimeout → 90 minutes');
+    await draft.getByRole('button', { name: 'Discard' }).click();
+    await expect(draft).toHaveCount(0);
+    await expect(page.getByLabel('visibilityTimeout amount')).toHaveValue('30');
+    expect(readFileSync(stackFile, 'utf8')).toBe(original);
+  } finally {
+    truss.child.kill('SIGINT');
+    await truss.exited;
+  }
+});
+
+test('Ctrl+C with an unsaved Draft and no terminal to ask on still stops Truss', async ({ page }) => {
+  const dir = copyApp();
+  const child = spawn('node', [cli, '--no-open'], { cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] });
+  let out = '';
+  const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
+  child.stdout!.on('data', (d) => (out += d));
+  child.stderr!.on('data', (d) => (out += d));
+  try {
+    await expect.poll(() => /http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/.exec(out)?.[0]).toBeTruthy();
+    await page.goto(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/.exec(out)![0]);
+    await page.locator('.truss-node', { hasText: 'Uploads' }).click();
+    await page.getByRole('checkbox', { name: 'versioned' }).uncheck({ timeout: 60_000 });
+    await expect(page.getByRole('region', { name: 'Draft' })).toContainText('1 edit');
+
+    // Truss asks on the terminal before discarding a Draft (see quit.test.ts); with none to ask on, it quits.
+    child.kill('SIGINT');
+    expect(await exited).toBe(0);
+  } finally {
+    child.kill('SIGKILL');
   }
 });

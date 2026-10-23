@@ -1,3 +1,4 @@
+import type { FileDiff } from './diff.ts';
 import type { Assembly, EditorRequest, ResourceRef, SynthError, TreeNode } from './assembly.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
@@ -16,6 +17,8 @@ export interface StackBoxView {
   parentId?: string;
   /** The Stage the Stack belongs to. Absent for a Stack outside every Stage, which is always shown. */
   stageId?: string;
+  /** The Draft changes this Stack's code. */
+  changed?: true;
 }
 
 /** A Stage, which the canvas shows one at a time. */
@@ -67,10 +70,37 @@ export interface NodeView {
   position?: Point;
   /** The note the Sidecar holds for this Node. */
   note?: string;
+  /** The Draft changes this Node's code, so the Node shows as changed. */
+  changed?: true;
 }
 
-/** A synth error, or (`kind: 'sidecar'`) a `truss.json` that is invalid or from a newer Truss. */
-export type ViewError = SynthError & { kind?: 'sidecar' };
+/**
+ * A synth error, or (`kind: 'sidecar'`) a `truss.json` that is invalid or from a newer Truss. `kind: 'draft'`
+ * is a synth error the Draft causes: the canvas shows the last good Design, and the Draft can still be undone.
+ */
+export type ViewError = SynthError & { kind?: 'sidecar' | 'draft' };
+
+/** One edit of the Draft, as the list shows it. */
+export interface DraftItemView {
+  /** The construct path. */
+  id: string;
+  label: string;
+  /** What the edit does, e.g. `versioned → true`. */
+  summary: string;
+}
+
+/** The Draft (CONTEXT.md): the canvas edits not yet saved, and what Save would write. */
+export interface DraftView {
+  items: DraftItemView[];
+  canUndo: boolean;
+  canRedo: boolean;
+  /** The exact per-file diff Save will write. */
+  diffs: FileDiff[];
+  /** Why Save is blocked, when it is: the Problems the Draft introduces. */
+  problems: string[];
+  /** Edits dropped because the code changed under them, and why. */
+  notices: string[];
+}
 
 /** Everything the browser draws. The server pushes the whole of it, tagged with a version. */
 export interface View {
@@ -90,6 +120,10 @@ export interface View {
   /** Parents come before the Stacks nested in them. */
   stacks: StackBoxView[];
   nodes: NodeView[];
+  /** Absent when there is nothing in the Draft and nothing to say about it. */
+  draft?: DraftView;
+  /** Why no edit can be made to the Draft, when that is so: the app can't be synthed with a Draft applied (ADR 0007). */
+  draftBlocked?: string;
 }
 
 /** The part of a View that is derived from the app. */
@@ -184,7 +218,7 @@ function causes(nodes: readonly NodeView[], refs: readonly ResourceRef[]): Map<s
 }
 
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
-export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): ViewBody {
+export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, changed: ReadonlySet<string> = new Set()): ViewBody {
   const envs = new Map(assembly.stacks.map((s) => [s.path, s.env]));
   const stages: StageView[] = [];
   const stacks: StackBoxView[] = [];
@@ -207,6 +241,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
         env: envLabel(env),
         ...(stack ? { parentId: stack.id } : {}),
         ...(stageId ? { stageId } : {}),
+        ...(changed.has(tree.path) ? { changed: true as const } : {}),
       };
       stacks.push(stack);
     } else if (stack && nodeFacts && !insideNode) {
@@ -223,6 +258,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
         ...(nodeFacts.external ? { external: true as const } : {}),
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
         ...(editability.editable ? {} : { lock: editability.reason }),
+        ...(changed.has(tree.path) ? { changed: true as const } : {}),
         ...(saved?.position ? { position: saved.position } : {}),
         ...(saved?.note ? { note: saved.note } : {}),
         ...(children.length > 0 ? { children } : {}),

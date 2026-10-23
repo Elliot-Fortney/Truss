@@ -1,9 +1,17 @@
-import { entryFor, type Catalog, type CatalogEntry, type CatalogProp } from './catalog.ts';
+import { entryFor, type Catalog, type CatalogEntry, type CatalogProp, type PropInput } from './catalog.ts';
+import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts, PropFacts } from './facts.ts';
+import { withIntents, type Intent } from './intents.ts';
 import type { ViewBody } from './view.ts';
 
-/** What the code gives a prop. A literal is a value Truss can show as such; anything else is source text it won't touch. */
-export type WrittenValue = { kind: 'literal'; value: string | number | boolean | null; text: string } | { kind: 'expression'; text: string };
+/**
+ * What the code gives a prop. A literal is a value Truss can show as such, and so is an object literal, a
+ * `Type.MEMBER` and a `Duration.seconds(30)`; any other expression is source text it won't touch.
+ */
+export type WrittenValue =
+  | { kind: 'literal'; value: string | number | boolean | null; text: string }
+  | { kind: 'expression'; text: string; member?: { type: string; name: string }; quantity?: { type: 'Duration' | 'Size'; unit: string; amount: number } }
+  | { kind: 'object'; text: string; fields: Array<{ name: string; written: WrittenValue }> };
 
 export interface PropRowView {
   name: string;
@@ -17,6 +25,8 @@ export interface PropRowView {
   featured?: true;
   /** Absent when the code doesn't pass the prop. */
   written?: WrittenValue;
+  /** What to edit the prop with. Absent when Truss won't write it: the panel is read-only, the type has no input, or the code gives the prop something Truss can't edit. */
+  input?: PropInput;
 }
 
 /** What the panel shows for one Node or Stack. */
@@ -24,6 +34,10 @@ export interface PanelView {
   /** The construct path. */
   id: string;
   kind: 'node' | 'stack';
+  /** The Construct ID as the code writes it; a change to the prop is only made where it still matches. */
+  literalId?: string;
+  /** Why no prop here can be edited, when none can. Absent: the props with an `input` can. */
+  readOnly?: string;
   /** The class as written in the code, e.g. `s3.Bucket`. */
   className: string;
   /** The construct's docs summary. */
@@ -39,10 +53,32 @@ export interface PanelView {
 
 const sourceOf = ({ span }: NodeFacts) => ({ file: span.file, line: span.start.line, col: span.start.col });
 
-const writtenOf = (p: PropFacts): WrittenValue =>
-  p.kind === 'literal' && p.value !== undefined ? { kind: 'literal', value: p.value, text: p.text } : { kind: 'expression', text: p.text };
+function writtenOf(p: PropFacts): WrittenValue {
+  if (p.kind === 'literal' && p.value !== undefined) return { kind: 'literal', value: p.value, text: p.text };
+  if (p.kind === 'object' && p.fields) return { kind: 'object', text: p.text, fields: p.fields.map((f) => ({ name: f.name, written: writtenOf(f) })) };
+  return { kind: 'expression', text: p.text, ...(p.member ? { member: p.member } : {}), ...(p.quantity ? { quantity: p.quantity } : {}) };
+}
 
-function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefined): PropRowView {
+/** Whether what the code gives a prop is something its input can show and replace. */
+export function editableAs(input: PropInput, written: WrittenValue | undefined): boolean {
+  if (!written) return true;
+  switch (input.kind) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      return written.kind === 'literal' && typeof written.value === input.kind;
+    case 'enum':
+      return written.kind === 'expression' && written.member !== undefined && input.fqn.endsWith(`.${written.member.type}`);
+    case 'duration':
+    case 'size':
+      return written.kind === 'expression' && written.quantity?.type === (input.kind === 'duration' ? 'Duration' : 'Size');
+    case 'struct':
+      return written.kind === 'object';
+  }
+}
+
+function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefined, editing: boolean): PropRowView {
+  const value = written && writtenOf(written);
   return {
     name: prop.name,
     type: prop.type,
@@ -50,7 +86,8 @@ function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefi
     ...(prop.default ? { default: prop.default } : {}),
     ...(prop.required ? { required: true as const } : {}),
     ...(featured ? { featured: true as const } : {}),
-    ...(written ? { written: writtenOf(written) } : {}),
+    ...(value ? { written: value } : {}),
+    ...(editing && prop.input && editableAs(prop.input, value) ? { input: prop.input } : {}),
   };
 }
 
@@ -60,11 +97,18 @@ const STACK_PROPS: CatalogProp[] = [
     name: 'env',
     type: 'Environment',
     required: false,
+    input: {
+      kind: 'struct',
+      fields: [
+        { name: 'account', type: 'string', required: false, input: { kind: 'string' }, summary: 'The AWS account ID for this environment.' },
+        { name: 'region', type: 'string', required: false, input: { kind: 'string' }, summary: 'The AWS region for this environment.' },
+      ],
+    },
     summary: 'The AWS environment (account/region) where this stack will be deployed.',
     default: "- The environment of the containing Stage if available, otherwise create the stack will be environment-agnostic.",
   },
-  { name: 'terminationProtection', type: 'boolean', required: false, summary: 'Whether to enable termination protection for this stack.', default: 'false' },
-  { name: 'description', type: 'string', required: false, summary: 'A description of the stack.', default: '- No description.' },
+  { name: 'terminationProtection', type: 'boolean', required: false, input: { kind: 'boolean' }, summary: 'Whether to enable termination protection for this stack.', default: 'false' },
+  { name: 'description', type: 'string', required: false, input: { kind: 'string' }, summary: 'A description of the stack.', default: '- No description.' },
 ];
 
 /** Which props a construct has, split into those the panel shows first and those it discloses on demand. */
@@ -83,18 +127,18 @@ function describeEntry(entry: CatalogEntry): Described {
 }
 
 /** The rows for the described props. A prop the code sets is never left on demand, and what is written but not described follows as written. */
-function rowsOf(described: Described | undefined, props: readonly PropFacts[]): { rows: PropRowView[]; more: PropRowView[] } {
+function rowsOf(described: Described | undefined, props: readonly PropFacts[], editing: boolean): { rows: PropRowView[]; more: PropRowView[] } {
   const written = new Map(props.map((p) => [p.name, p]));
   const rows: PropRowView[] = [];
   const more: PropRowView[] = [];
   const known = new Set<string>();
   for (const p of described?.first ?? []) {
     known.add(p.name);
-    rows.push(rowOf(p, described!.featured.has(p.name), written.get(p.name)));
+    rows.push(rowOf(p, described!.featured.has(p.name), written.get(p.name), editing));
   }
   for (const p of described?.rest ?? []) {
     known.add(p.name);
-    (written.has(p.name) ? rows : more).push(rowOf(p, false, written.get(p.name)));
+    (written.has(p.name) ? rows : more).push(rowOf(p, false, written.get(p.name), editing));
   }
   for (const p of props) if (!known.has(p.name)) rows.push({ name: p.name, written: writtenOf(p) });
   return { rows, more };
@@ -102,12 +146,22 @@ function rowsOf(described: Described | undefined, props: readonly PropFacts[]): 
 
 const classNamed = (written: string) => written.split('.').at(-1);
 
+/** What the panel needs to offer edits: the Draft, so a staged value shows before synth has caught up, and whether editing is paused. */
+export interface PanelEditing {
+  intents: readonly Intent[];
+  /** Why the Draft can't take an edit at the moment, when it can't: the app can't be synthed with a Draft, or doesn't synth. */
+  blocked?: string;
+}
+
+const sameSpan = (a: NodeFacts, b: NodeFacts) => a.span.file === b.span.file && a.span.start.line === b.span.start.line && a.span.start.col === b.span.start.col;
+
 /**
  * The property panel of the Node or Stack at `id`: its props from the Catalog, with what the app's code
  * says about each. A construct the Catalog can't describe, such as a class of the app's own, shows only
- * the props as written. Undefined when there is no such Node or Stack.
+ * the props as written. Undefined when there is no such Node or Stack. Given `editing`, a prop Truss can
+ * write comes with its `input`; without it, or when the Node is locked, every prop is read-only.
  */
-export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Catalog | undefined): PanelView | undefined {
+export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Catalog | undefined, editing?: PanelEditing): PanelView | undefined {
   const node = view.nodes.find((n) => n.id === id);
   const isStack = !node && view.stacks.some((s) => s.id === id);
   if (!node && !isStack) return undefined;
@@ -115,15 +169,44 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
   // A subclass of a CDK construct takes props of its own, so the parent's are only used when the code names the parent's class.
   const entry = node && nodeFacts && catalog ? entryFor(catalog, node.fqn) : undefined;
   const described = isStack ? { first: STACK_PROPS, rest: [], featured: new Set<string>() } : entry && nodeFacts && classNamed(nodeFacts.className) === entry.name ? describeEntry(entry) : undefined;
-  const { rows, more } = rowsOf(described, nodeFacts?.props?.form === 'object' ? nodeFacts.props.props : []);
+
+  const lock = node ? node.lock : nodeFacts ? errorOf(nodeEditability(id, nodeFacts)) : 'Truss found no code for this Stack';
+  const readOnly = !editing ? undefined : lock !== undefined ? lock : nodeFacts?.props?.form === 'other' ? propsNotice(nodeFacts.props.text) : editing.blocked;
+  // The Draft's edits to this construct, and to any other made by the same `new`: a Stack or Stage class created more than once.
+  const mine = nodeFacts && editing ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts)) : [];
+  const props = withIntents(nodeFacts?.props, mine);
+  const { rows, more } = rowsOf(described, props?.form === 'object' ? props.props : [], editing !== undefined && readOnly === undefined);
   return {
     id,
     kind: isStack ? 'stack' : 'node',
     className: nodeFacts?.className ?? node?.subtitle ?? '',
+    ...(nodeFacts?.literalId !== undefined ? { literalId: nodeFacts.literalId } : {}),
+    ...(readOnly !== undefined ? { readOnly } : {}),
     ...(described && entry?.summary ? { summary: entry.summary } : {}),
     rows,
     more,
     ...(nodeFacts?.props?.form === 'other' ? { propsSource: nodeFacts.props.text } : {}),
     ...(nodeFacts ? { source: sourceOf(nodeFacts) } : {}),
   };
+}
+
+const errorOf = (e: ReturnType<typeof nodeEditability>) => (e.editable ? undefined : e.reason);
+const propsNotice = (text: string) => `Props are passed as ${text}, so Truss shows every prop read-only.`;
+
+/**
+ * The input a prop of the panel is edited with, following `prop` into the fields of object-literal props.
+ * Undefined when the panel doesn't offer one: a field the code doesn't write as an object Truss can edit, or no such prop.
+ */
+export function inputFor(panel: PanelView, prop: readonly string[]): PropInput | undefined {
+  const [name, ...rest] = prop;
+  const row = [...panel.rows, ...panel.more].find((r) => r.name === name);
+  let input = row?.input;
+  let written = row?.written;
+  for (const field of rest) {
+    if (input?.kind !== 'struct') return undefined;
+    const declared = input.fields.find((f) => f.name === field);
+    written = written?.kind === 'object' ? written.fields.find((f) => f.name === field)?.written : undefined;
+    input = declared?.input && editableAs(declared.input, written) ? declared.input : undefined;
+  }
+  return input;
 }

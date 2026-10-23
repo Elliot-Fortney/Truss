@@ -24,12 +24,18 @@ export type Surround = { kind: 'loop' } | { kind: 'helper'; name: string };
 
 export interface PropFacts {
   name: string;
-  /** `literal` is a string, number, boolean, `null` or plain template; anything else is an `expression`. */
-  kind: 'literal' | 'expression';
+  /** `literal` is a string, number, boolean, `null` or plain template; `object` is an object literal, read field by field; anything else is an `expression`. */
+  kind: 'literal' | 'expression' | 'object';
   /** The prop's value exactly as written. */
   text: string;
   /** What a literal prop evaluates to: the string without its quotes, the number, the boolean or `null`. Absent for an expression. */
   value?: string | number | boolean | null;
+  /** The props of an object literal. */
+  fields?: PropFacts[];
+  /** An expression of the form `[ns.]Type.MEMBER`, which is how an enum value is written. */
+  member?: { type: string; name: string };
+  /** An expression of the form `[ns.]Duration.seconds(30)` or `[ns.]Size.mebibytes(512)`. */
+  quantity?: { type: 'Duration' | 'Size'; unit: string; amount: number };
 }
 
 /** The props argument: an object literal Truss can read prop by prop, or anything else (a variable, a call). */

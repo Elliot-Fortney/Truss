@@ -66,6 +66,15 @@ describe('run', () => {
     expect(loadCatalog).toHaveBeenCalledWith('/work/app');
   });
 
+  it('says how many edits the Draft holds, none to begin with, so that Ctrl+C knows whether to ask', async () => {
+    const running = await run({ open: false, port: 0 }, deps());
+    try {
+      expect(running.draftSize()).toBe(0);
+    } finally {
+      await running.stop();
+    }
+  });
+
   it('stops its synth when it stops', async () => {
     const dispose = vi.fn();
     const d = deps({ synth: { synth: async () => ({ ok: false, error: { message: 'x' } }), dispose } });

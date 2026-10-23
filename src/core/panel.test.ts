@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Catalog, CatalogEntry } from './catalog.ts';
 import type { Facts, NodeFacts, PropsFacts } from './facts.ts';
-import { buildPanel } from './panel.ts';
+import type { Intent } from './intents.ts';
+import { buildPanel, editableAs, inputFor } from './panel.ts';
 import type { NodeView, StackBoxView, ViewBody } from './view.ts';
 
 const span = { file: 'lib/a.ts', start: { line: 3, col: 5 }, end: { line: 3, col: 40 } };
@@ -139,5 +140,112 @@ describe('buildPanel for a Stack', () => {
     expect(panel.rows[1]).toMatchObject({ type: 'boolean', default: 'false', written: { kind: 'literal', value: true } });
     expect(panel.rows[2]!.written).toBeUndefined();
     expect(panel.more).toEqual([]);
+  });
+});
+
+describe('buildPanel for editing', () => {
+  const enumInput = { kind: 'enum' as const, fqn: 'aws-cdk-lib.RemovalPolicy', members: ['DESTROY', 'RETAIN'] };
+  const editable: CatalogEntry = {
+    ...bucket,
+    props: [
+      { name: 'bucketName', type: 'string', required: false, input: { kind: 'string' } },
+      { name: 'versioned', type: 'boolean', required: false, input: { kind: 'boolean' } },
+      { name: 'removalPolicy', type: 'RemovalPolicy', required: false, input: enumInput },
+      { name: 'timeout', type: 'Duration', required: false, input: { kind: 'duration' } },
+      { name: 'partitionKey', type: 'Attribute', required: false, input: { kind: 'struct', fields: [{ name: 'name', type: 'string', required: true, input: { kind: 'string' } }] } },
+      { name: 'lifecycleRules', type: 'LifecycleRule[]', required: false },
+    ],
+    overlay: { ...bucket.overlay!, featuredProps: ['versioned', 'removalPolicy', 'timeout', 'partitionKey'] },
+  };
+  const cat: Catalog = { entries: [editable], dropped: [] };
+  const intent = (prop: string[], value: Intent['value'], path = 'App/Logs'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'Logs' }, prop, value });
+  const panelOf = (props: PropsFacts | undefined, editing?: Parameters<typeof buildPanel>[4], over: Partial<NodeView> = {}) =>
+    buildPanel('App/Logs', body(node('App/Logs', bucket.fqn, over)), facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', ...(props ? { props } : {}) } }), cat, editing)!;
+  const input = (panel: ReturnType<typeof panelOf>, name: string) => [...panel.rows, ...panel.more].find((r) => r.name === name)?.input;
+
+  it('gives a row its input when editing is on, and none when it is not asked for', () => {
+    expect(input(panelOf(undefined, { intents: [] }), 'versioned')).toEqual({ kind: 'boolean' });
+    expect(input(panelOf(undefined), 'versioned')).toBeUndefined();
+    expect(panelOf(undefined, { intents: [] }).literalId).toBe('Logs');
+  });
+
+  it('offers no input for a type Truss writes no literal for', () => {
+    expect(input(panelOf(undefined, { intents: [] }), 'lifecycleRules')).toBeUndefined();
+  });
+
+  it('keeps an input for a prop the code writes as a literal, a member, a quantity or an object, and drops it for any other expression', () => {
+    const props = object(
+      { name: 'versioned', kind: 'literal', text: 'true', value: true },
+      { name: 'removalPolicy', kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } },
+      { name: 'timeout', kind: 'expression', text: 'cdk.Duration.seconds(5)', quantity: { type: 'Duration', unit: 'seconds', amount: 5 } },
+      { name: 'partitionKey', kind: 'object', text: '{ name: "a" }', fields: [{ name: 'name', kind: 'literal', text: '"a"', value: 'a' }] },
+      { name: 'bucketName', kind: 'expression', text: 'nameOf()' },
+    );
+    const panel = panelOf(props, { intents: [] });
+    expect(['versioned', 'removalPolicy', 'timeout', 'partitionKey'].map((n) => input(panel, n)?.kind)).toEqual(['boolean', 'enum', 'duration', 'struct']);
+    expect(input(panel, 'bucketName')).toBeUndefined();
+    expect(panel.rows.find((r) => r.name === 'partitionKey')?.written).toEqual({ kind: 'object', text: '{ name: "a" }', fields: [{ name: 'name', written: { kind: 'literal', value: 'a', text: '"a"' } }] });
+  });
+
+  it('is read-only, with the reason and no inputs, for a locked Node, props passed as a variable, or a blocked Draft', () => {
+    const locked = panelOf(undefined, { intents: [] }, { lock: 'Created in a loop' });
+    expect(locked.readOnly).toBe('Created in a loop');
+    expect(input(locked, 'versioned')).toBeUndefined();
+    const variable = panelOf({ form: 'other', text: 'bucketProps' }, { intents: [] });
+    expect(variable.readOnly).toMatch(/passed as bucketProps/);
+    const blocked = panelOf(undefined, { intents: [], blocked: 'no build script' });
+    expect(blocked.readOnly).toBe('no build script');
+    expect(input(blocked, 'versioned')).toBeUndefined();
+    expect(panelOf(undefined, { intents: [] }).readOnly).toBeUndefined();
+  });
+
+  it('shows the Draft’s values as the code would have them, before synth has caught up', () => {
+    const props = object({ name: 'versioned', kind: 'literal', text: 'true', value: true });
+    const panel = panelOf(props, { intents: [intent(['versioned'], { kind: 'boolean', value: false }), intent(['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'RETAIN' })] });
+    const written = (n: string) => [...panel.rows, ...panel.more].find((r) => r.name === n)?.written;
+    expect(written('versioned')).toMatchObject({ kind: 'literal', value: false });
+    expect(written('removalPolicy')).toMatchObject({ kind: 'expression', member: { type: 'RemovalPolicy', name: 'RETAIN' } });
+    expect(input(panel, 'removalPolicy')?.kind).toBe('enum');
+  });
+
+  it('shows an edit made to another instance of the same `new` as made here (ADR 0008)', () => {
+    const shared = facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs' }, 'Other/Logs': { className: 's3.Bucket', literalId: 'Logs' } });
+    const panel = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), shared, cat, { intents: [intent(['versioned'], { kind: 'boolean', value: true }, 'Other/Logs')] })!;
+    expect(panel.rows.find((r) => r.name === 'versioned')?.written).toMatchObject({ value: true });
+  });
+
+  it('offers a Stack’s own props as inputs, and is read-only when the Stack has no code', () => {
+    const stackPanel = buildPanel('App', body(), facts({ App: { className: 'ShopStack', literalId: 'App' } }), cat, { intents: [] })!;
+    expect(stackPanel.rows.map((r) => [r.name, r.input?.kind])).toEqual([['env', 'struct'], ['terminationProtection', 'boolean'], ['description', 'string']]);
+    expect(buildPanel('App', body(), facts({}), cat, { intents: [] })!.readOnly).toMatch(/no code/);
+  });
+
+  describe('inputFor', () => {
+    const panel = panelOf(object({ name: 'partitionKey', kind: 'object', text: '', fields: [{ name: 'name', kind: 'literal', text: '"a"', value: 'a' }, { name: 'sort', kind: 'expression', text: 'x' }] }), { intents: [] });
+    it('finds the input of a prop and of a field inside a struct prop', () => {
+      expect(inputFor(panel, ['versioned'])).toEqual({ kind: 'boolean' });
+      expect(inputFor(panel, ['partitionKey', 'name'])).toEqual({ kind: 'string' });
+    });
+    it('finds none for an unknown prop, an unknown field, a field of a prop that is not a struct, or a field the code writes as an expression', () => {
+      expect(inputFor(panel, ['nope'])).toBeUndefined();
+      expect(inputFor(panel, ['partitionKey', 'nope'])).toBeUndefined();
+      expect(inputFor(panel, ['versioned', 'x'])).toBeUndefined();
+      const odd = panelOf(object({ name: 'partitionKey', kind: 'object', text: '', fields: [{ name: 'name', kind: 'expression', text: 'id()' }] }), { intents: [] });
+      expect(inputFor(odd, ['partitionKey', 'name'])).toBeUndefined();
+    });
+  });
+});
+
+describe('editableAs', () => {
+  it('matches an input with what the code gives the prop', () => {
+    expect(editableAs({ kind: 'string' }, undefined)).toBe(true);
+    expect(editableAs({ kind: 'string' }, { kind: 'literal', value: 'a', text: "'a'" })).toBe(true);
+    expect(editableAs({ kind: 'string' }, { kind: 'literal', value: 1, text: '1' })).toBe(false);
+    expect(editableAs({ kind: 'number' }, { kind: 'literal', value: 1, text: '1' })).toBe(true);
+    expect(editableAs({ kind: 'boolean' }, { kind: 'expression', text: 'flag' })).toBe(false);
+    expect(editableAs({ kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] }, { kind: 'expression', text: 's3.BucketEncryption.KMS', member: { type: 'BucketEncryption', name: 'KMS' } })).toBe(true);
+    expect(editableAs({ kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] }, { kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } })).toBe(false);
+    expect(editableAs({ kind: 'size' }, { kind: 'expression', text: 'Duration.days(1)', quantity: { type: 'Duration', unit: 'days', amount: 1 } })).toBe(false);
+    expect(editableAs({ kind: 'struct', fields: [] }, { kind: 'expression', text: 'attr' })).toBe(false);
   });
 });

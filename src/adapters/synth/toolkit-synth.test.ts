@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -32,6 +32,53 @@ describe('ToolkitSynth', () => {
     expect(result.assembly.creation['ShopStack/Uploads/Resource']?.[0]).toMatchObject({
       file: 'lib/shop-stack.ts',
       line: 11,
+    });
+  });
+
+  describe('with an overlay (a Draft)', () => {
+    it('synths a shadow copy with the overlay’s text and leaves the real files alone', async () => {
+      const dir = fixtureDir('straight-line');
+      const path = join(dir, 'lib/shop-stack.ts');
+      const before = readFileSync(path, 'utf8');
+      const edited = before.replace("'Uploads'", "'Renamed'");
+      const result = await new ToolkitSynth().synth(dir, { overlay: new Map([['lib/shop-stack.ts', edited]]) });
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.assembly.tree.children.find((c) => c.path === 'ShopStack')?.children.map((c) => c.path)).toContain('ShopStack/Renamed');
+      // The creation stacks are relative to the app folder, as they are for a real synth.
+      expect(result.assembly.creation['ShopStack/Renamed/Resource']?.[0]).toMatchObject({ file: 'lib/shop-stack.ts', line: 11 });
+      expect(readFileSync(path, 'utf8')).toBe(before);
+    });
+
+    it('returns the synth error when the Draft’s text does not compile', async () => {
+      const dir = fixtureDir('straight-line');
+      const result = await new ToolkitSynth().synth(dir, { overlay: new Map([['lib/shop-stack.ts', 'this is not typescript(']]) });
+      expect(result.ok).toBe(false);
+    });
+
+    it('runs the app’s build script in the shadow copy first when the app runs compiled JavaScript', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'truss-compiled-'));
+      writeFileSync(join(dir, 'cdk.json'), JSON.stringify({ app: 'node app.js' }));
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'node build.js' } }));
+      writeFileSync(join(dir, 'build.js'), "require('fs').copyFileSync('src.js', 'app.js');");
+      const src = (id: string) => `const cdk = require('aws-cdk-lib'); new cdk.Stack(new cdk.App(), '${id}');`;
+      writeFileSync(join(dir, 'src.js'), src('Original'));
+      symlinkSync(join(fixtureDir('straight-line'), 'node_modules'), join(dir, 'node_modules'));
+
+      const synth = new ToolkitSynth();
+      expect(await synth.draftSupport(dir)).toEqual({ ok: true });
+      const result = await synth.synth(dir, { overlay: new Map([['src.js', src('Edited')]]) });
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.assembly.stacks.map((s) => s.path)).toEqual(['Edited']);
+      // Nothing was built in the user's folder.
+      expect(existsSync(join(dir, 'app.js'))).toBe(false);
+    });
+
+    it('returns the build’s output as the synth error when the build fails', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'truss-compiled-'));
+      writeFileSync(join(dir, 'cdk.json'), JSON.stringify({ app: 'node app.js' }));
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'node -e "console.error(\'type error in lib\'); process.exit(2)"' } }));
+      const result = await new ToolkitSynth().synth(dir, { overlay: new Map([['x.js', '']]) });
+      expect(result).toMatchObject({ ok: false, error: { message: expect.stringContaining('build'), output: expect.stringContaining('type error in lib') } });
     });
   });
 

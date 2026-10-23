@@ -23,6 +23,8 @@ export interface RunDeps {
 
 export interface Running {
   url: string;
+  /** How many edits the Draft holds, which would be lost by stopping. */
+  draftSize(): number;
   stop(): Promise<void>;
 }
 
@@ -58,6 +60,7 @@ export async function run(args: CliArgs, deps: RunDeps): Promise<Running> {
 
   return {
     url,
+    draftSize: () => session.draftSize(),
     stop: async () => {
       session.stop();
       deps.synth.dispose?.();

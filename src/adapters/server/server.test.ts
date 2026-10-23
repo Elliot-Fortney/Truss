@@ -17,6 +17,7 @@ function fakeSource(initial: View): ViewSource & { push(v: View): void; handled:
     handle: async (m) => {
       handled.push(m);
       if (m.type === 'search') return { type: 'results', requestId: m.requestId, hits: [] };
+      if (!('id' in m)) return { type: 'ack', requestId: m.requestId };
       return m.id === 'unknown' ? { type: 'refused', requestId: m.requestId, reason: 'No Node' } : { type: 'ack', requestId: m.requestId };
     },
     view: () => current,

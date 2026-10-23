@@ -2,7 +2,11 @@
 import ts from '@typescript/typescript6';
 import type { Assembly, Frame, TreeNode } from '../../core/assembly.ts';
 import type { Binding, EnclosingClass, Facts, NodeFacts, PropFacts, PropsFacts, Span, Surround } from '../../core/facts.ts';
-import type { FileSet, Source } from '../../core/ports.ts';
+import type { Intent } from '../../core/intents.ts';
+import type { Diagnostic, FileSet, PlanResult, Source } from '../../core/ports.ts';
+import { dirname, isAbsolute, join, relative } from 'node:path';
+import { planIntents } from './ts-plan.ts';
+import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from '../../core/tree.ts';
 
 const frameKey = (f: Frame) => `${f.file}:${f.line}:${f.col}`;
@@ -51,6 +55,51 @@ export class TsSource implements Source {
     }
     this.addExternals(files, assembly.tree, nodes);
     return { nodes };
+  }
+
+  plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult {
+    return planIntents(files, facts, intents, (file) => this.parse(files, file));
+  }
+
+  /** Library files already parsed, reused while their modification time is unchanged: parsing `aws-cdk-lib` is most of the cost of a type check. */
+  private libraries = new Map<string, { mtime: number; sf: ts.SourceFile }>();
+
+  diagnostics(appDir: string, files: FileSet, touched: readonly string[]): Diagnostic[] {
+    const configPath = ts.findConfigFile(appDir, ts.sys.fileExists, 'tsconfig.json');
+    const config = configPath
+      ? ts.getParsedCommandLineOfConfigFile(configPath, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined })
+      : undefined;
+    const options: ts.CompilerOptions = { ...(config?.options ?? { strict: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true, skipLibCheck: true }), noEmit: true };
+    const absolute = (file: string) => join(appDir, file);
+    const overlay = new Map([...files].map(([file, text]) => [absolute(file), text]));
+    const host = ts.createCompilerHost(options);
+    const { fileExists, readFile } = host;
+    host.fileExists = (f) => overlay.has(f) || fileExists(f);
+    host.readFile = (f) => overlay.get(f) ?? readFile(f);
+    host.getSourceFile = (name, languageVersion) => {
+      const text = overlay.get(name);
+      if (text !== undefined) return ts.createSourceFile(name, text, languageVersion, true);
+      const mtime = ts.sys.getModifiedTime?.(name)?.getTime() ?? 0;
+      const cached = this.libraries.get(name);
+      if (cached && cached.mtime === mtime) return cached.sf;
+      const read = readFile(name);
+      if (read === undefined) return undefined;
+      const sf = ts.createSourceFile(name, read, languageVersion, true);
+      this.libraries.set(name, { mtime, sf });
+      return sf;
+    };
+    const roots = new Set([...(config?.fileNames ?? []), ...touched.map(absolute)]);
+    const program = ts.createProgram({ rootNames: [...roots], options, host });
+    return touched.flatMap((file) => {
+      const sf = program.getSourceFile(absolute(file));
+      if (!sf) return [];
+      return [...program.getSyntacticDiagnostics(sf), ...program.getSemanticDiagnostics(sf)].map((d) => ({
+        file,
+        line: d.start === undefined ? 0 : sf.getLineAndCharacterOfPosition(d.start).line + 1,
+        code: d.code,
+        message: ts.flattenDiagnosticMessageText(d.messageText, '\n'),
+      }));
+    });
   }
 
   /**
@@ -297,34 +346,27 @@ function agreedFrame(node: TreeNode, sites: Map<string, Frame>): Frame | undefin
 /** The props argument as written: an object literal prop by prop, anything else as one piece of text. */
 function propsOf(sf: ts.SourceFile, arg: ts.Expression): PropsFacts {
   if (!ts.isObjectLiteralExpression(arg)) return { form: 'other', text: arg.getText(sf) };
-  const props: PropFacts[] = arg.properties.map((p) => {
+  return { form: 'object', props: fieldsOf(sf, arg) };
+}
+
+function fieldsOf(sf: ts.SourceFile, obj: ts.ObjectLiteralExpression): PropFacts[] {
+  return obj.properties.map((p): PropFacts => {
     // A spread has no name of its own, so its source text stands in for one.
     const name = ts.isSpreadAssignment(p) ? p.getText(sf) : p.name ? p.name.getText(sf) : p.getText(sf);
     const value = ts.isPropertyAssignment(p) ? p.initializer : undefined;
+    if (value && ts.isObjectLiteralExpression(value)) return { name, kind: 'object', text: value.getText(sf), fields: fieldsOf(sf, value) };
     const literal = value ? literalValue(value) : undefined;
+    const member = value ? memberOf(value) : undefined;
+    const quantity = value ? quantityOf(value) : undefined;
     return {
       name,
       kind: literal ? 'literal' : 'expression',
       text: value ? value.getText(sf) : p.getText(sf),
       ...(literal ? { value: literal.value } : {}),
+      ...(member ? { member } : {}),
+      ...(quantity ? { quantity } : {}),
     };
   });
-  return { form: 'object', props };
-}
-
-function isStringLike(n: ts.Node): n is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
-  return ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n);
-}
-
-/** What a literal evaluates to, boxed so that `null` and `false` aren't mistaken for "not a literal". */
-function literalValue(n: ts.Expression): { value: string | number | boolean | null } | undefined {
-  if (isStringLike(n)) return { value: n.text };
-  if (ts.isNumericLiteral(n)) return { value: Number(n.text) };
-  if (n.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
-  if (n.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
-  if (n.kind === ts.SyntaxKind.NullKeyword) return { value: null };
-  if (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand)) return { value: -Number(n.operand.text) };
-  return undefined;
 }
 
 /** `const q = new Queue(...)`, `this.q = new Queue(...)` or a class property initializer, through any parentheses or `as`. */

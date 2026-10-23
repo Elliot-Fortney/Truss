@@ -1,20 +1,38 @@
 // Runs in a child process so a hung or crashing app can be killed without taking Truss down.
+import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { Toolkit } from '@aws-cdk/toolkit-lib';
 import type { SynthResult } from '../../core/assembly.ts';
 import { readAssembly } from './read-assembly.ts';
 
 export interface WorkerRequest {
   appDir: string;
+  /** Run the app's `build` script first: the app command runs compiled JavaScript and `appDir` is a shadow copy (ADR 0007). */
+  build?: boolean;
 }
 
 const output: string[] = [];
 
-async function synth({ appDir }: WorkerRequest): Promise<SynthResult> {
+/** Runs the app's `build` script; throws with its output when it fails. */
+async function build(appDir: string): Promise<void> {
+  const run = promisify(execFile);
+  try {
+    const { stdout, stderr } = await run('npm', ['run', 'build'], { cwd: appDir, maxBuffer: 16 * 1024 * 1024 });
+    output.push(stdout, stderr);
+  } catch (err) {
+    const e = err as { stdout?: string; stderr?: string };
+    output.push(e.stdout ?? '', e.stderr ?? '');
+    throw new Error('The app’s build script failed');
+  }
+}
+
+async function synth({ appDir, build: shouldBuild }: WorkerRequest): Promise<SynthResult> {
   const outdir = mkdtempSync(join(tmpdir(), 'truss-synth-'));
   try {
+    if (shouldBuild) await build(appDir);
     const toolkit = new Toolkit({
       ioHost: {
         notify: async (msg) => {

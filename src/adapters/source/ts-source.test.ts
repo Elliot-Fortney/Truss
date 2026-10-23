@@ -125,9 +125,51 @@ describe('TsSource.analyse on the shapes fixture', () => {
     });
     expect(at('Shapes/Bound').props).toEqual({
       form: 'object',
-      props: [{ name: 'retentionPeriod', kind: 'expression', text: 'cdk.Duration.days(1)' }],
+      props: [{ name: 'retentionPeriod', kind: 'expression', text: 'cdk.Duration.days(1)', quantity: { type: 'Duration', unit: 'days', amount: 1 } }],
     });
     expect(at('Shapes/Audit').props).toBeUndefined();
+  });
+
+  it('reads an enum member, a quantity and an object literal field by field', () => {
+    const files = new Map([
+      [
+        'lib/x.ts',
+        `new dynamodb.Table(this, 'T', {
+  partitionKey: { name: 'sku', type: dynamodb.AttributeType.STRING },
+  removalPolicy: RemovalPolicy.DESTROY,
+  size: Size.mebibytes(512),
+  timeout: cdk.Duration.seconds(someVar),
+  other: lower.case,
+});
+`,
+      ],
+    ]);
+    const assembly = {
+      schemaVersion: '1',
+      tree: { id: 'App', path: '', fqn: 'aws-cdk-lib.App', children: [{ id: 'T', path: 'T', fqn: 'x', children: [] }] },
+      stacks: [],
+      creation: { T: [{ file: 'lib/x.ts', line: 1, col: 1 }] },
+      resourceRefs: [],
+    };
+    const props = new TsSource().analyse(files, assembly).nodes['T']?.props;
+    expect(props).toEqual({
+      form: 'object',
+      props: [
+        {
+          name: 'partitionKey',
+          kind: 'object',
+          text: "{ name: 'sku', type: dynamodb.AttributeType.STRING }",
+          fields: [
+            { name: 'name', kind: 'literal', text: "'sku'", value: 'sku' },
+            { name: 'type', kind: 'expression', text: 'dynamodb.AttributeType.STRING', member: { type: 'AttributeType', name: 'STRING' } },
+          ],
+        },
+        { name: 'removalPolicy', kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } },
+        { name: 'size', kind: 'expression', text: 'Size.mebibytes(512)', quantity: { type: 'Size', unit: 'mebibytes', amount: 512 } },
+        { name: 'timeout', kind: 'expression', text: 'cdk.Duration.seconds(someVar)' },
+        { name: 'other', kind: 'expression', text: 'lower.case' },
+      ],
+    });
   });
 
   it('keeps props given as a variable as one piece of source text, not a list of props', () => {

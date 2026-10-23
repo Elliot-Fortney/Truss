@@ -11,6 +11,18 @@ import { serviceName } from './services.ts';
 /** Which kind of construct an entry is. */
 export type Tier = 'L1' | 'L2' | 'L3';
 
+/** What the panel offers to edit a prop of this type with. Absent for a type Truss writes no literal for (arrays, unions, references). */
+export type PropInput =
+  | { kind: 'string' }
+  | { kind: 'number' }
+  | { kind: 'boolean' }
+  | { kind: 'duration' }
+  | { kind: 'size' }
+  /** `fqn` is the enum's jsii FQN. */
+  | { kind: 'enum'; fqn: string; members: string[] }
+  /** An object literal; only the fields Truss can write a literal for are listed. */
+  | { kind: 'struct'; fields: CatalogProp[] };
+
 export interface CatalogProp {
   name: string;
   /** The type as a developer would write it, e.g. `string`, `Record<string, string>`, `LifecycleRule[]`. */
@@ -19,6 +31,7 @@ export interface CatalogProp {
   summary?: string;
   /** The `@default` doc, as display text only: `- Assigned by CloudFormation.` */
   default?: string;
+  input?: PropInput;
 }
 
 export interface CatalogEntry {
@@ -55,7 +68,7 @@ export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay'> & { displayName?
 // --- Digest ---------------------------------------------------------------------------------------------
 
 /** Bump when the digest's shape changes, so a cache written by an older Truss is ignored. */
-export const DIGEST_FORMAT = 2;
+export const DIGEST_FORMAT = 3;
 
 /** A jsii type reference. */
 export type TypeRef =
@@ -116,6 +129,8 @@ export interface AssemblyDigest {
   interfaces: DigestInterface[];
   /** FQNs of the enums, which Overlay snippets may name. */
   enums: string[];
+  /** The members of each enum, by the enum's FQN. */
+  enumMembers: Record<string, string[]>;
 }
 
 type Json = Record<string, unknown>;
@@ -131,6 +146,7 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
   const structs: DigestStruct[] = [];
   const interfaces: DigestInterface[] = [];
   const enums: string[] = [];
+  const enumMembers: Record<string, string[]> = {};
 
   for (const t of Object.values(raw['types'])) {
     if (!isObject(t) || !str(t['fqn'])) continue;
@@ -164,13 +180,14 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
       });
     } else if (t['kind'] === 'enum') {
       enums.push(fqn);
+      enumMembers[fqn] = (Array.isArray(t['members']) ? t['members'] : []).flatMap((m) => (isObject(m) && str(m['name']) ? [m['name'] as string] : []));
     } else if (t['kind'] === 'interface') {
       const bases = stringList(t['interfaces']);
       if (t['datatype'] === true) structs.push({ fqn, bases, props: (Array.isArray(t['properties']) ? t['properties'] : []).flatMap(digestProp) });
       else interfaces.push({ fqn, bases, ...digestMembers(t) });
     }
   }
-  return { format: DIGEST_FORMAT, name: raw['name'] as string, version: raw['version'] as string, classes, structs, interfaces, enums };
+  return { format: DIGEST_FORMAT, name: raw['name'] as string, version: raw['version'] as string, classes, structs, interfaces, enums, enumMembers };
 }
 
 const stringList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((b): b is string => typeof b === 'string') : []);
@@ -247,6 +264,46 @@ function flatten(fqn: string, structs: ReadonlyMap<string, DigestStruct>, seen =
   return out;
 }
 
+/** How deep a struct's fields are offered as inputs inside inputs. */
+const MAX_INPUT_DEPTH = 3;
+/** Only enums from CDK itself are offered: writing one into code needs an import Truss knows how to make. */
+const CDK_LIB = 'aws-cdk-lib.';
+
+/** Works out, for a prop's type, the input the panel edits it with. Shared by every prop of the same struct, so the work is done once per struct. */
+function inputs(structs: ReadonlyMap<string, DigestStruct>, enumMembers: ReadonlyMap<string, string[]>): (t: TypeRef, depth: number) => { input?: PropInput } {
+  const structInputs = new Map<string, PropInput | undefined>();
+
+  const inputFor = (t: TypeRef, depth: number): PropInput | undefined => {
+    if ('primitive' in t) return t.primitive === 'string' || t.primitive === 'number' || t.primitive === 'boolean' ? { kind: t.primitive } : undefined;
+    if ('union' in t) {
+      // L1 props widen from `string` to `string | IxxxRef`; the Ref alternative stays out of the panel (see renderType).
+      const shown = t.union.types.filter((m) => !('fqn' in m && m.fqn.startsWith(REF_INTERFACES)));
+      return shown.length === 1 ? inputFor(shown[0]!, depth) : undefined;
+    }
+    if (!('fqn' in t)) return undefined;
+    if (t.fqn === 'aws-cdk-lib.Duration') return { kind: 'duration' };
+    if (t.fqn === 'aws-cdk-lib.Size') return { kind: 'size' };
+    const members = enumMembers.get(t.fqn);
+    if (members) return t.fqn.startsWith(CDK_LIB) && members.length > 0 ? { kind: 'enum', fqn: t.fqn, members } : undefined;
+    if (!structs.has(t.fqn) || depth >= MAX_INPUT_DEPTH) return undefined;
+    const key = `${t.fqn}@${depth}`;
+    if (!structInputs.has(key)) {
+      structInputs.set(key, undefined); // a struct that contains itself stops here
+      const fields = [...flatten(t.fqn, structs).values()].flatMap((p): CatalogProp[] => {
+        const input = inputFor(p.type, depth + 1);
+        return input ? [{ name: p.name, type: renderType(p.type), required: p.optional !== true, input, ...(p.summary ? { summary: p.summary } : {}) }] : [];
+      });
+      structInputs.set(key, fields.length > 0 ? { kind: 'struct', fields } : undefined);
+    }
+    return structInputs.get(key);
+  };
+
+  return (t, depth) => {
+    const input = inputFor(t, depth);
+    return input ? { input } : {};
+  };
+}
+
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const moduleKey = (namespace: string) => namespace.replace(/^aws_/, '').replace(/_patterns$/, '');
@@ -259,6 +316,7 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
   const classes = new Map<string, { c: DigestClass; library: string }>();
   const structs = new Map<string, DigestStruct>();
   const enums = new Set<string>();
+  const enumMembers = new Map<string, string[]>();
   /** What a call can be made on: every class and interface, with the types it inherits members from. */
   const members = new Map<string, { bases: string[]; methods?: string[]; properties?: Record<string, string> }>();
   for (const d of digests) {
@@ -267,7 +325,9 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
     for (const c of d.classes) classes.set(c.fqn, { c, library: d.name });
     for (const s of d.structs) structs.set(s.fqn, s);
     for (const e of d.enums) enums.add(e);
+    for (const [fqn, names] of Object.entries(d.enumMembers)) enumMembers.set(fqn, names);
   }
+  const inputOf = inputs(structs, enumMembers);
 
   /** The class's base classes, nearest first. The last one may be a class no loaded library defines, such as `constructs.Construct`. */
   const ancestors = (fqn: string): string[] => {
@@ -299,6 +359,7 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
         required: p.optional !== true,
         ...(p.summary ? { summary: p.summary } : {}),
         ...(p.default ? { default: p.default } : {}),
+        ...inputOf(p.type, 0),
       }),
     );
     entries.push({

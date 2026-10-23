@@ -201,6 +201,7 @@ describe('buildCatalog', () => {
         required: false,
         summary: 'Physical name.',
         default: '- Assigned by CloudFormation.',
+        input: { kind: 'string' },
       });
       expect(props.find((p) => p.name === 'versioned')).toMatchObject({ type: 'boolean', required: false });
     });
@@ -246,6 +247,63 @@ describe('buildCatalog', () => {
       expect(entryFor(catalogOf(cdkLib(), thirdParty()), 'my-constructs.Queueish')!.props.map((p) => p.name)).toEqual(['retryAttempts', 'queueName']);
       expect(entryFor(catalogOf(thirdParty()), 'my-constructs.Queueish')!.props.map((p) => p.name)).toEqual(['queueName']);
     });
+  });
+
+  describe('prop inputs', () => {
+    /** A bucket-like construct whose props use an enum, a struct nested in a struct, a Duration, a Size and an array. */
+    function withInputs() {
+      const raw = cdkLib() as { types: Record<string, unknown> };
+      Object.assign(raw.types, {
+        'aws-cdk-lib.RemovalPolicy': { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }, { name: 'RETAIN' }] },
+        'other-lib.Color': { kind: 'enum', fqn: 'other-lib.Color', name: 'Color', members: [{ name: 'RED' }] },
+        'aws-cdk-lib.Size': cls('aws-cdk-lib.Size'),
+        'aws-cdk-lib.aws_sqs.QueueProps': struct('aws-cdk-lib.aws_sqs.QueueProps', [
+          prop('visibilityTimeout', { fqn: 'aws-cdk-lib.Duration' }, { optional: true }),
+          prop('maxMessageSize', { fqn: 'aws-cdk-lib.Size' }, { optional: true }),
+          prop('removalPolicy', { fqn: 'aws-cdk-lib.RemovalPolicy' }, { optional: true }),
+          prop('color', { fqn: 'other-lib.Color' }, { optional: true }),
+          prop('deadLetter', { fqn: 'aws-cdk-lib.aws_sqs.DeadLetter' }, { optional: true }),
+          prop('self', { fqn: 'aws-cdk-lib.aws_sqs.Selfish' }, { optional: true }),
+          prop('either', { union: { types: [{ primitive: 'string' }, { primitive: 'number' }] } }, { optional: true }),
+        ]),
+        'aws-cdk-lib.aws_sqs.DeadLetter': struct('aws-cdk-lib.aws_sqs.DeadLetter', [
+          prop('maxReceiveCount', { primitive: 'number' }),
+          prop('queues', { collection: { kind: 'array', elementtype: { primitive: 'string' } } }, { optional: true }),
+        ]),
+        'aws-cdk-lib.aws_sqs.Selfish': struct('aws-cdk-lib.aws_sqs.Selfish', [prop('again', { fqn: 'aws-cdk-lib.aws_sqs.Selfish' }, { optional: true })]),
+      });
+      raw.types['aws-cdk-lib.aws_sqs.Queue'] = cls('aws-cdk-lib.aws_sqs.Queue', { base: 'aws-cdk-lib.Resource', initializer: init('aws-cdk-lib.aws_sqs.QueueProps') });
+      return Object.fromEntries(entryFor(catalogOf(raw), 'aws-cdk-lib.aws_sqs.Queue')!.props.map((p) => [p.name, p.input]));
+    }
+
+    it('offers an input for a Duration, a Size and an enum of CDK itself with its members', () => {
+      const inputs = withInputs();
+      expect(inputs['visibilityTimeout']).toEqual({ kind: 'duration' });
+      expect(inputs['maxMessageSize']).toEqual({ kind: 'size' });
+      expect(inputs['removalPolicy']).toEqual({ kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', members: ['DESTROY', 'RETAIN'] });
+    });
+
+    it('lists the fields of a struct that Truss can write a literal for, and leaves out the rest', () => {
+      const dead = withInputs()['deadLetter'];
+      expect(dead).toEqual({ kind: 'struct', fields: [expect.objectContaining({ name: 'maxReceiveCount', required: true, input: { kind: 'number' } })] });
+    });
+
+    it('offers nothing for an enum of another library, a union of several types, or a struct that contains itself', () => {
+      const inputs = withInputs();
+      expect(inputs['color']).toBeUndefined();
+      expect(inputs['either']).toBeUndefined();
+      expect(inputs['self']).toBeUndefined();
+    });
+
+    it('digests the members of an enum', () => {
+      expect(digestAssembly(withEnum()).enumMembers).toEqual({ 'aws-cdk-lib.RemovalPolicy': ['DESTROY'] });
+    });
+
+    function withEnum() {
+      const raw = cdkLib() as { types: Record<string, unknown> };
+      raw.types['aws-cdk-lib.RemovalPolicy'] = { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }] };
+      return raw;
+    }
   });
 
   describe('third-party libraries', () => {

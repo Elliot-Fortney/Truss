@@ -1,7 +1,8 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { SynthResult } from '../../core/assembly.ts';
-import type { Synth } from '../../core/ports.ts';
+import type { DraftSupport, FileSet, Synth } from '../../core/ports.ts';
+import { draftSupportOf, makeShadow, needsBuild } from './shadow.ts';
 import type { WorkerRequest } from './synth-worker.ts';
 
 const WORKER = fileURLToPath(import.meta.url).replace(/toolkit-synth\.(ts|js)$/, 'synth-worker.$1');
@@ -31,7 +32,26 @@ export class ToolkitSynth implements Synth {
     for (const child of this.live) killTree(child);
   }
 
-  synth(appDir: string, opts: { signal?: AbortSignal } = {}): Promise<SynthResult> {
+  draftSupport(appDir: string): Promise<DraftSupport> {
+    return draftSupportOf(appDir);
+  }
+
+  async synth(appDir: string, opts: { signal?: AbortSignal; overlay?: FileSet } = {}): Promise<SynthResult> {
+    if (!opts.overlay) return this.run(appDir, opts.signal, false);
+    // The Draft's text goes into a shadow copy; the user's files are never touched (ADR 0006).
+    let shadow;
+    try {
+      shadow = await makeShadow(appDir, opts.overlay);
+      return await this.run(shadow.dir, opts.signal, await needsBuild(appDir));
+    } catch (err) {
+      return { ok: false, error: { message: `Couldn't set up the shadow copy for the Draft: ${err instanceof Error ? err.message : String(err)}` } };
+    } finally {
+      await shadow?.remove();
+    }
+  }
+
+  private run(appDir: string, signal: AbortSignal | undefined, build: boolean): Promise<SynthResult> {
+    const opts = { signal };
     return new Promise((resolve) => {
       // Its own process group, so killing the worker also kills the app command it spawned.
       const child = fork(this.worker, { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], detached: true });
@@ -81,7 +101,7 @@ export class ToolkitSynth implements Synth {
 
       if (opts.signal?.aborted) return onAbort();
       opts.signal?.addEventListener('abort', onAbort);
-      child.send({ appDir } satisfies WorkerRequest);
+      child.send({ appDir, ...(build ? { build } : {}) } satisfies WorkerRequest);
     });
   }
 }

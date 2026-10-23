@@ -1,8 +1,10 @@
 import { applyNodeChanges, Background, Controls, Handle, Position, ReactFlow, useStore, type Edge, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
+import type { PropValue } from '../core/intents.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
+import { DraftBar } from './draft-bar.tsx';
 import { layoutView } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
 import { Palette } from './palette.tsx';
@@ -15,6 +17,7 @@ import { namesShownAt } from './zoom.ts';
 interface StackData extends Record<string, unknown> {
   label: string;
   env: string;
+  changed?: boolean;
 }
 interface TrussNodeData extends Record<string, unknown> {
   label: string;
@@ -23,6 +26,8 @@ interface TrussNodeData extends Record<string, unknown> {
   icon: string;
   note?: string;
   lock?: string;
+  /** The Draft changes this Node's code. */
+  changed?: boolean;
   external?: boolean;
   hoisted?: boolean;
   /** The Node has a Layer to open. */
@@ -48,6 +53,7 @@ function StackBox({ data }: NodeProps<Node<StackData>>) {
       <div className="stack-header">
         <strong>{data.label}</strong>
         <span>{data.env}</span>
+        {data.changed ? <span className="changed-badge">changed</span> : null}
       </div>
     </div>
   );
@@ -89,7 +95,7 @@ function ExpandToggle({ id, label, expanded, onToggle }: { id: string; label: st
 function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
   // Zoomed out, a name is too small to read, so the Node is its icon; the full name stays in the tooltip.
   const showName = useStore((s) => namesShownAt(s.transform[2]));
-  const className = ['truss-node', data.external ? 'external' : '', data.hoisted ? 'hoisted' : '', data.expanded ? 'expanded' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
+  const className = ['truss-node', data.changed ? 'changed' : '', data.external ? 'external' : '', data.hoisted ? 'hoisted' : '', data.expanded ? 'expanded' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
   const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
   return (
     <div className={className} title={tooltip}>
@@ -113,6 +119,11 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
       {data.note ? (
         <span className="node-note" title={data.note}>
           note
+        </span>
+      ) : null}
+      {data.changed ? (
+        <span className="changed-badge" title="The Draft changes this">
+          changed
         </span>
       ) : null}
     </div>
@@ -160,7 +171,7 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
       ...(parent ? { parentId: stackNodeId(parent.id) } : {}),
       position: { x: box.x - (parent?.x ?? 0), y: box.y - (parent?.y ?? 0) },
       style: { width: box.width, height: box.height },
-      data: { label: stack.label, env: stack.env } satisfies StackData,
+      data: { label: stack.label, env: stack.env, ...(stack.changed ? { changed: true } : {}) } satisfies StackData,
       // Selecting a Stack opens its panel; it can't be dragged.
       draggable: false,
     };
@@ -182,6 +193,7 @@ function toFlowNodes(view: View, expanded: ReadonlySet<string>, onToggle: (id: s
         icon: n.icon,
         ...(n.note ? { note: n.note } : {}),
         ...(n.lock ? { lock: n.lock } : {}),
+        ...(n.changed ? { changed: true } : {}),
         ...(n.external ? { external: true } : {}),
         ...(n.hoisted ? { hoisted: true } : {}),
         expandable,
@@ -253,7 +265,7 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, props, paused, onSave, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, props, paused, onSave, onSet, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onOpen(at: SourceLocation): void }) {
   const causers = (node.causedBy ?? []).map((id) => nodes.find((n) => n.id === id)?.label ?? id);
   return (
     <aside className="note-panel">
@@ -266,7 +278,7 @@ function NodePanel({ node, nodes, props, paused, onSave, onOpen }: { node: NodeV
         </button>
       ) : null}
       {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
-      <PropertyPanel key={node.id} state={props} />
+      <PropertyPanel key={node.id} state={props} onSet={onSet} />
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
@@ -286,7 +298,7 @@ function NodePanel({ node, nodes, props, paused, onSave, onOpen }: { node: NodeV
 }
 
 /** The panel of a Stack box: its own props, which are the only settings of it Truss shows. */
-function StackPanel({ stack, props, onOpen }: { stack: StackBoxView; props: PanelState; onOpen(at: SourceLocation): void }) {
+function StackPanel({ stack, props, onSet, onOpen }: { stack: StackBoxView; props: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onOpen(at: SourceLocation): void }) {
   const source = props.status === 'ready' ? props.panel.source : undefined;
   return (
     <aside className="note-panel">
@@ -297,7 +309,7 @@ function StackPanel({ stack, props, onOpen }: { stack: StackBoxView; props: Pane
           Open in editor
         </button>
       ) : null}
-      <PropertyPanel key={stack.id} state={props} />
+      <PropertyPanel key={stack.id} state={props} onSet={onSet} />
     </aside>
   );
 }
@@ -373,8 +385,12 @@ export function App() {
     .map((n) => n.id)
     .join('|');
 
-  // The View is the truth; React Flow only holds a Node's position while it is being dragged.
-  useEffect(() => setNodes(flowNodes), [flowNodes]);
+  // The View is the truth; React Flow only holds a Node's position while it is being dragged. A new View
+  // must not close the panel the user is editing in, so what is selected stays selected.
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
+  const keepSelection = useCallback((all: Node[]) => all.map((n) => (n.id === selectedRef.current ? { ...n, selected: true } : n)), []);
+  useEffect(() => setNodes(keepSelection(flowNodes)), [flowNodes, keepSelection]);
   const onNodesChange = useCallback<OnNodesChange>((changes) => setNodes((current) => applyNodeChanges(changes, current)), []);
 
   const request = useCallback(
@@ -382,9 +398,10 @@ export function App() {
       const outcome = await send(req);
       setNotice(outcome.ok ? undefined : outcome.reason);
       // A refused change never reached the Sidecar, so put every Node back where the View has it.
-      if (!outcome.ok) setNodes(flowNodes);
+      if (!outcome.ok) setNodes(keepSelection(flowNodes));
+      return outcome.ok;
     },
-    [send, flowNodes],
+    [send, flowNodes, keepSelection],
   );
 
   const onNodeDragStop = useCallback(
@@ -401,6 +418,51 @@ export function App() {
 
   const selected = shown?.nodes.find((n) => n.id === selectedId);
   const openStack = shown?.stacks.find((s) => stackNodeId(s.id) === selectedId);
+  const [saving, setSaving] = useState(false);
+  const draft = view?.draft;
+  const unsaved = (draft?.items.length ?? 0) > 0;
+  const stage = useCallback(
+    (id: string) => (prop: string[], value: PropValue) => request({ type: 'setProp', id, prop, value }),
+    [request],
+  );
+  const undo = useCallback(() => void request({ type: 'undo' }), [request]);
+  const redo = useCallback(() => void request({ type: 'redo' }), [request]);
+  const save = useCallback(async () => {
+    setSaving(true);
+    try {
+      await request({ type: 'save' });
+    } finally {
+      setSaving(false);
+    }
+  }, [request]);
+  const discard = useCallback(() => void request({ type: 'discard' }), [request]);
+
+  // Closing the tab with edits in the Draft would lose them.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
+
+  // Undo and redo step through the Draft, but not while the user is typing in a field, which has its own.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const target = e.target instanceof HTMLElement ? e.target : undefined;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) undo();
+      else if ((key === 'z' && e.shiftKey) || key === 'y') redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
   const panelState = usePanel(selected?.id ?? openStack?.id, view?.version, panel);
   const selectedLayer = useMemo(() => {
     for (const node of shown?.nodes ?? []) {
@@ -443,9 +505,14 @@ export function App() {
         {view.synthing ? <div className="synthing">synthing…</div> : null}
         <div className="banners">
           {connection === 'closed' ? <div className="banner">Disconnected from Truss.</div> : null}
+          {view.draftBlocked ? (
+            <div className="banner" role="status">
+              <strong>Read-only.</strong> {view.draftBlocked}
+            </div>
+          ) : null}
           {error ? (
             <div className="banner error-banner" role="alert">
-              <strong>Your app no longer synths. Showing the last good Design.</strong>
+              <strong>{error.kind === 'draft' ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.' : 'Your app no longer synths. Showing the last good Design.'}</strong>
               <span>{error.message}</span>
               <ErrorLocation error={error} onOpen={openInEditor} />
               {error.output ? (
@@ -483,8 +550,9 @@ export function App() {
           <Controls showInteractive={false} />
         </ReactFlow>
         <Palette search={search} />
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
-        {openStack ? <StackPanel stack={openStack} props={panelState} onOpen={openInEditor} /> : null}
+        {draft ? <DraftBar draft={draft} busy={view.synthing || saving} canSave={draft.problems.length === 0 && !error} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onOpen={openInEditor} /> : null}
+        {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
       </div>
     </div>

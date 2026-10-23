@@ -1,17 +1,43 @@
 import type { Assembly, SynthResult } from './assembly.ts';
 import type { Catalog } from './catalog.ts';
+import type { TextChange } from './diff.ts';
 import type { Facts } from './facts.ts';
+import type { Intent } from './intents.ts';
 
 /** The app's source files, by path relative to the app folder. */
 export type FileSet = ReadonlyMap<string, string>;
 
+/** Whether the app can be synthed with a Draft applied (ADR 0007), and if not, why. */
+export type DraftSupport = { ok: true } | { ok: false; reason: string };
+
 export interface Synth {
-  /** Synths the app in `appDir`. Never throws for a broken app; returns the synth error instead. */
-  synth(appDir: string, opts?: { signal?: AbortSignal }): Promise<SynthResult>;
+  /**
+   * Synths the app in `appDir`. Never throws for a broken app; returns the synth error instead. With
+   * `overlay`, synths a shadow copy of the app in which those files (by path relative to the app folder)
+   * have that text, and the real files are left alone.
+   */
+  synth(appDir: string, opts?: { signal?: AbortSignal; overlay?: FileSet }): Promise<SynthResult>;
+  /** Whether `synth` can be given an `overlay` for this app. Absent: it always can. */
+  draftSupport?(appDir: string): Promise<DraftSupport>;
+}
+
+/** The changes that make the code say what the intents mean, by file; or the first intent Source could not place, and why. */
+export type PlanResult = { ok: true; changes: Record<string, TextChange[]> } | { ok: false; intent: number; reason: string };
+
+/** A TypeScript error or warning in a file of the app. */
+export interface Diagnostic {
+  file: string;
+  line: number;
+  code: number;
+  message: string;
 }
 
 export interface Source {
   analyse(files: FileSet, assembly: Assembly): Facts;
+  /** Plans the text changes for `intents` against `files`, which `facts` were read from. Writes nothing. */
+  plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult;
+  /** The TypeScript diagnostics of the `touched` files, type-checked as part of the app in `appDir` with `files` in place of what is on disk. */
+  diagnostics(appDir: string, files: FileSet, touched: readonly string[]): Diagnostic[];
 }
 
 export interface Files {
