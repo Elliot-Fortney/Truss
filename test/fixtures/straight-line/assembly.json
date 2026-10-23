@@ -1,0 +1,178 @@
+{
+  "schemaVersion": "55.0.0",
+  "tree": {
+    "id": "App",
+    "path": "",
+    "fqn": "aws-cdk-lib.App",
+    "children": [
+      {
+        "id": "ShopStack",
+        "path": "ShopStack",
+        "fqn": "aws-cdk-lib.Stack",
+        "children": [
+          {
+            "id": "Uploads",
+            "path": "ShopStack/Uploads",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "ShopStack/Uploads/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Orders",
+            "path": "ShopStack/Orders",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "ShopStack/Orders/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Catalog",
+            "path": "ShopStack/Catalog",
+            "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "ShopStack/Catalog/Resource",
+                "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                "cfnType": "AWS::DynamoDB::Table",
+                "children": []
+              },
+              {
+                "id": "ScalingRole",
+                "path": "ShopStack/Catalog/ScalingRole",
+                "fqn": "aws-cdk-lib.Resource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "CDKMetadata",
+            "path": "ShopStack/CDKMetadata",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Default",
+                "path": "ShopStack/CDKMetadata/Default",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "BootstrapVersion",
+            "path": "ShopStack/BootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnParameter",
+            "children": []
+          },
+          {
+            "id": "CheckBootstrapVersion",
+            "path": "ShopStack/CheckBootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnRule",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "Tree",
+        "path": "Tree",
+        "fqn": "constructs.Construct",
+        "children": []
+      }
+    ]
+  },
+  "stacks": [
+    {
+      "path": "ShopStack",
+      "env": "aws://123456789012/us-east-1"
+    }
+  ],
+  "creation": {
+    "ShopStack": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 2
+      }
+    ],
+    "ShopStack/Uploads/Resource": [
+      {
+        "fn": "new ShopStack",
+        "file": "lib/shop-stack.ts",
+        "line": 11,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 2
+      }
+    ],
+    "ShopStack/Orders/Resource": [
+      {
+        "fn": "new ShopStack",
+        "file": "lib/shop-stack.ts",
+        "line": 15,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 2
+      }
+    ],
+    "ShopStack/Catalog/Resource": [
+      {
+        "fn": "new ShopStack",
+        "file": "lib/shop-stack.ts",
+        "line": 19,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 2
+      }
+    ]
+  }
+}

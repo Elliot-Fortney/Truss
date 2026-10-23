@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true
+  },
+  "include": ["src", "test/**/*.ts", "e2e", "scripts/*.ts", "vitest.config.ts", "playwright.config.ts", "vite.config.ts"],
+  "exclude": ["test/fixtures/**/node_modules", "test/fixtures/**/cdk.out"]
+}
