@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0007
+---
+
 # The local process owns the Design; the core is pure behind two ports
 
 The live Design and its undo history are held by the local Node process, not the browser. The browser is a thin view: it sends edits to one session over a WebSocket and gets the whole view model back after every change. Code is split into four layers, with dependencies pointing inward only. **core** is pure: the Design model and its edits, validation, the Design file codec and migrations, codegen, Export planning, the canvas view projection and the Preview SVG. **session** holds the state and is the only layer that calls ports. **adapters** and **ui** sit outside it. There are only two ports: **Instantiation** (`instantiate(design)` returns a tree or a CDK error per Node) and **Files** (`read` / `write` / `exists`).
