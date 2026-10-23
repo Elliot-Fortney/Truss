@@ -12,6 +12,14 @@ _Avoid_: Diagram (when meaning the saved document), project, model
 One box on the canvas, corresponding to exactly one CDK construct.
 _Avoid_: Service, shape, component, resource (unless it is literally an L1 resource)
 
+**Construct ID**:
+The literal ID a Node, or the Design as a whole, gets in the exported code. Users see and edit it, and it decides the deployed resource's identity, so changing it replaces the resource. It is not the Node's identity inside Truss.
+_Avoid_: Name, label, Node ID (when meaning the code ID)
+
+**Preview**:
+The picture of a Design (placed Nodes and Connections, Layers collapsed) that Truss writes next to it on every save, for review in PRs and READMEs. It's derived and never read back.
+_Avoid_: Thumbnail, screenshot, image Export
+
 **Connection**:
 An edge between two Nodes that always becomes code: a Reference, Grant, Integration or Network Connection. Its arrow follows data or request flow, not code direction.
 _Avoid_: Link, wire, line, relationship
