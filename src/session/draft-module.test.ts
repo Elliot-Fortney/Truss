@@ -100,6 +100,25 @@ describe('the Draft module', () => {
     expect(d.problems()).toEqual([]);
   });
 
+  it('keeps redo when the edit staged after an undo changes no code', () => {
+    const { draft: d } = draft();
+    d.stage(versioned());
+    d.undo();
+    expect(d.stage(versioned(true))).toEqual({ ok: true });
+    expect(d.intents).toEqual([]);
+    expect(d.view()?.canRedo).toBe(true);
+    d.redo();
+    expect(d.view()?.items.map((i) => i.summary)).toEqual(['versioned → false']);
+  });
+
+  it('ends redo when the edit staged after an undo changes code', () => {
+    const { draft: d } = draft();
+    d.stage(versioned());
+    d.undo();
+    d.stage(fifo());
+    expect(d.view()?.canRedo).toBe(false);
+  });
+
   it('holds Save until the current intents have been checked', () => {
     const { draft: d } = draft();
     d.stage(versioned());

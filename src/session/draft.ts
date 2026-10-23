@@ -62,7 +62,7 @@ export class Draft {
       this.history = before;
       return { ok: false, reason: planned.reason };
     }
-    if (Object.keys(planned.changes).length === 0) this.history = { intents: [], redo: this.history.redo };
+    if (Object.keys(planned.changes).length === 0) this.history = { intents: [], redo: before.redo };
     this.changed(false);
     return { ok: true };
   }
