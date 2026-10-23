@@ -1,0 +1,34 @@
+name: CI
+
+# No branch filter on pull_request: ticket PRs target the `v1` feature branch, and the overnight
+# agent loop merges only PRs whose checks are green, so a PR into any base must report checks.
+on:
+  pull_request:
+  push:
+    branches: [main, v1]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            test/fixtures/*/package-lock.json
+      - run: npm ci
+      - name: Install fixture apps
+        run: |
+          for dir in test/fixtures/*/; do
+            if [ -f "$dir/package.json" ]; then (cd "$dir" && npm ci); fi
+          done
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
