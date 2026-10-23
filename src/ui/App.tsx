@@ -15,6 +15,7 @@ interface TrussNodeData extends Record<string, unknown> {
   subtitle: string;
   fqn: string;
   note?: string;
+  lock?: string;
 }
 
 function StackBox({ data }: NodeProps<Node<StackData>>) {
@@ -37,6 +38,15 @@ function GenericIcon() {
   );
 }
 
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="9" rx="2" fill="currentColor" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
 function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
   return (
     <div className="truss-node" title={data.fqn}>
@@ -45,6 +55,11 @@ function TrussNode({ data }: NodeProps<Node<TrussNodeData>>) {
         <div className="node-label">{data.label}</div>
         <div className="node-subtitle">{data.subtitle}</div>
       </div>
+      {data.lock ? (
+        <span className="node-lock" title={data.lock} aria-label={`Read-only: ${data.lock}`} role="img">
+          <LockIcon />
+        </span>
+      ) : null}
       {data.note ? (
         <span className="node-note" title={data.note}>
           note
@@ -78,17 +93,21 @@ function toFlowNodes(view: View): Node[] {
       parentId: `stack:${n.stackId}`,
       position: { x: pos.x, y: pos.y },
       style: { width: NODE_WIDTH, height: NODE_HEIGHT },
-      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, ...(n.note ? { note: n.note } : {}) },
+      data: { label: n.label, subtitle: n.subtitle, fqn: n.fqn, ...(n.note ? { note: n.note } : {}), ...(n.lock ? { lock: n.lock } : {}) },
     };
   });
   // React Flow needs a parent to come before its children.
   return [...stackNodes, ...nodes];
 }
 
-function NotePanel({ node, onSave }: { node: NodeView; onSave: (note: string) => void }) {
+function NodePanel({ node, onSave, onOpen }: { node: NodeView; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
   return (
     <aside className="note-panel">
       <h2>{node.label}</h2>
+      {node.lock ? <p className="lock-reason">Read-only: {node.lock}</p> : null}
+      <button type="button" className="open-in-editor" onClick={() => onOpen(node.source)}>
+        Open in editor
+      </button>
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
@@ -217,7 +236,7 @@ export function App() {
         <Background />
         <Controls showInteractive={false} />
       </ReactFlow>
-      {selected ? <NotePanel node={selected} onSave={(note) => void request({ type: 'note', id: selected.id, note })} /> : null}
+      {selected ? <NodePanel node={selected} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
     </div>
   );
 }

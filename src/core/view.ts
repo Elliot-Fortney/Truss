@@ -1,4 +1,5 @@
 import type { Assembly, EditorRequest, SynthError, TreeNode } from './assembly.ts';
+import { nodeEditability } from './editability.ts';
 import type { Facts } from './facts.ts';
 import type { Point, Sidecar } from './sidecar.ts';
 
@@ -21,6 +22,8 @@ export interface NodeView {
   fqn: string;
   icon: string;
   source: { file: string; line: number; col: number };
+  /** Why Truss can't edit this Node, when it can't. Absent means editable. */
+  lock?: string;
   /** Where the Sidecar says this Node sits on the canvas. Absent: the canvas lays it out. */
   position?: Point;
   /** The note the Sidecar holds for this Node. */
@@ -73,6 +76,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
     if (isStack) stackId = tree.path;
     else if (stackId && nodeFacts && !insideNode) {
       const saved = sidecar.nodes[tree.path];
+      const editability = nodeEditability(tree.path, nodeFacts);
       nodes.push({
         id: tree.path,
         stackId,
@@ -81,6 +85,7 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar): V
         fqn: tree.fqn,
         icon: GENERIC_ICON,
         source: { file: nodeFacts.span.file, line: nodeFacts.span.start.line, col: nodeFacts.span.start.col },
+        ...(editability.editable ? {} : { lock: editability.reason }),
         ...(saved?.position ? { position: saved.position } : {}),
         ...(saved?.note ? { note: saved.note } : {}),
       });

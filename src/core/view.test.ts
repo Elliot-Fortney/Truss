@@ -41,9 +41,9 @@ const assembly: Assembly = {
 
 const facts: Facts = {
   nodes: {
-    Api: { span: span(1), className: 'ApiStack', literalId: 'Api', pathsOnSpan: 1 },
-    'Api/Jobs': { span: span(10), className: 'sqs.Queue', literalId: 'Jobs', pathsOnSpan: 1 },
-    'Web/Site': { span: span(20), className: 's3.Bucket', literalId: 'Site', pathsOnSpan: 1 },
+    Api: { span: span(1), className: 'ApiStack', literalId: 'Api', pathsOnSpan: 1, binding: 'none' },
+    'Api/Jobs': { span: span(10), className: 'sqs.Queue', literalId: 'Jobs', pathsOnSpan: 1, binding: 'none' },
+    'Web/Site': { span: span(20), className: 's3.Bucket', literalId: 'Site', pathsOnSpan: 2, binding: 'none', surround: { kind: 'loop' } },
   },
 };
 
@@ -73,5 +73,11 @@ describe('buildView', () => {
 
   it('records where in the code each Node came from', () => {
     expect(view.nodes[0]?.source).toEqual({ file: 'lib/a.ts', line: 10, col: 5 });
+  });
+
+  it('leaves a Node editable by default and locks one with the reason its code cannot be edited', () => {
+    const [jobs, site] = view.nodes;
+    expect(jobs).not.toHaveProperty('lock');
+    expect(site?.lock).toBe('Created in a loop');
   });
 });

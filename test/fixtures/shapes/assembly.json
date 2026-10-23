@@ -1,0 +1,899 @@
+{
+  "schemaVersion": "55.0.0",
+  "tree": {
+    "id": "App",
+    "path": "",
+    "fqn": "aws-cdk-lib.App",
+    "children": [
+      {
+        "id": "Shapes",
+        "path": "Shapes",
+        "fqn": "aws-cdk-lib.Stack",
+        "children": [
+          {
+            "id": "Plain",
+            "path": "Shapes/Plain",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Plain/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Bound",
+            "path": "Shapes/Bound",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Bound/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Audit",
+            "path": "Shapes/Audit",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Audit/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "SameLineA",
+            "path": "Shapes/SameLineA",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/SameLineA/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "SameLineB",
+            "path": "Shapes/SameLineB",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/SameLineB/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Inner",
+            "path": "Shapes/Inner",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Inner/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Outer",
+            "path": "Shapes/Outer",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Outer/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              },
+              {
+                "id": "Notifications",
+                "path": "Shapes/Outer/Notifications",
+                "fqn": "constructs.Construct",
+                "children": [
+                  {
+                    "id": "HandlerPolicy",
+                    "path": "Shapes/Outer/Notifications/HandlerPolicy",
+                    "fqn": "aws-cdk-lib.aws_iam.Policy",
+                    "children": [
+                      {
+                        "id": "Resource",
+                        "path": "Shapes/Outer/Notifications/HandlerPolicy/Resource",
+                        "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                        "cfnType": "AWS::IAM::Policy",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "id": "Resource",
+                    "path": "Shapes/Outer/Notifications/Resource",
+                    "fqn": "aws-cdk-lib.CfnResource",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "BucketNotificationsHandler050a0587b7544547bf325f094a3db834",
+            "path": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Role",
+                "path": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role",
+                "fqn": "aws-cdk-lib.aws_iam.Role",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource",
+                    "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                    "cfnType": "AWS::IAM::Role",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "Resource",
+                "path": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "LoopOne",
+            "path": "Shapes/LoopOne",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/LoopOne/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "LoopTwo",
+            "path": "Shapes/LoopTwo",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/LoopTwo/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "EachLeft",
+            "path": "Shapes/EachLeft",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/EachLeft/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "EachRight",
+            "path": "Shapes/EachRight",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/EachRight/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "HelperA",
+            "path": "Shapes/HelperA",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/HelperA/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "HelperB",
+            "path": "Shapes/HelperB",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/HelperB/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Api",
+            "path": "Shapes/Api",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Jobs",
+                "path": "Shapes/Api/Jobs",
+                "fqn": "aws-cdk-lib.aws_sqs.Queue",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Shapes/Api/Jobs/Resource",
+                    "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                    "cfnType": "AWS::SQS::Queue",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "Orders",
+            "path": "Shapes/Orders",
+            "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/Orders/Resource",
+                "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                "cfnType": "AWS::DynamoDB::Table",
+                "children": []
+              },
+              {
+                "id": "ScalingRole",
+                "path": "Shapes/Orders/ScalingRole",
+                "fqn": "aws-cdk-lib.Resource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "FromVariable",
+            "path": "Shapes/FromVariable",
+            "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Shapes/FromVariable/Resource",
+                "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                "cfnType": "AWS::DynamoDB::Table",
+                "children": []
+              },
+              {
+                "id": "ScalingRole",
+                "path": "Shapes/FromVariable/ScalingRole",
+                "fqn": "aws-cdk-lib.Resource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "CDKMetadata",
+            "path": "Shapes/CDKMetadata",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Default",
+                "path": "Shapes/CDKMetadata/Default",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "BootstrapVersion",
+            "path": "Shapes/BootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnParameter",
+            "children": []
+          },
+          {
+            "id": "CheckBootstrapVersion",
+            "path": "Shapes/CheckBootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnRule",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "Dev",
+        "path": "Dev",
+        "fqn": "aws-cdk-lib.Stack",
+        "children": [
+          {
+            "id": "Alerts",
+            "path": "Dev/Alerts",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Dev/Alerts/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "CDKMetadata",
+            "path": "Dev/CDKMetadata",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Default",
+                "path": "Dev/CDKMetadata/Default",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "BootstrapVersion",
+            "path": "Dev/BootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnParameter",
+            "children": []
+          },
+          {
+            "id": "CheckBootstrapVersion",
+            "path": "Dev/CheckBootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnRule",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "Prod",
+        "path": "Prod",
+        "fqn": "aws-cdk-lib.Stack",
+        "children": [
+          {
+            "id": "Alerts",
+            "path": "Prod/Alerts",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Prod/Alerts/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "CDKMetadata",
+            "path": "Prod/CDKMetadata",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Default",
+                "path": "Prod/CDKMetadata/Default",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "BootstrapVersion",
+            "path": "Prod/BootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnParameter",
+            "children": []
+          },
+          {
+            "id": "CheckBootstrapVersion",
+            "path": "Prod/CheckBootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnRule",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "Tree",
+        "path": "Tree",
+        "fqn": "constructs.Construct",
+        "children": []
+      }
+    ]
+  },
+  "stacks": [
+    {
+      "path": "Shapes",
+      "env": "aws://123456789012/us-east-1"
+    },
+    {
+      "path": "Dev",
+      "env": "aws://123456789012/us-east-1"
+    },
+    {
+      "path": "Prod",
+      "env": "aws://123456789012/us-east-1"
+    }
+  ],
+  "creation": {
+    "Shapes": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Plain/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 24,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Bound/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 25,
+        "col": 19
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Audit/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 26,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/SameLineA/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 29,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/SameLineB/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 29,
+        "col": 39
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Inner/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 32,
+        "col": 86
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Outer/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 32,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/LoopOne/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 36,
+        "col": 7
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/LoopTwo/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 36,
+        "col": 7
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/EachLeft/Resource": [
+      {
+        "fn": "<anonymous>",
+        "file": "lib/shapes-stack.ts",
+        "line": 38,
+        "col": 41
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 38,
+        "col": 23
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/EachRight/Resource": [
+      {
+        "fn": "<anonymous>",
+        "file": "lib/shapes-stack.ts",
+        "line": 38,
+        "col": 41
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 38,
+        "col": 23
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/HelperA/Resource": [
+      {
+        "fn": "makeQueue",
+        "file": "lib/shapes-stack.ts",
+        "line": 14,
+        "col": 10
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 41,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/HelperB/Resource": [
+      {
+        "fn": "makeQueue",
+        "file": "lib/shapes-stack.ts",
+        "line": 14,
+        "col": 10
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 42,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Orders/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 49,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/FromVariable/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 52,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Shapes/Outer/Notifications/Resource": [
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 32,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      }
+    ],
+    "Shapes/Api/Jobs/Resource": [
+      {
+        "fn": "new ApiService",
+        "file": "lib/api-service.ts",
+        "line": 8,
+        "col": 5
+      },
+      {
+        "fn": "new ShapesStack",
+        "file": "lib/shapes-stack.ts",
+        "line": 45,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 7,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Dev": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Dev/Alerts/Resource": [
+      {
+        "fn": "new RepeatedStack",
+        "file": "lib/repeated-stack.ts",
+        "line": 9,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 8,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Prod": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ],
+    "Prod/Alerts/Resource": [
+      {
+        "fn": "new RepeatedStack",
+        "file": "lib/repeated-stack.ts",
+        "line": 9,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 9,
+        "col": 39
+      }
+    ]
+  }
+}
