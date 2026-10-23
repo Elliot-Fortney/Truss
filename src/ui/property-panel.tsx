@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { MAX_ID_LENGTH } from '../core/construct-id.ts';
 import type { PropValue } from '../core/intents.ts';
 import type { PanelView, PropRowView } from '../core/panel.ts';
-import { literalText, moreLabel, propsNotice, unsetText } from './panel-format.ts';
+import { idFieldState, literalText, moreLabel, propsNotice, unsetText } from './panel-format.ts';
 import { PropEditor } from './prop-inputs.tsx';
 
 /** What the panel has for a Node or Stack: still asking, the answer, or why there is none. */
@@ -43,8 +44,41 @@ function PropList({ rows, unset, onSet }: { rows: readonly PropRowView[]; unset:
   );
 }
 
+/** The Construct ID: checked as it is typed, and staged as a rename once it is valid and the field is left or Enter is pressed. */
+function ConstructIdField({ panel, onRename }: { panel: PanelView; onRename(newId: string): Promise<boolean> }) {
+  const [typed, setTyped] = useState(panel.literalId ?? '');
+  const { problem, note, canStage } = idFieldState(typed, panel);
+  const stage = () => {
+    if (canStage) void onRename(typed);
+  };
+  return (
+    <div className="id-field">
+      <label>
+        Construct ID
+        <input
+          className="prop-input"
+          type="text"
+          value={typed}
+          maxLength={MAX_ID_LENGTH}
+          spellCheck={false}
+          aria-invalid={problem !== undefined}
+          aria-describedby="id-field-message"
+          onChange={(e) => setTyped(e.currentTarget.value)}
+          onBlur={stage}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') stage();
+          }}
+        />
+      </label>
+      <p id="id-field-message" className={problem ? 'id-problem' : 'lock-reason'} role={problem ? 'alert' : undefined}>
+        {problem ?? note}
+      </p>
+    </div>
+  );
+}
+
 /** The props of a Node or Stack: required and featured first, the rest one click away. */
-export function PropertyPanel({ state, onSet }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean> }) {
+export function PropertyPanel({ state, onSet, onRename }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean> }) {
   const [showMore, setShowMore] = useState(false);
   if (state.status === 'loading') return null;
   if (state.status === 'refused') return <p className="lock-reason">{state.reason}</p>;
@@ -54,6 +88,7 @@ export function PropertyPanel({ state, onSet }: { state: PanelState; onSet(prop:
   return (
     <section className="props" aria-label="Properties">
       {panel.summary ? <p className="prop-doc">{panel.summary}</p> : null}
+      {panel.idEdit ? <ConstructIdField panel={panel} onRename={onRename} /> : null}
       {panel.problems?.length ? (
         <ul className="panel-problems" aria-label="Problems">
           {panel.problems.map((p) => (

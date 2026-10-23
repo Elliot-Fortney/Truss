@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeIntent, emptyDraftHistory, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
+import { afterMoves, beforeMoves, describeIntent, emptyDraftHistory, movesOf, onBase, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
 
 const set = (prop: string[], value: PropValue, path = 'A/B'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'B' }, prop, value });
 const bool = (value: boolean): PropValue => ({ kind: 'boolean', value });
@@ -91,5 +91,71 @@ describe('withIntents', () => {
     const other = { form: 'other' as const, text: 'tableProps' };
     expect(withIntents(other, [set(['a'], bool(true))])).toBe(other);
     expect(withIntents(undefined, [])).toBeUndefined();
+  });
+});
+
+describe('renameId', () => {
+  const rename = (path: string, newId: string, literalId = path.split('/').at(-1)!): Intent => ({ type: 'renameId', path, expect: { className: 's3.Bucket', literalId }, newId });
+
+  it('is worded for the Draft list', () => {
+    expect(describeIntent(rename('A/B', 'C'))).toBe('Construct ID → "C"');
+  });
+
+  it('is one undo step for a run of renames of the same Node, named by the Base’s path and ID', () => {
+    const run = stage(stage(emptyDraftHistory, rename('A/B', 'Ca')), rename('A/Ca', 'Cat'));
+    expect(run.intents).toEqual([rename('A/B', 'Cat')]);
+  });
+
+  it('is no edit at all once the Node is given its first ID back', () => {
+    const back = stage(stage(emptyDraftHistory, rename('A/B', 'C')), rename('A/C', 'B'));
+    expect(back.intents).toEqual([]);
+  });
+
+  it('does not join a rename to an edit of a prop, or of another Node', () => {
+    const first = stage(emptyDraftHistory, set(['a'], bool(true), 'A/C'));
+    expect(stage(first, rename('A/C', 'D')).intents).toHaveLength(2);
+    expect(stage(stage(emptyDraftHistory, rename('A/B', 'C')), rename('A/Other', 'D')).intents).toHaveLength(2);
+  });
+
+  it('leaves the props of a Node it renames alone in the panel', () => {
+    expect(withIntents({ form: 'object', props: [] }, [rename('A/B', 'C')])).toEqual({ form: 'object', props: [] });
+    expect(withIntents(undefined, [rename('A/B', 'C')])).toBeUndefined();
+  });
+
+  describe('moves', () => {
+    const moves = movesOf([rename('A/B', 'C'), set(['x'], bool(true), 'A/C'), rename('A', 'Z')]);
+
+    it('are the renames, each as the paths stood when it was made', () => {
+      expect(moves).toEqual([
+        { from: 'A/B', to: 'A/C' },
+        { from: 'A', to: 'Z' },
+      ]);
+    });
+
+    it('take a path and what is beneath it to the new one, and back', () => {
+      expect(afterMoves(moves, 'A/B')).toBe('Z/C');
+      expect(afterMoves(moves, 'A/B/Resource')).toBe('Z/C/Resource');
+      expect(afterMoves(moves, 'AB/B')).toBe('AB/B');
+      expect(beforeMoves(moves, 'Z/C/Resource')).toBe('A/B/Resource');
+      expect(beforeMoves(moves, 'Y/B')).toBe('Y/B');
+    });
+  });
+
+  describe('onBase', () => {
+    it('names the Base’s path and ID in an edit made after a rename', () => {
+      const edit = set(['a'], bool(true), 'A/C');
+      expect(onBase([rename('A/B', 'C'), { ...edit, expect: { ...edit.expect, literalId: 'C' } }])[1]).toMatchObject({ path: 'A/B', expect: { literalId: 'B' } });
+    });
+
+    it('keeps the ID an edit expects when it is a Node beneath the renamed one that it names', () => {
+      const edit = set(['a'], bool(true), 'Z/Q');
+      const [, onDisk] = onBase([rename('A', 'Z'), { ...edit, expect: { ...edit.expect, literalId: 'Q' } }]);
+      expect(onDisk).toMatchObject({ path: 'A/Q', expect: { literalId: 'Q' } });
+    });
+
+    it('is the intents themselves when nothing was renamed', () => {
+      const intents = [set(['a'], bool(true))];
+      expect(onBase(intents)[0]).toBe(intents[0]);
+    });
   });
 });

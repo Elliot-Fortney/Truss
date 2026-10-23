@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { literalText, moreLabel, propsNotice, unsetText } from './panel-format.ts';
+import { idFieldState, literalText, moreLabel, propsNotice, unsetText } from './panel-format.ts';
 
 describe('literalText', () => {
   it('shows a literal as the value it has, strings without their quotes', () => {
@@ -39,5 +39,30 @@ describe('moreLabel', () => {
     expect(moreLabel(1, false)).toBe('Show 1 more prop');
     expect(moreLabel(12, false)).toBe('Show 12 more props');
     expect(moreLabel(12, true)).toBe('Hide 12 more props');
+  });
+});
+
+describe('idFieldState', () => {
+  const panel = { literalId: 'Logs', idEdit: { siblings: ['Other', 'Default'] } };
+
+  it('says nothing of the ID as it is', () => {
+    expect(idFieldState('Logs', panel)).toEqual({ canStage: false });
+  });
+
+  it('warns that CloudFormation replaces the resource once a valid ID is typed, without blocking it', () => {
+    expect(idFieldState('Files', panel)).toEqual({ note: 'Changes the construct path: CloudFormation will replace this resource.', canStage: true });
+    expect(idFieldState('files_bucket', panel).canStage).toBe(true);
+  });
+
+  it('gives the problem instead, and stages nothing, for an ID the rules refuse', () => {
+    expect(idFieldState('', panel)).toMatchObject({ problem: expect.stringContaining('empty'), canStage: false });
+    expect(idFieldState('a/b', panel)).toMatchObject({ problem: expect.any(String), canStage: false });
+    expect(idFieldState('Other', panel)).toMatchObject({ problem: expect.stringContaining('sibling'), canStage: false });
+    expect(idFieldState('Resource', panel)).toMatchObject({ problem: expect.stringContaining('Default') });
+    expect(idFieldState('Other', panel).note).toBeUndefined();
+  });
+
+  it('stages nothing when the ID cannot be edited', () => {
+    expect(idFieldState('Files', { literalId: 'Logs' })).toEqual({ canStage: false });
   });
 });

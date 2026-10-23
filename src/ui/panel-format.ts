@@ -1,3 +1,4 @@
+import { constructIdProblem, RENAME_NOTE } from '../core/construct-id.ts';
 import type { PanelView } from '../core/panel.ts';
 
 /** A literal prop's value as the panel shows it: what it evaluates to, not how it was quoted. */
@@ -13,3 +14,10 @@ export function propsNotice(panel: Pick<PanelView, 'propsSource'>): string | und
 
 /** The toggle for the props kept on demand. */
 export const moreLabel = (count: number, open: boolean): string => `${open ? 'Hide' : 'Show'} ${count} more ${count === 1 ? 'prop' : 'props'}`;
+
+/** What the Construct ID field says of what is typed in it: what is wrong with it, the note that a change is a replacement, and whether it can be staged. */
+export function idFieldState(typed: string, panel: Pick<PanelView, 'literalId' | 'idEdit'>): { problem?: string; note?: string; canStage: boolean } {
+  if (typed === panel.literalId || !panel.idEdit) return { canStage: false };
+  const problem = constructIdProblem(typed, panel.idEdit.siblings);
+  return problem ? { problem, canStage: false } : { note: RENAME_NOTE, canStage: true };
+}

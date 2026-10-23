@@ -372,3 +372,102 @@ describe('Source.plan refusals', () => {
     expect(plan(same, set('A', 's3.Bucket', 'versioned', bool))).toMatchObject({ ok: true, changes: {} });
   });
 });
+
+describe('Source.plan renameId', () => {
+  const rename = (id: string, newId: string, className = 's3.Bucket', parent = 'Stack'): Intent => ({ type: 'renameId', path: `${parent}/${id}`, expect: { className, literalId: id }, newId });
+
+  it('rewrites the literal and nothing else', () => {
+    const text = bucket(`    new s3.Bucket(this, 'Uploads', {
+      versioned: true,
+    });`);
+    const r = plan(text, rename('Uploads', 'Files'));
+    expect(r.ok && unifiedDiff(FILE, text, r.after)?.diff).toBe(`--- a/lib/stack.ts
++++ b/lib/stack.ts
+@@ -2,7 +2,7 @@
+ 
+ export class S extends Stack {
+   constructor() {
+-    new s3.Bucket(this, 'Uploads', {
++    new s3.Bucket(this, 'Files', {
+       versioned: true,
+     });
+   }
+`);
+  });
+
+  it('leaves the variable the construct is assigned to alone', () => {
+    const text = bucket("    const uploads = new s3.Bucket(this, 'Uploads');\n    uploads.grantRead(role);");
+    expect(after(text, rename('Uploads', 'Files'))).toBe(bucket("    const uploads = new s3.Bucket(this, 'Files');\n    uploads.grantRead(role);"));
+  });
+
+  it('keeps the quotes the ID was written in', () => {
+    expect(after(bucket('    new s3.Bucket(this, "Uploads");'), rename('Uploads', 'Files'))).toBe(bucket('    new s3.Bucket(this, "Files");'));
+    expect(after(bucket('    new s3.Bucket(this, `Uploads`);'), rename('Uploads', 'Files'))).toBe(bucket('    new s3.Bucket(this, `Files`);'));
+  });
+
+  it('escapes what the ID holds that the quote would not', () => {
+    expect(after(bucket("    new s3.Bucket(this, 'Uploads');"), rename('Uploads', "It's"))).toBe(bucket("    new s3.Bucket(this, 'It\\'s');"));
+  });
+
+  it('renames one of several constructs and no other', () => {
+    const text = bucket("    new s3.Bucket(this, 'A');\n    new s3.Bucket(this, 'B');");
+    expect(after(text, rename('B', 'C'))).toBe(bucket("    new s3.Bucket(this, 'A');\n    new s3.Bucket(this, 'C');"));
+  });
+
+  it('plans a rename and a prop edit of the same construct together', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads', { versioned: true });");
+    expect(after(text, rename('Uploads', 'Files'), { ...set('Uploads', 's3.Bucket', 'versioned', { kind: 'boolean', value: false }), path: 'Stack/Files', expect: { className: 's3.Bucket', literalId: 'Files' } })).toBe(
+      bucket("    new s3.Bucket(this, 'Files', { versioned: false });"),
+    );
+  });
+
+  it('adds no props to a construct that passes none', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads');");
+    expect(after(text, rename('Uploads', 'Files'))).toBe(bucket("    new s3.Bucket(this, 'Files');"));
+  });
+
+  it('changes nothing when the ID stays the same', () => {
+    const r = plan(bucket("    new s3.Bucket(this, 'Uploads');"), rename('Uploads', 'Uploads'));
+    expect(r.ok && r.changes).toEqual({});
+  });
+
+  it('follows a construct renamed twice to its last ID', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads');");
+    const again: Intent = { ...rename('Files', 'Docs'), path: 'Stack/Files' };
+    expect(after(text, rename('Uploads', 'Files'), again)).toBe(bucket("    new s3.Bucket(this, 'Docs');"));
+  });
+
+  it('finds the construct by its old path when its parent was renamed first', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads');");
+    const files: FileSet = new Map([[FILE, text]]);
+    const facts = factsOf(text);
+    const inner = facts.nodes['Stack/Uploads']!;
+    const outer = { ...inner, className: 'Stack', literalId: 'Stack', span: { ...inner.span, start: { line: 1, col: 1 }, end: { line: 1, col: 2 } } };
+    const result = source.plan(files, { nodes: { ...facts.nodes, Stack: outer } }, [
+      { type: 'renameId', path: 'Stack', expect: { className: 'Stack', literalId: 'Stack' }, newId: 'Shop' },
+      { ...rename('Uploads', 'Files'), path: 'Shop/Uploads' },
+    ]);
+    expect(result.ok).toBe(false);
+    // The Stack's `new` is not in this file; what matters is that the second intent is looked up under the Base's path and not refused as missing.
+    expect(!result.ok && result.intent).toBe(0);
+  });
+
+  it('refuses an ID the code could not hold, naming the intent', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads');");
+    expect(plan(text, rename('Uploads', 'a/b'))).toMatchObject({ ok: false, intent: 0, reason: expect.stringContaining("'/'") });
+    expect(plan(text, rename('Uploads', ''))).toMatchObject({ ok: false, reason: expect.stringContaining('empty') });
+  });
+
+  it('refuses a construct whose `new` makes several, which one literal would rename together', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads');");
+    const files: FileSet = new Map([[FILE, text]]);
+    const facts = factsOf(text);
+    facts.nodes['Stack/Uploads']!.pathsOnSpan = 2;
+    expect(source.plan(files, facts, [rename('Uploads', 'Files')])).toMatchObject({ ok: false, reason: expect.stringContaining('2 constructs') });
+  });
+
+  it('refuses a construct that is no longer what the user saw', () => {
+    const text = bucket("    new s3.Bucket(this, 'Uploads');");
+    expect(plan(text, rename('Uploads', 'Files', 'sqs.Queue'))).toMatchObject({ ok: false, reason: expect.stringContaining('no longer') });
+  });
+});

@@ -1,3 +1,5 @@
+import { afterMoves, type Move } from './intents.ts';
+
 /** The file name of the Sidecar, next to `cdk.json`. */
 export const SIDECAR_FILE = 'truss.json';
 
@@ -116,4 +118,12 @@ export function withNote(sidecar: Sidecar, path: string, note: string): Sidecar 
   const entry: SidecarEntry = note === '' ? rest : { ...rest, note };
   const { [path]: _gone, ...others } = sidecar.nodes;
   return { ...sidecar, nodes: Object.keys(entry).length === 0 ? others : { ...others, [path]: entry } };
+}
+
+/** The Sidecar once constructs have moved: each entry at a moved path, or beneath it, goes with it. Moves are made in order. */
+export function withMoves(sidecar: Sidecar, moves: readonly Move[]): Sidecar {
+  if (moves.length === 0) return sidecar;
+  const entries = Object.entries(sidecar.nodes).map(([path, entry]) => ({ path, to: afterMoves(moves, path), entry }));
+  // An entry that was already at the place another moves to is left behind by it.
+  return { ...sidecar, nodes: Object.fromEntries([...entries.filter((e) => e.to === e.path), ...entries.filter((e) => e.to !== e.path)].map((e) => [e.to, e.entry])) };
 }

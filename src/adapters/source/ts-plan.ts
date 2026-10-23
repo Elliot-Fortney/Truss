@@ -2,7 +2,8 @@
 import ts from '@typescript/typescript6';
 import { applyChanges, offsetOf, type TextChange } from '../../core/diff.ts';
 import type { Facts, NodeFacts } from '../../core/facts.ts';
-import type { Intent, PropValue } from '../../core/intents.ts';
+import { constructIdProblem } from '../../core/construct-id.ts';
+import { onBase, type Intent, type PropValue } from '../../core/intents.ts';
 import type { FileSet, PlanResult } from '../../core/ports.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 
@@ -37,6 +38,8 @@ interface Target {
   file: string;
   facts: NodeFacts;
   assigns: Map<string, Assign>;
+  /** The Construct ID to write in place of the one in the code, and the intent that asks for it. */
+  rename?: { id: string; intent: number };
   /** The first intent that edits this construct, which a refusal is blamed on. */
   intent: number;
 }
@@ -308,7 +311,12 @@ function editNew(edit: FileEdit, target: Target): void {
   if (!found || found.expression.getText(edit.sf) !== facts.className || !id || !isStringLike(id) || id.text !== facts.literalId) {
     throw new Refusal(intent, `The code at ${facts.span.file}:${facts.span.start.line} is not the \`new ${facts.className}\` Truss read`);
   }
+  if (target.rename && target.rename.id !== facts.literalId) {
+    const quote = id.getText(edit.sf)[0]!;
+    edit.change(id.getStart(edit.sf), id.getEnd(), quoted(target.rename.id, quote));
+  }
   const props = found.arguments![2];
+  if (target.assigns.size === 0) return;
   if (!props) return edit.change(id.getEnd(), id.getEnd(), `, ${renderObject(edit, target.assigns)}`);
   if (!ts.isObjectLiteralExpression(props)) throw new Refusal(intent, `The props are passed as ${props.getText(edit.sf)}, not written out in the call`);
   editObject(edit, props, target.assigns);
@@ -321,17 +329,25 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
   try {
     // Edits of one `new` call are planned together, because a later edit may land in an object an earlier one created.
     const targets = new Map<string, Target>();
-    for (const [i, intent] of intents.entries()) {
+    for (const [i, intent] of onBase(intents).entries()) {
       const f = facts.nodes[intent.path];
       if (!f) throw new Refusal(i, `There is no construct at ${intent.path} in the code`);
       if (f.external) throw new Refusal(i, `${intent.path} refers to an existing resource; the code doesn't create it`);
       if (f.className !== intent.expect.className || f.literalId !== intent.expect.literalId) {
         throw new Refusal(i, `${intent.path} is no longer ${intent.expect.className} "${intent.expect.literalId}" in the code`);
       }
-      if (intent.prop.length === 0 || !intent.prop.every((p) => IDENTIFIER.test(p))) throw new Refusal(i, `${intent.prop.join('.')} is not a prop name`);
       const target = targets.get(key(f)) ?? { file: f.span.file, facts: f, assigns: new Map<string, Assign>(), intent: i };
+      if (intent.type === 'renameId') {
+        // Only the literal is rewritten, so a construct that is one of several made by the same `new` would be renamed in all of them.
+        if (f.pathsOnSpan > 1) throw new Refusal(i, `${intent.path} is one of ${f.pathsOnSpan} constructs made by the same \`new\` call, so its ID can't be changed for it alone`);
+        const problem = constructIdProblem(intent.newId, []);
+        if (problem) throw new Refusal(i, problem);
+        target.rename = { id: intent.newId, intent: i };
+      } else {
+        if (intent.prop.length === 0 || !intent.prop.every((p) => IDENTIFIER.test(p))) throw new Refusal(i, `${intent.prop.join('.')} is not a prop name`);
+        assign(target.assigns, intent.prop, intent.value, i);
+      }
       targets.set(key(f), target);
-      assign(target.assigns, intent.prop, intent.value, i);
     }
 
     const edits = new Map<string, FileEdit>();

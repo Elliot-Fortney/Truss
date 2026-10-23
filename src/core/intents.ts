@@ -1,3 +1,4 @@
+import { withId } from './construct-id.ts';
 import type { PropFacts, PropsFacts } from './facts.ts';
 
 export const DURATION_UNITS = ['millis', 'seconds', 'minutes', 'hours', 'days'] as const;
@@ -27,7 +28,48 @@ export interface SetPropIntent {
   value: PropValue;
 }
 
-export type Intent = SetPropIntent;
+/** Gives a construct a new Construct ID, by rewriting the literal in its `new` call and nothing else. */
+export interface RenameIdIntent {
+  type: 'renameId';
+  /** The construct path of the Node or Stack as the Draft shows it when the edit is made. */
+  path: string;
+  /** The class as written and the literal ID at the time of the edit. */
+  expect: { className: string; literalId: string };
+  newId: string;
+}
+
+export type Intent = SetPropIntent | RenameIdIntent;
+
+/** Where a rename moves a construct: its path before and after, and so everything beneath it. */
+export interface Move {
+  from: string;
+  to: string;
+}
+
+/** The moves the renames among `intents` make, in order. Each is in the paths as they are once the ones before it have been made. */
+export const movesOf = (intents: readonly Intent[]): Move[] =>
+  intents.flatMap((i) => (i.type === 'renameId' ? [{ from: i.path, to: withId(i.path, i.newId) }] : []));
+
+const under = (path: string, from: string) => path === from || path.startsWith(`${from}/`);
+
+/** `path` once `moves` are made, in order. */
+export const afterMoves = (moves: readonly Move[], path: string): string => moves.reduce((p, m) => (under(p, m.from) ? m.to + p.slice(m.from.length) : p), path);
+
+/** `path`, as `moves` leave it, as it was before any of them. */
+export const beforeMoves = (moves: readonly Move[], path: string): string => moves.reduceRight((p, m) => (under(p, m.to) ? m.from + p.slice(m.to.length) : p), path);
+
+/**
+ * The intents named by the paths and IDs the Base has. A rename changes a construct's path in the Draft, so
+ * an edit made after it names the new path; planned on the Base, it has to name the old one.
+ */
+export function onBase(intents: readonly Intent[]): Intent[] {
+  return intents.map((intent, i) => {
+    const path = beforeMoves(movesOf(intents.slice(0, i)), intent.path);
+    if (path === intent.path) return intent;
+    const literalId = path.split('/').at(-1)!;
+    return { ...intent, path, expect: { ...intent.expect, literalId: intent.path.split('/').at(-1) === intent.expect.literalId ? literalId : intent.expect.literalId } };
+  });
+}
 
 /** The history of the Draft (CONTEXT.md): intents in the order they were made, and the undone ones that redo can bring back. */
 export interface DraftHistory {
@@ -37,13 +79,20 @@ export interface DraftHistory {
 
 export const emptyDraftHistory: DraftHistory = { intents: [], redo: [] };
 
-const sameTarget = (a: Intent, b: Intent) => a.path === b.path && a.prop.length === b.prop.length && a.prop.every((p, i) => p === b.prop[i]);
+const sameTarget = (a: SetPropIntent, b: SetPropIntent) => a.path === b.path && a.prop.length === b.prop.length && a.prop.every((p, i) => p === b.prop[i]);
 
-/** Adds an intent. Setting the same prop again replaces the last intent, so one run of edits to a field is one undo step. A new edit ends redo. */
+/**
+ * Adds an intent. Setting the same prop again replaces the last intent, so one run of edits to a field is one undo step,
+ * and so does renaming the construct just renamed (back to the ID it started with, that is no edit at all). A new edit ends redo.
+ */
 export function stage(draft: DraftHistory, intent: Intent): DraftHistory {
   const last = draft.intents.at(-1);
-  const kept = last && sameTarget(last, intent) ? draft.intents.slice(0, -1) : draft.intents;
-  return { intents: [...kept, intent], redo: [] };
+  const rest = draft.intents.slice(0, -1);
+  if (last?.type === 'setProp' && intent.type === 'setProp' && sameTarget(last, intent)) return { intents: [...rest, intent], redo: [] };
+  if (last?.type === 'renameId' && intent.type === 'renameId' && afterMoves(movesOf([last]), last.path) === intent.path) {
+    return { intents: intent.newId === last.expect.literalId ? rest : [...rest, { ...intent, path: last.path, expect: last.expect }], redo: [] };
+  }
+  return { intents: [...draft.intents, intent], redo: [] };
 }
 
 export function undo(draft: DraftHistory): DraftHistory {
@@ -73,7 +122,7 @@ export function valueText(value: PropValue): string {
 }
 
 /** An intent as the Draft list words it, e.g. `versioned → true`. */
-export const describeIntent = (intent: Intent): string => `${intent.prop.join('.')} → ${valueText(intent.value)}`;
+export const describeIntent = (intent: Intent): string => (intent.type === 'renameId' ? `Construct ID → ${JSON.stringify(intent.newId)}` : `${intent.prop.join('.')} → ${valueText(intent.value)}`);
 
 // --- Panel overlay ---------------------------------------------------------------------------------------
 
@@ -114,6 +163,6 @@ function setIn(props: readonly PropFacts[], path: readonly string[], value: Prop
 
 /** The props of a construct as the code would have them with these intents applied, for showing a value before synth has caught up. */
 export function withIntents(props: PropsFacts | undefined, intents: readonly Intent[]): PropsFacts | undefined {
-  if (intents.length === 0 || props?.form === 'other') return props;
-  return { form: 'object', props: intents.reduce((all, i) => setIn(all, i.prop, i.value), props?.props ?? []) };
+  if (!intents.some((i) => i.type === 'setProp') || props?.form === 'other') return props;
+  return { form: 'object', props: intents.reduce((all, i) => (i.type === 'setProp' ? setIn(all, i.prop, i.value) : all), props?.props ?? []) };
 }

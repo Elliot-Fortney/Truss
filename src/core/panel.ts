@@ -1,3 +1,5 @@
+import type { TreeNode } from './assembly.ts';
+import { constructIdProblem, siblingIds } from './construct-id.ts';
 import { entryFor, type Catalog, type CatalogEntry, type CatalogProp, type PropInput } from './catalog.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts, PropFacts } from './facts.ts';
@@ -36,6 +38,8 @@ export interface PanelView {
   kind: 'node' | 'stack';
   /** The Construct ID as the code writes it; a change to the prop is only made where it still matches. */
   literalId?: string;
+  /** Present when the Construct ID can be changed: the IDs of its siblings, which it can't take. */
+  idEdit?: { siblings: string[] };
   /** Why no prop here can be edited, when none can. Absent: the props with an `input` can. */
   readOnly?: string;
   /** The class as written in the code, e.g. `s3.Bucket`. */
@@ -151,6 +155,8 @@ const classNamed = (written: string) => written.split('.').at(-1);
 /** What the panel needs to offer edits: the Draft, so a staged value shows before synth has caught up, and whether editing is paused. */
 export interface PanelEditing {
   intents: readonly Intent[];
+  /** The construct tree of the Design on screen, which the Construct ID's siblings are read from. */
+  tree?: TreeNode;
   /** Why the Draft can't take an edit at the moment, when it can't: the app can't be synthed with a Draft, or doesn't synth. */
   blocked?: string;
 }
@@ -184,6 +190,7 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
     className: nodeFacts?.className ?? node?.subtitle ?? '',
     ...(nodeFacts?.literalId !== undefined ? { literalId: nodeFacts.literalId } : {}),
     ...(readOnly !== undefined ? { readOnly } : {}),
+    ...(editing?.tree && readOnly === undefined && nodeFacts?.literalId !== undefined && nodeFacts.pathsOnSpan === 1 ? { idEdit: { siblings: siblingIds(editing.tree, id) } } : {}),
     ...(described && entry?.summary ? { summary: entry.summary } : {}),
     rows,
     more,
@@ -234,4 +241,14 @@ export function intentForEdit(
   if (!fits) return { ok: false, reason: `${named} takes a ${input.kind}, not a ${value.kind}` };
   if (panel.literalId === undefined) return { ok: false, reason: `${id} has no Construct ID in the code to edit by` };
   return { ok: true, intent: { type: 'setProp', path: id, expect: { className: panel.className, literalId: panel.literalId }, prop, value } };
+}
+
+/** What renaming the Node or Stack means for the Draft: the intent to stage, or why the new Construct ID is refused. */
+export function intentForRename(panel: PanelView | undefined, id: string, newId: string): { ok: true; intent: Intent } | { ok: false; reason: string } {
+  if (!panel) return { ok: false, reason: `No Node or Stack at ${id}` };
+  if (panel.readOnly) return { ok: false, reason: panel.readOnly };
+  if (!panel.idEdit || panel.literalId === undefined) return { ok: false, reason: `The Construct ID of ${id} can't be changed here` };
+  const problem = constructIdProblem(newId, panel.idEdit.siblings);
+  if (problem) return { ok: false, reason: problem };
+  return { ok: true, intent: { type: 'renameId', path: id, expect: { className: panel.className, literalId: panel.literalId }, newId } };
 }

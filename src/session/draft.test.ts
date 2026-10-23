@@ -679,3 +679,102 @@ describe('the Draft', () => {
     });
   });
 });
+
+describe('renaming a Construct ID', () => {
+  const rename = (r: Rig, id: string, newId: string): Promise<Reply> => r.session.handle({ type: 'renameId', requestId: `r${++n}`, id, newId });
+  const FILES = 'ShopStack/Files';
+
+  /** The fixture's assembly as synth makes it once Uploads is called Files: the same subtree under another path. */
+  const filesAssembly = (): SynthResult => {
+    const assembly = JSON.parse(JSON.stringify(readFixtureAssembly('straight-line')).replaceAll(UPLOADS, FILES));
+    const moved = assembly.tree.children[0].children.find((c: { path: string }) => c.path === FILES);
+    moved.id = 'Files';
+    return { ok: true, assembly };
+  };
+  const synthRenamed = () => {
+    const synth = new FakeSynth();
+    synth.result = (overlay) => (overlay?.get(SHOP)?.includes("'Files'") ? filesAssembly() : good());
+    return synth;
+  };
+
+  it('stages a rename as an intent, shows its diff at once, and writes nothing until Save', async () => {
+    const r = await rig();
+    expect(await rename(r, UPLOADS, 'Files')).toMatchObject({ type: 'ack' });
+    expect(r.session.view().draft?.items).toEqual([{ id: UPLOADS, label: 'Uploads', summary: 'Construct ID → "Files"' }]);
+    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)?.changed).toBe(true);
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain("-    new s3.Bucket(this, 'Uploads', {\n+    new s3.Bucket(this, 'Files', {");
+    await settled(r);
+    expect(r.synth.shadowCalls[0]!.overlay!.get(SHOP)).toContain("new s3.Bucket(this, 'Files'");
+    expect(r.files.writes).toEqual([]);
+  });
+
+  it('offers the Construct ID in the panel with the IDs it can not take', async () => {
+    const r = await rig();
+    const reply = await r.session.handle({ type: 'panel', requestId: 'p', id: UPLOADS });
+    // Beside the other Nodes are the constructs the Design does not draw, which an ID can clash with too.
+    expect(reply.type === 'panel' && reply.panel.idEdit?.siblings).toEqual(expect.arrayContaining(['Orders', 'Catalog', 'CDKMetadata']));
+    expect(reply.type === 'panel' && reply.panel.idEdit?.siblings).not.toContain('Uploads');
+  });
+
+  it.each([
+    ['an empty ID', '', /empty/],
+    ['an ID with a slash', 'a/b', /'\/'/],
+    ['an ID with a newline', 'a\nb', /newline/],
+    ['the ID of a sibling', 'Orders', /sibling already has/],
+  ])('refuses %s', async (_name, newId, reason) => {
+    const r = await rig();
+    expect(refusal(await rename(r, UPLOADS, newId))).toMatch(reason);
+    expect(r.session.draftSize()).toBe(0);
+  });
+
+  it('does not check the case of the ID', async () => {
+    const r = await rig();
+    expect(await rename(r, UPLOADS, 'uploads_bucket')).toMatchObject({ type: 'ack' });
+  });
+
+  it('refuses a Node the code locks, and one that is not there', async () => {
+    const r = await rig();
+    expect(refusal(await rename(r, 'Nope/Nothing', 'X'))).toMatch(/No Node or Stack/);
+  });
+
+  describe('Save', () => {
+    const sidecar = (nodes: object) => JSON.stringify({ formatVersion: 1, nodes });
+
+    it('writes the new ID and moves the Sidecar entry of the Node, and of what is beneath it, with it', async () => {
+      const r = await rig({ synth: synthRenamed() });
+      r.files.texts.set('truss.json', sidecar({ [UPLOADS]: { position: { x: 1, y: 2 }, note: 'mine' }, [`${UPLOADS}/Resource`]: { note: 'deep' }, 'ShopStack/Orders': { position: { x: 5, y: 6 } } }));
+      await r.session.handle({ type: 'note', requestId: 'n', id: UPLOADS, note: 'mine' });
+      await rename(r, UPLOADS, 'Files');
+      await settled(r);
+      expect(r.session.view().nodes.find((x) => x.id === FILES)?.note).toBe('mine');
+      expect(r.files.texts.get('truss.json')).toContain('ShopStack/Uploads');
+
+      expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+      expect(r.files.texts.get(SHOP)).toContain("new s3.Bucket(this, 'Files'");
+      expect(JSON.parse(r.files.texts.get('truss.json')!).nodes).toEqual({
+        [FILES]: { position: { x: 1, y: 2 }, note: 'mine' },
+        [`${FILES}/Resource`]: { note: 'deep' },
+        'ShopStack/Orders': { position: { x: 5, y: 6 } },
+      });
+    });
+
+    it('keeps a position set after the rename under the old path until Save moves it', async () => {
+      const r = await rig({ synth: synthRenamed() });
+      await rename(r, UPLOADS, 'Files');
+      await settled(r);
+      await r.session.handle({ type: 'move', requestId: 'm', id: FILES, x: 10, y: 20 });
+      expect(Object.keys(JSON.parse(r.files.texts.get('truss.json')!).nodes)).toEqual([UPLOADS]);
+      await send(r, 'save');
+      expect(JSON.parse(r.files.texts.get('truss.json')!).nodes).toEqual({ [FILES]: { position: { x: 10, y: 20 } } });
+    });
+
+    it('refuses to save a rename that synth does not show as one moved subtree', async () => {
+      // The synth gives the old paths back, as if the ID in the code were not what names the construct.
+      const r = await rig();
+      await rename(r, UPLOADS, 'Files');
+      await settled(r);
+      expect(refusal(await send(r, 'save'))).toMatch(/was not renamed/);
+      expect(r.files.writes).toEqual([]);
+    });
+  });
+});

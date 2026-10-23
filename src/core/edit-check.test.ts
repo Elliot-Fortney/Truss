@@ -69,6 +69,45 @@ describe('judgeEdit', () => {
   });
 });
 
+describe('judgeEdit of a rename', () => {
+  const rename: Intent = { type: 'renameId', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'C' };
+  const base = assembly(tree(...A, ['S/B', 'x'], ['S/A/Resource', 'r']));
+  const moved = (...rest: Array<[string, string]>) => assembly(tree(['T/A', 'x'], ['S/B', 'x'], ...rest));
+  const judge = (after: Assembly, over: Partial<Parameters<typeof judgeEdit>[0]> = {}) => judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents: [rename], before: base, after, ...over });
+
+  it('holds when the construct and what is beneath it are somewhere else and nothing else is', () => {
+    expect(judge(moved(['S/C', 'x'], ['S/C/Resource', 'r']))).toEqual([]);
+  });
+
+  it('fails when the path did not change, or the old one is still there', () => {
+    expect(judge(base)[0]).toContain('S/A was not renamed to S/C');
+    expect(judge(moved(['S/C', 'x'], ['S/C/Resource', 'r'], ['S/A', 'x']))[0]).toContain('S/A was not renamed to S/C');
+  });
+
+  it('fails when something beneath it did not go with it', () => {
+    expect(judge(moved(['S/C', 'x']))).toEqual(['S/A/Resource did not move with S/A']);
+  });
+
+  it('fails when another construct changed as well', () => {
+    expect(judge(assembly(tree(['T/A', 'x'], ['S/C', 'x'], ['S/C/Resource', 'r']))).join()).toContain('S/B');
+  });
+
+  it('follows the new path of a Stack that is renamed', () => {
+    const stack: Intent = { type: 'renameId', path: 'S', expect: { className: 'X', literalId: 'A' }, newId: 'R' };
+    const stackFacts: Facts = { nodes: { S: node(2) } };
+    const before = assembly(tree(['S', 'x'], ['S/B', 'x']), [{ path: 'S', env: 'a' }, { path: 'Z', env: 'a' }]);
+    const after = assembly(tree(['R', 'x'], ['R/B', 'x']), [{ path: 'R', env: 'a' }, { path: 'Z', env: 'a' }]);
+    expect(judgeEdit({ files, changes: { 'f.ts': [inA] }, facts: stackFacts, intents: [stack], before, after })).toEqual([]);
+    const other = assembly(tree(['R', 'x'], ['R/B', 'x']), [{ path: 'R', env: 'a' }, { path: 'Z', env: 'b' }]);
+    expect(judgeEdit({ files, changes: { 'f.ts': [inA] }, facts: stackFacts, intents: [stack], before, after: other })).toEqual([expect.stringContaining('Stack')]);
+  });
+
+  it('judges an edit made after the rename by the construct’s path in the Base', () => {
+    const later: Intent = { ...intent('S/C'), expect: { className: 'X', literalId: 'C' } };
+    expect(judge(moved(['S/C', 'x'], ['S/C/Resource', 'r']), { intents: [rename, later] })).toEqual([]);
+  });
+});
+
 describe('newDiagnostics', () => {
   const d = (code: number, line = 1, file = 'a.ts') => ({ file, line, code, message: `m${code}` });
 

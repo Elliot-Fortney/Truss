@@ -3,11 +3,11 @@ import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts'
 import type { TextChange } from '../core/diff.ts';
 import { targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
-import type { Intent } from '../core/intents.ts';
+import { beforeMoves, movesOf, afterMoves, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
-import { buildPanel, intentForEdit } from '../core/panel.ts';
+import { buildPanel, intentForEdit, intentForRename } from '../core/panel.ts';
 import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
-import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
+import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withMoves, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { annotationProblems, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
 import { locateError } from '../core/synth-error.ts';
 import { commit } from './commit.ts';
@@ -125,7 +125,7 @@ export class Session {
 
   /** The property panel of a Node or Stack of the Design on screen. */
   private panel({ requestId, id }: PanelMessage): Reply {
-    const panel = this.snapshot && buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...this.editBlock() });
+    const panel = this.snapshot && buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...(this.snapshot ? { tree: this.snapshot.assembly.tree } : {}), ...this.editBlock() });
     if (!panel) return { type: 'refused', requestId, reason: `No Node or Stack at ${id}` };
     const here = this.draft.problems().filter((p) => p.path === id || p.path?.startsWith(`${id}/`));
     if (here.length > 0) panel.problems = here.map((p) => ({ severity: p.severity, message: p.message, draft: p.draft }));
@@ -315,7 +315,10 @@ export class Session {
 
   /** The View of the Design on screen, with the Nodes the Draft changes marked. */
   private body() {
-    return buildView(this.snapshot!.facts, this.snapshot!.assembly, this.sidecar, this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set());
+    const moves = movesOf(this.draft.intents);
+    const changed = this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set<string>();
+    // The Sidecar keeps a renamed Node where it was until Save, but on screen it stays where the user put it.
+    return buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]));
   }
 
   /** The parts of the View that speak of the Draft, always all of them so that a push clears what no longer holds. */
@@ -366,7 +369,7 @@ export class Session {
   private async apply(message: EditMessage | Exclude<DraftMessage, { type: 'save' }>): Promise<Reply> {
     const { requestId } = message;
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
-    if (message.type === 'setProp') return this.setProp(message);
+    if (message.type === 'setProp' || message.type === 'renameId') return this.stageEdit(message);
     // A Draft is held as it was while the code on disk doesn't synth, so only Discard can change it then.
     if ((message.type === 'undo' || message.type === 'redo') && this.current.error && this.current.error.kind !== 'draft') {
       return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
@@ -385,10 +388,9 @@ export class Session {
       const text = await this.deps.files.readText(SIDECAR_FILE);
       const parsed = text === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(text, this.migrations);
       if (!parsed.ok) return { type: 'refused', requestId, reason: parsed.message };
-      next =
-        message.type === 'move'
-          ? withPosition(parsed.sidecar, message.id, message)
-          : withNote(parsed.sidecar, message.id, message.note);
+      // The file holds paths as the code on disk has them, so a Node renamed in the Draft is kept under its old one until Save.
+      const path = beforeMoves(movesOf(this.draft.intents), message.id);
+      next = message.type === 'move' ? withPosition(parsed.sidecar, path, message) : withNote(parsed.sidecar, path, message.note);
       await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(next, currentFormatVersion(this.migrations)));
     } catch (err) {
       return { type: 'refused', requestId, reason: `Couldn't update ${SIDECAR_FILE}: ${err instanceof Error ? err.message : String(err)}` };
@@ -398,13 +400,13 @@ export class Session {
     return { type: 'ack', requestId };
   }
 
-  /** Stages an edit of a prop: checked against the panel the user edited it in, planned, and then synthed in a shadow copy. */
-  private setProp(message: Extract<DraftMessage, { type: 'setProp' }>): Reply {
-    const { requestId, id, prop, value } = message;
+  /** Stages an edit of a prop or a Construct ID: checked against the panel the user edited it in, planned, and then synthed in a shadow copy. */
+  private stageEdit(message: Extract<DraftMessage, { type: 'setProp' | 'renameId' }>): Reply {
+    const { requestId, id } = message;
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
     if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
-    const panel = buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...this.editBlock() });
-    const edit = intentForEdit(panel, id, prop, value);
+    const panel = buildPanel(id, this.current, this.snapshot.facts, this.catalog, { intents: this.draft.intents, ...(this.snapshot ? { tree: this.snapshot.assembly.tree } : {}), ...this.editBlock() });
+    const edit = message.type === 'renameId' ? intentForRename(panel, id, message.newId) : intentForEdit(panel, id, message.prop, message.value);
     if (!edit.ok) return refuse(edit.reason);
     const staged = this.draft.stage(edit.intent);
     if (!staged.ok) return refuse(staged.reason);
@@ -453,12 +455,30 @@ export class Session {
     const written = await commit(this.deps.files, planned.overlay, base.files);
     if (!written.ok) return refuse(written.reason);
 
+    const moves = movesOf(this.draft.intents);
     this.draft.saved();
+    const layout = await this.moveSidecar(moves);
     // What was written is now the base, but only a synth of it can say so.
     this.filesVersion++;
     this.push({ ...this.body(), ...this.draftFields() });
     void this.request();
-    return { type: 'ack', requestId };
+    return layout ? refuse(layout) : { type: 'ack', requestId };
+  }
+
+  /** Moves the Sidecar's entries to the paths the saved renames gave their Nodes. A reason when it could not, because the code is saved by then. */
+  private async moveSidecar(moves: ReturnType<typeof movesOf>): Promise<string | undefined> {
+    if (moves.length === 0) return undefined;
+    try {
+      const text = await this.deps.files.readText(SIDECAR_FILE);
+      if (text === undefined) return undefined;
+      const parsed = parseSidecar(text, this.migrations);
+      if (!parsed.ok) return `Saved your code, but ${parsed.message}, so the layout was not moved to the new Construct IDs.`;
+      this.sidecar = withMoves(parsed.sidecar, moves);
+      await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(this.sidecar, currentFormatVersion(this.migrations)));
+      return undefined;
+    } catch (err) {
+      return `Saved your code, but couldn't move the layout in ${SIDECAR_FILE} to the new Construct IDs: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 
   private push(change: Partial<Omit<View, 'version'>>): void {

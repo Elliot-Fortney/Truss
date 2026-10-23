@@ -1,4 +1,5 @@
 import type { SearchHit } from './catalog.ts';
+import { MAX_ID_LENGTH } from './construct-id.ts';
 import { DURATION_UNITS, SIZE_UNITS, type PropValue } from './intents.ts';
 import type { PanelView } from './panel.ts';
 
@@ -17,6 +18,8 @@ export type PanelMessage = { type: 'panel'; requestId: string; id: string };
 /** A change to the Draft (ADR 0006). `prop` is the prop, then the field inside it for an object-literal prop. */
 export type DraftMessage =
   | { type: 'setProp'; requestId: string; id: string; prop: string[]; value: PropValue }
+  /** Changes the Construct ID of a Node or Stack. */
+  | { type: 'renameId'; requestId: string; id: string; newId: string }
   | { type: 'undo'; requestId: string }
   | { type: 'redo'; requestId: string }
   | { type: 'save'; requestId: string }
@@ -120,6 +123,12 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
     }
     case 'panel':
       return { ok: true, message: { type: 'panel', requestId, id } };
+    case 'renameId': {
+      const newId = raw['newId'];
+      if (typeof newId !== 'string') return refuse('A renameId needs the new Construct ID as "newId"');
+      if (newId.length > MAX_ID_LENGTH) return refuse(`A Construct ID can be at most ${MAX_ID_LENGTH} characters`);
+      return { ok: true, message: { type: 'renameId', requestId, id, newId } };
+    }
     case 'setProp': {
       const prop = raw['prop'];
       if (!Array.isArray(prop) || prop.length === 0 || prop.length > MAX_PROP_DEPTH || !prop.every((p) => typeof p === 'string' && IDENTIFIER.test(p))) {

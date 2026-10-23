@@ -1,6 +1,7 @@
 import { applyNodeChanges, Background, Controls, Handle, Position, ReactFlow, useStore, type Edge, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
+import { withId } from '../core/construct-id.ts';
 import type { PropValue } from '../core/intents.ts';
 import { badgesFor, isBadged, type Badge, type Problem } from '../core/problems.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
@@ -298,7 +299,7 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, props, paused, onSave, onSet, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onOpen(at: SourceLocation): void }) {
   const causers = (node.causedBy ?? []).map((id) => nodes.find((n) => n.id === id)?.label ?? id);
   return (
     <aside className="note-panel">
@@ -311,7 +312,7 @@ function NodePanel({ node, nodes, props, paused, onSave, onSet, onOpen }: { node
         </button>
       ) : null}
       {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
-      <PropertyPanel key={node.id} state={props} onSet={onSet} />
+      <PropertyPanel key={node.id} state={props} onSet={onSet} onRename={onRename} />
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
@@ -331,7 +332,7 @@ function NodePanel({ node, nodes, props, paused, onSave, onSet, onOpen }: { node
 }
 
 /** The panel of a Stack box: its own props, which are the only settings of it Truss shows. */
-function StackPanel({ stack, props, onSet, onOpen }: { stack: StackBoxView; props: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onOpen(at: SourceLocation): void }) {
+function StackPanel({ stack, props, onSet, onRename, onOpen }: { stack: StackBoxView; props: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onOpen(at: SourceLocation): void }) {
   const source = props.status === 'ready' ? props.panel.source : undefined;
   return (
     <aside className="note-panel">
@@ -342,7 +343,7 @@ function StackPanel({ stack, props, onSet, onOpen }: { stack: StackBoxView; prop
           Open in editor
         </button>
       ) : null}
-      <PropertyPanel key={stack.id} state={props} onSet={onSet} />
+      <PropertyPanel key={stack.id} state={props} onSet={onSet} onRename={onRename} />
     </aside>
   );
 }
@@ -484,6 +485,19 @@ export function App() {
     (id: string) => (prop: string[], value: PropValue) => request({ type: 'setProp', id, prop, value }),
     [request],
   );
+  /** Renames the Node or Stack at `id`, and keeps it selected under the path the new ID gives it. */
+  const rename = useCallback(
+    (id: string, selection: (path: string) => string) => async (newId: string) => {
+      const ok = await request({ type: 'renameId', id, newId });
+      if (ok) {
+        const next = selection(withId(id, newId));
+        setSelectedId(next);
+        selectedRef.current = next;
+      }
+      return ok;
+    },
+    [request],
+  );
   const undo = useCallback(() => void request({ type: 'undo' }), [request]);
   const redo = useCallback(() => void request({ type: 'redo' }), [request]);
   const save = useCallback(async () => {
@@ -617,8 +631,8 @@ export function App() {
           </button>
         )}
         {draft ? <DraftBar draft={draft} busy={view.synthing || saving} blockers={view.problems.filter((p) => p.blocking)} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} onShowProblem={showProblem} /> : null}
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onOpen={openInEditor} /> : null}
-        {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onOpen={openInEditor} /> : null}
+        {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onRename={rename(openStack.id, stackNodeId)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
       </div>
     </div>

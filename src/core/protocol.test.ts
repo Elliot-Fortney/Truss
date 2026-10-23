@@ -27,6 +27,19 @@ describe('parseClientMessage', () => {
     });
   });
 
+  describe('renameId', () => {
+    it('reads the Node and the new ID', () => {
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' })).toEqual({ ok: true, message: { type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' } });
+    });
+
+    it('leaves what an ID may hold to the rules for it, but wants text of a bounded length, and a Node', () => {
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: '' })).toMatchObject({ ok: true });
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 3 })).toMatchObject({ ok: false, reason: expect.stringContaining('newId') });
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'x'.repeat(257) })).toMatchObject({ ok: false, reason: expect.stringContaining('at most') });
+      expect(parse({ type: 'renameId', requestId: '1', newId: 'C' })).toMatchObject({ ok: false });
+    });
+  });
+
   describe('the Draft', () => {
     it('reads undo, redo, save and discard, which name nothing', () => {
       for (const type of ['undo', 'redo', 'save', 'discard']) {

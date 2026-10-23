@@ -93,6 +93,12 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .layer-facts dd { margin: 0; overflow-wrap: anywhere; }
 
 .props { margin-bottom: 8px; }
+.id-field { margin-bottom: 8px; }
+.id-field label { display: block; font-size: 12px; }
+.id-field input { display: block; width: 100%; font-family: ui-monospace, monospace; }
+.id-field input[aria-invalid='true'] { border-color: var(--error-fg); }
+.id-field p { margin: 4px 0 0; min-height: 1em; }
+.id-problem { font-size: 12px; color: var(--error-fg); }
 .prop-list { margin: 0; padding: 0; list-style: none; }
 .prop-row { padding: 6px 0; border-top: 1px solid var(--border); font-size: 12px; }
 .prop-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }

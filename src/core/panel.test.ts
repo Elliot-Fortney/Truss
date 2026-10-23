@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Catalog, CatalogEntry } from './catalog.ts';
 import type { Facts, NodeFacts, PropsFacts } from './facts.ts';
-import type { Intent } from './intents.ts';
-import { buildPanel, editableAs, inputFor, intentForEdit } from './panel.ts';
+import type { Intent, PropValue } from './intents.ts';
+import { buildPanel, editableAs, inputFor, intentForEdit, intentForRename } from './panel.ts';
+import type { TreeNode } from './assembly.ts';
 import type { NodeView, StackBoxView, ViewBody } from './view.ts';
 
 const span = { file: 'lib/a.ts', start: { line: 3, col: 5 }, end: { line: 3, col: 40 } };
@@ -158,7 +159,7 @@ describe('buildPanel for editing', () => {
     overlay: { ...bucket.overlay!, featuredProps: ['versioned', 'removalPolicy', 'timeout', 'partitionKey'] },
   };
   const cat: Catalog = { entries: [editable], dropped: [] };
-  const intent = (prop: string[], value: Intent['value'], path = 'App/Logs'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'Logs' }, prop, value });
+  const intent = (prop: string[], value: PropValue, path = 'App/Logs'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'Logs' }, prop, value });
   const panelOf = (props: PropsFacts | undefined, editing?: Parameters<typeof buildPanel>[4], over: Partial<NodeView> = {}) =>
     buildPanel('App/Logs', body(node('App/Logs', bucket.fqn, over)), facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', ...(props ? { props } : {}) } }), cat, editing)!;
   const input = (panel: ReturnType<typeof panelOf>, name: string) => [...panel.rows, ...panel.more].find((r) => r.name === name)?.input;
@@ -232,6 +233,44 @@ describe('buildPanel for editing', () => {
       expect(inputFor(panel, ['versioned', 'x'])).toBeUndefined();
       const odd = panelOf(object({ name: 'partitionKey', kind: 'object', text: '', fields: [{ name: 'name', kind: 'expression', text: 'id()' }] }), { intents: [] });
       expect(inputFor(odd, ['partitionKey', 'name'])).toBeUndefined();
+    });
+  });
+
+  describe('the Construct ID', () => {
+    const tree: TreeNode = {
+      id: '',
+      path: '',
+      fqn: 'App',
+      children: [{ id: 'App', path: 'App', fqn: 'Stack', children: ['Logs', 'Other', 'Default'].map((id) => ({ id, path: `App/${id}`, fqn: 'x', children: [] })) }],
+    };
+    const open = () => panelOf(undefined, { intents: [], tree });
+    const refusal = (r: ReturnType<typeof intentForRename>) => (r.ok ? undefined : r.reason);
+
+    it('is offered with the IDs beside it when the Node can be edited', () => {
+      expect(open().idEdit).toEqual({ siblings: ['Other', 'Default'] });
+    });
+
+    it('is not offered when the panel is read-only or has no tree to read siblings from', () => {
+      expect(panelOf(undefined, { intents: [], tree, blocked: 'paused' }).idEdit).toBeUndefined();
+      expect(panelOf(undefined, { intents: [] }).idEdit).toBeUndefined();
+      expect(panelOf(undefined).idEdit).toBeUndefined();
+    });
+
+    it('is not offered for a `new` that makes several constructs', () => {
+      const several = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', pathsOnSpan: 2 } }), cat, { intents: [], tree })!;
+      expect(several.idEdit).toBeUndefined();
+    });
+
+    it('returns the rename to stage for an ID the siblings allow', () => {
+      expect(intentForRename(open(), 'App/Logs', 'Files')).toEqual({ ok: true, intent: { type: 'renameId', path: 'App/Logs', expect: { className: 's3.Bucket', literalId: 'Logs' }, newId: 'Files' } });
+    });
+
+    it('refuses with the reason an ID breaks, a panel that is read-only, and no panel', () => {
+      expect(refusal(intentForRename(open(), 'App/Logs', 'Other'))).toMatch(/sibling already has/);
+      expect(refusal(intentForRename(open(), 'App/Logs', 'Resource'))).toMatch(/"Default"/);
+      expect(refusal(intentForRename(open(), 'App/Logs', ''))).toMatch(/empty/);
+      expect(refusal(intentForRename(panelOf(undefined, { intents: [], tree, blocked: 'paused' }), 'App/Logs', 'Files'))).toBe('paused');
+      expect(refusal(intentForRename(undefined, 'App/Nope', 'Files'))).toBe('No Node or Stack at App/Nope');
     });
   });
 
