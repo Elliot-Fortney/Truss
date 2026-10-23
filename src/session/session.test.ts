@@ -274,6 +274,25 @@ describe('Session', () => {
       expect(view.stacks).toEqual(before.stacks);
     });
 
+    it('pauses canvas edits while the app does not synth, and writes nothing', async () => {
+      const files = new FakeFiles(readFixtureFiles('straight-line'));
+      const results = [good(), bad('app threw'), good()];
+      const session = make({ files, synth: { synth: async () => results.shift()! } });
+      await session.start();
+      files.change();
+      await flush();
+
+      const move = { type: 'move', requestId: 'r1', id: 'ShopStack/Orders', x: 1, y: 2 } as const;
+      const refused = await session.handle(move);
+      expect(refused).toMatchObject({ type: 'refused', requestId: 'r1' });
+      expect(refused.type === 'refused' && refused.reason).toMatch(/synth/i);
+      expect(files.writes).toEqual([]);
+
+      files.change();
+      await flush();
+      expect(await session.handle(move)).toEqual({ type: 'ack', requestId: 'r1' });
+    });
+
     it('recovers by itself when the next change synths again', async () => {
       const files = new FakeFiles(readFixtureFiles('straight-line'));
       const results = [good(), bad(), withoutOrders()];

@@ -139,7 +139,7 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, onSave, onOpen }: { node: NodeView; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, paused, onSave, onOpen }: { node: NodeView; paused: boolean; onSave: (note: string) => void; onOpen(at: SourceLocation): void }) {
   return (
     <aside className="note-panel">
       <h2>{node.label}</h2>
@@ -155,6 +155,7 @@ function NodePanel({ node, onSave, onOpen }: { node: NodeView; onSave: (note: st
           defaultValue={node.note ?? ''}
           rows={6}
           maxLength={MAX_NOTE_LENGTH}
+          readOnly={paused}
           onBlur={(e) => {
             if (e.currentTarget.value !== (node.note ?? '')) onSave(e.currentTarget.value);
           }}
@@ -281,6 +282,7 @@ export function App() {
           edges={[]}
           nodeTypes={nodeTypes}
           nodesConnectable={false}
+          nodesDraggable={!error}
           // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
           deleteKeyCode={null}
           fitView
@@ -290,7 +292,7 @@ export function App() {
           <Background />
           <Controls showInteractive={false} />
         </ReactFlow>
-        {selected ? <NodePanel node={selected} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onOpen={openInEditor} /> : null}
       </div>
     </div>
   );
