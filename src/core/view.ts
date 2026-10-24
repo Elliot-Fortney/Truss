@@ -75,6 +75,8 @@ export interface NodeView {
   changed?: true;
   /** The Draft adds this Node: its code is not on disk yet. */
   added?: true;
+  /** The Draft deletes this Node: it is drawn as a ghost of what the code on disk makes, and is gone once saved. */
+  removed?: true;
 }
 
 /**
@@ -324,4 +326,11 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, ch
 /** What the browser sends: the only message there is. */
 export interface OpenInEditorMessage extends EditorRequest {
   type: 'open-in-editor';
+}
+
+/** The Nodes of `base` (the Design as the code on disk makes it) at `removed`, as ghosts to draw in the Design with the Draft applied. `place` maps a path of the base to where the Draft has it. */
+export function ghostsOf(base: ViewBody, removed: ReadonlySet<string>, place: (path: string) => string): NodeView[] {
+  return base.nodes
+    .filter((n) => removed.has(n.id))
+    .map(({ changed: _changed, added: _added, ...n }) => ({ ...n, id: place(n.id), stackId: place(n.stackId), removed: true as const }));
 }

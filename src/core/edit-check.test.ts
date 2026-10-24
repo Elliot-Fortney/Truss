@@ -155,3 +155,30 @@ describe('judgeEdit for added and copied constructs', () => {
     expect(mine({ after: assembly(tree(...A, ['S/B', 'x'], ['S/B2', 'y'])) })[0]).toContain('S/B2');
   });
 });
+
+describe('judgeEdit for a removed Node', () => {
+  const gone: Intent = { type: 'removeNode', path: 'S/B', expect: { className: 'X', literalId: 'B' } };
+  const cut: TextChange = { start: text.indexOf('new X(this, "B"'), end: text.indexOf('zzzz'), text: '', purpose: 'remove' };
+  const base = assembly(tree(...A, ['S/B', 'x'], ['S/B/Resource', 'r']));
+  const run = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
+    judgeEdit({ files, changes: { 'f.ts': [cut] }, facts, intents: [gone], before: base, after: assembly(tree(...A)), ...over });
+
+  it('holds when exactly that subtree is gone', () => {
+    expect(run()).toEqual([]);
+  });
+
+  it('fails when the Node, or something beneath it, is still there', () => {
+    expect(run({ after: assembly(tree(...A, ['S/B', 'x'])) })[0]).toContain('S/B was not removed');
+    expect(run({ after: assembly(tree(...A, ['S/B/Resource', 'r'])) })[0]).toContain('S/B/Resource');
+  });
+
+  it('fails when something else went too', () => {
+    expect(run({ after: assembly(tree(['S/A', 'x'])) })[0]).toContain('T/A');
+  });
+
+  it('holds for a Node renamed earlier in the Draft', () => {
+    const renamed: Intent = { type: 'renameId', path: 'S/B', expect: { className: 'X', literalId: 'B' }, newId: 'C' };
+    const removed: Intent = { type: 'removeNode', path: 'S/C', expect: { className: 'X', literalId: 'C' } };
+    expect(run({ intents: [renamed, removed] })).toEqual([]);
+  });
+});

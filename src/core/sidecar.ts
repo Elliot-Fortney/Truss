@@ -120,6 +120,13 @@ export function withNote(sidecar: Sidecar, path: string, note: string): Sidecar 
   return { ...sidecar, nodes: Object.keys(entry).length === 0 ? others : { ...others, [path]: entry } };
 }
 
+/** The Sidecar once the constructs at `paths` are deleted: each entry at one of them, or beneath it, is dropped. */
+export function withoutPaths(sidecar: Sidecar, paths: ReadonlySet<string>): Sidecar {
+  if (paths.size === 0) return sidecar;
+  const gone = (path: string) => [...paths].some((p) => path === p || path.startsWith(`${p}/`));
+  return { ...sidecar, nodes: Object.fromEntries(Object.entries(sidecar.nodes).filter(([path]) => !gone(path))) };
+}
+
 /** The Sidecar once constructs have moved: each entry at a moved path, or beneath it, goes with it. Moves are made in order. */
 export function withMoves(sidecar: Sidecar, moves: readonly Move[]): Sidecar {
   if (moves.length === 0) return sidecar;

@@ -1,11 +1,11 @@
 import { unifiedDiff, type FileDiff } from '../core/diff.ts';
 import { describeIntent, emptyDraftHistory, idOf, redo, stage, undo, type DraftHistory, type Intent } from '../core/intents.ts';
-import type { Source } from '../core/ports.ts';
+import type { Source, SourceUse } from '../core/ports.ts';
 import { buildReport, type Problem } from '../core/problems.ts';
 import type { DraftView } from '../core/view.ts';
 import { planEdit, type Base, type Planned } from './edit-check.ts';
 
-export type DraftOutcome = { ok: true } | { ok: false; reason: string };
+export type DraftOutcome = { ok: true } | { ok: false; reason: string; uses?: SourceUse[] };
 
 /**
  * The Draft (CONTEXT.md): the edits not yet saved, the Base they are planned on, and what has been
@@ -60,7 +60,7 @@ export class Draft {
     const planned = this.plan()!;
     if (!planned.ok) {
       this.history = before;
-      return { ok: false, reason: planned.reason };
+      return { ok: false, reason: planned.reason, ...(planned.uses ? { uses: planned.uses } : {}) };
     }
     if (Object.keys(planned.changes).length === 0) this.history = { intents: [], redo: before.redo };
     this.changed(false);

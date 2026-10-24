@@ -2,6 +2,7 @@ import type { CatalogProp, SearchHit } from './catalog.ts';
 import { MAX_ID_LENGTH } from './construct-id.ts';
 import { DURATION_UNITS, SIZE_UNITS, type PropValue } from './intents.ts';
 import type { PanelView } from './panel.ts';
+import type { SourceUse } from './ports.ts';
 
 /** A change to one Node, named by its construct path. */
 export type EditMessage =
@@ -24,6 +25,8 @@ export type DraftMessage =
   | { type: 'addNode'; requestId: string; scope: string; fqn: string; props?: Record<string, PropValue> }
   /** Copies the Node at `id` with a fresh Construct ID. */
   | { type: 'duplicate'; requestId: string; id: string }
+  /** Deletes the Node at `id` from the code. */
+  | { type: 'removeNode'; requestId: string; id: string }
   | { type: 'undo'; requestId: string }
   | { type: 'redo'; requestId: string }
   | { type: 'save'; requestId: string }
@@ -38,7 +41,8 @@ export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ?
 /** The server's answer to one request. */
 export type Reply =
   | { type: 'ack'; requestId: string }
-  | { type: 'refused'; requestId: string; reason: string }
+  /** `uses` are the places in the code that keep a Node from being removed. */
+  | { type: 'refused'; requestId: string; reason: string; uses?: SourceUse[] }
   | { type: 'results'; requestId: string; hits: SearchHit[] }
   /** Nothing was staged: the construct needs these props, which only the user can give. */
   | { type: 'form'; requestId: string; fqn: string; props: CatalogProp[] }
@@ -149,6 +153,8 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
       return { ok: true, message: { type: 'panel', requestId, id } };
     case 'duplicate':
       return { ok: true, message: { type: 'duplicate', requestId, id } };
+    case 'removeNode':
+      return { ok: true, message: { type: 'removeNode', requestId, id } };
     case 'renameId': {
       const newId = raw['newId'];
       if (typeof newId !== 'string') return refuse('A renameId needs the new Construct ID as "newId"');

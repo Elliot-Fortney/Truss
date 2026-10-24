@@ -3,7 +3,7 @@ import { applyChanges, unifiedDiff, type FileDiff, type TextChange } from '../co
 import { judgeEdit, newDiagnostics } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import type { Intent } from '../core/intents.ts';
-import type { Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
+import type { Diagnostic, FileSet, Files, Source, SourceUse, Synth } from '../core/ports.ts';
 
 /** The app as it is on disk, which an edit's intents are planned against. */
 export interface Base {
@@ -13,7 +13,7 @@ export interface Base {
 }
 
 /** Intents turned into text. */
-export type Planned = { ok: true; changes: Record<string, TextChange[]>; overlay: FileSet; merged: FileSet } | { ok: false; intent: number; reason: string };
+export type Planned = { ok: true; changes: Record<string, TextChange[]>; overlay: FileSet; merged: FileSet } | { ok: false; intent: number; reason: string; uses?: SourceUse[] };
 
 /** Plans `intents` on the base: the changes, the files they make, and the base with those files replaced. */
 export function planEdit(source: Source, base: Base, intents: readonly Intent[]): Planned {
@@ -56,7 +56,7 @@ export function checkEditOn(
   const planned = planEdit(app.source, base, intents);
   if (!planned.ok) {
     const at = intents[planned.intent];
-    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : at.type === 'renameId' ? 'the new Construct ID' : 'the new construct') : 'the edit'}: ${planned.reason}` }] };
+    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : at.type === 'renameId' ? 'the new Construct ID' : at.type === 'removeNode' ? 'the removal' : 'the new construct') : 'the edit'}: ${planned.reason}` }] };
   }
   const failures: EditFailure[] = [];
   const touched = Object.keys(planned.changes);

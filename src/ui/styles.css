@@ -114,6 +114,10 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .prop-more { margin-top: 6px; font: inherit; font-size: 12px; cursor: pointer; }
 .truss-node.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .changed-badge { position: absolute; top: -8px; right: 8px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 8px; background: var(--card); color: var(--accent); font-size: 11px; }
+.truss-node.removed { opacity: 0.5; border-style: dashed; }
+.changed-badge.removed { border-color: var(--danger, var(--accent)); color: var(--danger, var(--accent)); }
+.uses { margin: 4px 0 0; padding-left: 16px; }
+.uses .open-in-editor { margin-bottom: 0; }
 .changed-badge.added { border-color: var(--ok, var(--accent)); color: var(--ok, var(--accent)); }
 .stack-header .changed-badge { position: static; align-self: flex-start; }
 .prop-input { font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; margin-top: 2px; max-width: 100%; box-sizing: border-box; }

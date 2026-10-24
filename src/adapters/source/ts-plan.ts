@@ -4,9 +4,10 @@ import { applyChanges, offsetOf, type TextChange } from '../../core/diff.ts';
 import type { Facts, NodeFacts } from '../../core/facts.ts';
 import { constructIdProblem, parentPath } from '../../core/construct-id.ts';
 import { nodeEditability } from '../../core/editability.ts';
-import { onBase, type AddNodeIntent, type AddedProp, type DuplicateIntent, type Intent, type PropValue } from '../../core/intents.ts';
-import type { FileSet, PlanResult } from '../../core/ports.ts';
+import { onBase, type AddNodeIntent, type AddedProp, type DuplicateIntent, type Intent, type PropValue, type RemoveNodeIntent } from '../../core/intents.ts';
+import type { FileSet, PlanResult, SourceUse } from '../../core/ports.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
+import { languageServiceOver, referencesTo, useAt } from './uses.ts';
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const CDK_LIB = 'aws-cdk-lib';
@@ -16,6 +17,7 @@ class Refusal extends Error {
   constructor(
     readonly intent: number,
     reason: string,
+    readonly uses?: SourceUse[],
   ) {
     super(reason);
   }
@@ -567,6 +569,77 @@ function copy(c: Creation & { intent: DuplicateIntent; source: NodeFacts }, plac
   insertAfter(edit, placed.anchor, text);
 }
 
+// --- Removing -----------------------------------------------------------------------------------------
+
+/** A statement that is deleted. */
+interface Removal {
+  index: number;
+  intent: RemoveNodeIntent;
+  facts: NodeFacts;
+}
+
+const LINE_END = /^[ \t]*(\r?\n|$)/;
+
+/**
+ * The text of `node` that goes when it is deleted: its comments directly above it (not one set apart by a blank line)
+ * and trailing it on its last line, and its line breaks when it has the lines to itself. A blank line left doubled, or at the top of a block, is dropped.
+ */
+function removalRange(edit: FileEdit, node: ts.Node): { start: number; end: number } {
+  const { text } = edit;
+  const lineStartOf = (at: number) => text.lastIndexOf('\n', at - 1) + 1;
+  const alone = (at: number) => /^[ \t]*$/.test(text.slice(lineStartOf(at), at));
+  let start = node.getStart(edit.sf);
+  for (const c of (ts.getLeadingCommentRanges(text, node.pos) ?? []).reverse()) {
+    if (!alone(c.pos) || (text.slice(c.end, start).match(/\n/g)?.length ?? 0) > 1) break;
+    start = c.pos;
+  }
+  let end = node.getEnd();
+  for (const c of ts.getTrailingCommentRanges(text, end) ?? []) end = c.end;
+  const wholeLines = alone(start) && LINE_END.test(text.slice(end));
+  if (!wholeLines) return { start, end };
+  start = lineStartOf(start);
+  end += text.slice(end).match(LINE_END)![0].length;
+  if (/(\n[ \t]*\r?\n|\{[ \t]*\r?\n)$/.test(text.slice(0, start)) || start === 0) end += text.slice(end).match(/^[ \t]*\r?\n/)?.[0].length ?? 0;
+  return { start, end };
+}
+
+/** Deletes the statement that makes a construct, and the field it is kept in, unless code other than that still uses it. */
+function removeNode(r: Removal, edits: (file: string, intent: number) => FileEdit, files: FileSet, service: ts.LanguageService): void {
+  const { index, intent, facts } = r;
+  const edit = edits(facts.span.file, index);
+  const found = newAt(edit, facts);
+  let statement: ts.Node | undefined = found;
+  while (statement && !ts.isStatement(statement)) statement = statement.parent;
+  if (!found || !statement || !ts.isStatement(statement)) throw new Refusal(index, `The code at ${facts.span.file}:${facts.span.start.line} is not the \`new\` Truss read`);
+  // What the construct is called in the code: a variable, or a field of the class.
+  let name: ts.Node | undefined;
+  let property: ts.PropertyDeclaration | undefined;
+  if (ts.isVariableStatement(statement)) {
+    const [only, ...more] = statement.declarationList.declarations;
+    if (!only || more.length > 0 || !ts.isIdentifier(only.name) || only.initializer !== found) throw new Refusal(index, `${intent.path} is made in a statement Truss can't remove`);
+    name = only.name;
+  } else if (ts.isExpressionStatement(statement)) {
+    const e = statement.expression;
+    if (ts.isBinaryExpression(e) && e.right === found && ts.isPropertyAccessExpression(e.left) && e.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      name = e.left.name;
+      let cls: ts.Node | undefined = statement;
+      while (cls && !ts.isClassLike(cls)) cls = cls.parent;
+      property = cls && ts.isClassLike(cls) ? cls.members.find((m): m is ts.PropertyDeclaration => ts.isPropertyDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === (name as ts.Identifier).text) : undefined;
+    } else if (e !== found) throw new Refusal(index, `${intent.path} is made in a statement Truss can't remove`);
+  } else throw new Refusal(index, `${intent.path} isn't made by a statement of its own, so it can't be removed`);
+
+  const gone = [removalRange(edit, statement), ...(property ? [removalRange(edit, property)] : [])];
+  if (name) {
+    const at = (property?.name ?? name).getStart(edit.sf);
+    const uses = referencesTo(service, edit.file, at).filter((u) => u.file !== edit.file || !gone.some((g) => u.start >= g.start && u.end <= g.end));
+    if (uses.length > 0) {
+      const places = uses.sort((a, b) => a.file.localeCompare(b.file) || a.start - b.start).map((u) => useAt(files, u.file, u.start));
+      throw new Refusal(index, `${intent.expect.literalId} is still used in ${places.length === 1 ? 'one place' : `${places.length} places`}: ${places.map((p) => `${p.file}:${p.line}`).join(', ')}`, places);
+    }
+  }
+  for (const g of gone) edit.change(g.start, g.end, '', 'remove');
+}
+
 const key = (f: NodeFacts) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
 /** Plans `intents` against `files`, which `facts` were read from. Every intent is checked, and the changes it makes are confined to the `new` call it names (and the file's imports). */
@@ -575,6 +648,7 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
     // Edits of one `new` call are planned together, because a later edit may land in an object an earlier one created.
     const targets = new Map<string, Target>();
     const creations: Creation[] = [];
+    const removals = new Map<string, Removal>();
     for (const [i, intent] of onBase(intents).entries()) {
       const f = facts.nodes[intent.path];
       if (!f) throw new Refusal(i, `There is no construct at ${intent.path} in the code`);
@@ -584,6 +658,13 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
       }
       if (intent.type === 'addNode') {
         creations.push({ index: i, intent, scopePath: intent.path, scope: f });
+        continue;
+      }
+      if (intent.type === 'removeNode') {
+        const nodeProblem = nodeEditability(intent.path, f);
+        if (!nodeProblem.editable) throw new Refusal(i, nodeProblem.reason);
+        if (f.pathsOnSpan > 1) throw new Refusal(i, `${intent.path} is one of ${f.pathsOnSpan} constructs made by the same \`new\` call, so it can't be removed for one of them alone`);
+        removals.set(key(f), { index: i, intent, facts: f });
         continue;
       }
       if (intent.type === 'duplicate') {
@@ -622,8 +703,13 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
       }
       return edit;
     };
-    for (const target of targets.values()) editNew(editOf(target.file, target.intent), target);
+    // What is removed is not also edited: the whole statement goes, so an edit of it earlier in the Draft has nothing left to change.
+    for (const [span, target] of targets) if (!removals.has(span)) editNew(editOf(target.file, target.intent), target);
     for (const c of creations) create(c, facts, editOf, files, parse);
+    if (removals.size > 0) {
+      const service = languageServiceOver(files);
+      for (const r of removals.values()) removeNode(r, editOf, files, service);
+    }
 
     const changes: Record<string, TextChange[]> = {};
     for (const [file, edit] of edits) {
@@ -642,7 +728,7 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
     }
     return { ok: true, changes };
   } catch (err) {
-    if (err instanceof Refusal) return { ok: false, intent: err.intent, reason: err.message };
+    if (err instanceof Refusal) return { ok: false, intent: err.intent, reason: err.message, ...(err.uses ? { uses: err.uses } : {}) };
     throw err;
   }
 }

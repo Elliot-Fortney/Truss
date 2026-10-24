@@ -1,20 +1,20 @@
 import type { Assembly, SourceLocation, SynthError, SynthResult } from '../core/assembly.ts';
 import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { TextChange } from '../core/diff.ts';
-import { targetPaths } from '../core/edit-check.ts';
+import { removedPaths, targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import { beforeMoves, movesOf, afterMoves, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
-import { intentForAdd, intentForDuplicate } from '../core/create.ts';
+import { intentForAdd, intentForDuplicate, intentForRemove } from '../core/create.ts';
 import { buildPanel, intentForEdit, intentForRename, type PanelEditing } from '../core/panel.ts';
 import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
-import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withMoves, withNote, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
+import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withMoves, withNote, withoutPaths, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { annotationProblems, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
 import { locateError } from '../core/synth-error.ts';
 import { commit } from './commit.ts';
 import { Draft } from './draft.ts';
 import { checkEditOn, type Base } from './edit-check.ts';
-import { buildView, type View } from '../core/view.ts';
+import { buildView, ghostsOf, type NodeView, type View } from '../core/view.ts';
 
 export interface SessionDeps {
   appDir: string;
@@ -332,7 +332,16 @@ export class Session {
     const moves = movesOf(this.draft.intents);
     const changed = this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set<string>();
     // The Sidecar keeps a renamed Node where it was until Save, but on screen it stays where the user put it.
-    return buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]), this.addedPaths());
+    const view = buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]), this.addedPaths());
+    return { ...view, nodes: [...view.nodes, ...this.ghosts(moves)] };
+  }
+
+  /** The Nodes the Draft deletes, drawn as the code on disk makes them: they are no longer in the Design on screen. */
+  private ghosts(moves: ReturnType<typeof movesOf>): NodeView[] {
+    const base = this.draft.base;
+    const removed = base ? removedPaths(base.facts, this.draft.intents) : new Set<string>();
+    if (!base || removed.size === 0) return [];
+    return ghostsOf(buildView(base.facts, base.assembly, withMoves(this.sidecar, moves)), removed, (path) => afterMoves(moves, path));
   }
 
   /** The parts of the View that speak of the Draft, always all of them so that a push clears what no longer holds. */
@@ -384,7 +393,7 @@ export class Session {
     const { requestId } = message;
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
     if (message.type === 'setProp' || message.type === 'renameId') return this.stageEdit(message);
-    if (message.type === 'addNode' || message.type === 'duplicate') return this.stageCreation(message);
+    if (message.type === 'addNode' || message.type === 'duplicate' || message.type === 'removeNode') return this.stageCreation(message);
     // A Draft is held as it was while the code on disk doesn't synth, so only Discard can change it then.
     if ((message.type === 'undo' || message.type === 'redo') && this.current.error && this.current.error.kind !== 'draft') {
       return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
@@ -430,7 +439,7 @@ export class Session {
   }
 
   /** Stages a new construct, or a copy of one: planned, and then synthed in a shadow copy. A construct that needs props only the user can give gets a form first, and nothing is staged. */
-  private stageCreation(message: Extract<DraftMessage, { type: 'addNode' | 'duplicate' }>): Reply {
+  private stageCreation(message: Extract<DraftMessage, { type: 'addNode' | 'duplicate' | 'removeNode' }>): Reply {
     const { requestId } = message;
     const refuse = (reason: string): Reply => ({ type: 'refused', requestId, reason });
     if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
@@ -445,12 +454,13 @@ export class Session {
       if (!made.ok) return refuse(made.reason);
       intent = made.intent;
     } else {
-      const made = intentForDuplicate(buildPanel(message.id, this.current, this.snapshot.facts, this.catalog, this.editing(this.snapshot)), message.id);
+      const panel = buildPanel(message.id, this.current, this.snapshot.facts, this.catalog, this.editing(this.snapshot));
+      const made = message.type === 'duplicate' ? intentForDuplicate(panel, message.id) : intentForRemove(panel, message.id);
       if (!made.ok) return refuse(made.reason);
       intent = made.intent;
     }
     const staged = this.draft.stage(intent);
-    if (!staged.ok) return refuse(staged.reason);
+    if (!staged.ok) return { type: 'refused', requestId, reason: staged.reason, ...(staged.uses ? { uses: staged.uses } : {}) };
     this.afterDraftChange();
     return { type: 'ack', requestId };
   }
@@ -497,8 +507,9 @@ export class Session {
     if (!written.ok) return refuse(written.reason);
 
     const moves = movesOf(this.draft.intents);
+    const removed = removedPaths(base.facts, this.draft.intents);
     this.draft.saved();
-    const layout = await this.moveSidecar(moves);
+    const layout = await this.updateSidecar(moves, removed);
     // What was written is now the base, but only a synth of it can say so.
     this.filesVersion++;
     this.push({ ...this.body(), ...this.draftFields() });
@@ -506,19 +517,19 @@ export class Session {
     return layout ? refuse(layout) : { type: 'ack', requestId };
   }
 
-  /** Moves the Sidecar's entries to the paths the saved renames gave their Nodes. A reason when it could not, because the code is saved by then. */
-  private async moveSidecar(moves: ReturnType<typeof movesOf>): Promise<string | undefined> {
-    if (moves.length === 0) return undefined;
+  /** Drops the Sidecar's entries of the Nodes the saved Draft deleted, and moves the rest to the paths the saved renames gave their Nodes. A reason when it could not, because the code is saved by then. */
+  private async updateSidecar(moves: ReturnType<typeof movesOf>, removed: ReadonlySet<string>): Promise<string | undefined> {
+    if (moves.length === 0 && removed.size === 0) return undefined;
     try {
       const text = await this.deps.files.readText(SIDECAR_FILE);
       if (text === undefined) return undefined;
       const parsed = parseSidecar(text, this.migrations);
-      if (!parsed.ok) return `Saved your code, but ${parsed.message}, so the layout was not moved to the new Construct IDs.`;
-      this.sidecar = withMoves(parsed.sidecar, moves);
+      if (!parsed.ok) return `Saved your code, but ${parsed.message}, so the layout was not updated for the new Construct IDs and the deleted Nodes.`;
+      this.sidecar = withMoves(withoutPaths(parsed.sidecar, removed), moves);
       await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(this.sidecar, currentFormatVersion(this.migrations)));
       return undefined;
     } catch (err) {
-      return `Saved your code, but couldn't move the layout in ${SIDECAR_FILE} to the new Construct IDs: ${err instanceof Error ? err.message : String(err)}`;
+      return `Saved your code, but couldn't update the layout in ${SIDECAR_FILE} for the new Construct IDs and the deleted Nodes: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
 

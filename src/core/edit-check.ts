@@ -20,6 +20,11 @@ export function targetPaths(facts: Facts, intents: readonly Intent[]): Set<strin
   return new Set(Object.entries(facts.nodes).flatMap(([path, f]) => (spans.has(spanKey(f)) ? [path] : [])));
 }
 
+/** The paths in the Base of the Nodes the intents remove. */
+export function removedPaths(facts: Facts, intents: readonly Intent[]): Set<string> {
+  return new Set(onBase(intents).flatMap((i) => (i.type === 'removeNode' && facts.nodes[i.path] ? [i.path] : [])));
+}
+
 function pathsOf(tree: TreeNode): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (n: TreeNode) => {
@@ -59,7 +64,7 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     const text = files.get(file) ?? '';
     const inside = targets.filter((t) => t.span.file === file).map((t) => [offsetOf(text, t.span.start.line, t.span.start.col), offsetOf(text, t.span.end.line, t.span.end.col)] as const);
     for (const c of list) {
-      if (c.purpose === 'import' || c.purpose === 'add' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
+      if (c.purpose === 'import' || c.purpose === 'add' || c.purpose === 'remove' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
       failures.push(`The edit changes ${file} outside the code it was meant to change`);
       break;
     }
@@ -73,16 +78,23 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
   const was = pathsOf(before.tree);
   const reached = pathsOf(after.tree);
   const now = new Map([...reached].map(([path, fqn]) => [beforeMoves(moves, path), fqn]));
-  for (const path of [...paths].sort()) {
+  // A removed construct is meant to go, and everything beneath it with it.
+  const removed = targetPaths(facts, onDisk.filter((i) => i.type === 'removeNode'));
+  const kept = [...paths].filter((path) => !removed.has(path));
+  for (const path of [...removed].sort()) {
+    if (!was.has(path)) failures.push(`${path} is no longer the same construct after the edit`);
+    else for (const gonePath of [...was.keys()].filter((p) => p === path || p.startsWith(`${path}/`)).sort()) if (now.has(gonePath)) failures.push(`${gonePath} was not removed`);
+  }
+  for (const path of kept.sort()) {
     if (!was.has(path) || !now.has(path) || was.get(path) !== now.get(path)) failures.push(`${path} is no longer the same construct after the edit`);
   }
-  for (const path of [...paths].sort()) {
+  for (const path of kept) {
     const to = afterMoves(moves, path);
     if (to !== path && (!reached.has(to) || reached.has(path))) failures.push(`${path} was not renamed to ${to}`);
   }
   // What lies beneath a construct that is only renamed goes with it whole, where a prop may make the construct create more beneath itself.
   const edited = targetPaths(facts, onDisk.filter((i) => i.type === 'setProp'));
-  for (const root of onDisk.flatMap((i) => (i.type === 'renameId' && !edited.has(i.path) ? [i.path] : []))) {
+  for (const root of onDisk.flatMap((i) => (i.type === 'renameId' && !edited.has(i.path) && !removed.has(i.path) ? [i.path] : []))) {
     const lost = [...new Set([...was.keys(), ...now.keys()])].filter((path) => path.startsWith(`${root}/`) && was.get(path) !== now.get(path));
     for (const path of lost) if (!lost.some((other) => path.startsWith(`${other}/`))) failures.push(`${path} did not move with ${root}`);
   }

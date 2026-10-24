@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import type { CatalogProp, SearchHit } from '../core/catalog.ts';
 import type { PropValue } from '../core/intents.ts';
+import type { SourceUse } from '../core/ports.ts';
 import type { PanelView } from '../core/panel.ts';
 import type { ClientRequest, Reply } from '../core/protocol.ts';
 import type { OpenInEditorMessage, View } from '../core/view.ts';
@@ -9,7 +10,8 @@ import { applyPush } from './versions.ts';
 
 export type Connection = 'connecting' | 'open' | 'closed';
 
-export type Outcome = { ok: true } | { ok: false; reason: string };
+/** `uses` are the places in the code that keep a Node from being removed. */
+export type Outcome = { ok: true } | { ok: false; reason: string; uses?: SourceUse[] };
 
 export type SearchOutcome = { ok: true; hits: SearchHit[] } | { ok: false; reason: string };
 
@@ -84,7 +86,7 @@ export function useView(): {
   const send = useCallback(
     async (request: ClientRequest): Promise<Outcome> => {
       const reply = await ask(request);
-      return reply.type === 'refused' ? { ok: false, reason: reply.reason } : { ok: true };
+      return reply.type === 'refused' ? { ok: false, reason: reply.reason, ...(reply.uses ? { uses: reply.uses } : {}) } : { ok: true };
     },
     [ask],
   );

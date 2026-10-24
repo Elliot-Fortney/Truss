@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TreeNode } from './assembly.ts';
 import { buildCatalog, digestAssembly } from './catalog.ts';
-import { freshId, intentForAdd, intentForDuplicate } from './create.ts';
+import { freshId, intentForAdd, intentForDuplicate, intentForRemove } from './create.ts';
 import type { NodeFacts } from './facts.ts';
 import type { PanelView } from './panel.ts';
 
@@ -82,5 +82,19 @@ describe('intentForDuplicate', () => {
     expect(intentForDuplicate(panel({ readOnly: 'Created in a loop' }), 'Dev/Logs')).toEqual({ ok: false, reason: 'Created in a loop' });
     expect(intentForDuplicate(panel({ kind: 'stack' }), 'Dev')).toMatchObject({ ok: false });
     expect(intentForDuplicate(undefined, 'Dev/Logs')).toMatchObject({ ok: false });
+  });
+});
+
+describe('intentForRemove', () => {
+  const panel = (over: Partial<PanelView> = {}): PanelView => ({ id: 'Dev/Logs', kind: 'node', className: 's3.Bucket', literalId: 'Logs', idEdit: { siblings: ['Bucket'] }, rows: [], more: [], ...over });
+
+  it('removes the Node as the user saw it', () => {
+    expect(intentForRemove(panel(), 'Dev/Logs')).toEqual({ ok: true, intent: { type: 'removeNode', path: 'Dev/Logs', expect: { className: 's3.Bucket', literalId: 'Logs' } } });
+  });
+
+  it('refuses a Node that can not be edited, and a Stack', () => {
+    expect(intentForRemove(panel({ readOnly: 'Created in a loop' }), 'Dev/Logs')).toEqual({ ok: false, reason: 'Created in a loop' });
+    expect(intentForRemove(panel({ kind: 'stack' }), 'Dev')).toMatchObject({ ok: false });
+    expect(intentForRemove(undefined, 'Dev/Logs')).toMatchObject({ ok: false });
   });
 });

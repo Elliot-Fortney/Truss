@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import { withId } from '../core/construct-id.ts';
 import type { PropValue } from '../core/intents.ts';
+import type { SourceUse } from '../core/ports.ts';
 import { badgesFor, isBadged, type Badge, type Problem } from '../core/problems.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
 import type { LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
@@ -38,6 +39,8 @@ interface TrussNodeData extends Record<string, unknown> {
   changed?: boolean;
   /** The Draft adds this Node. */
   added?: boolean;
+  /** The Draft deletes this Node: it is drawn as it is on disk, as a ghost. */
+  removed?: boolean;
   /** Problems on this Node, or beneath it where the Layer is closed. */
   badge?: Badge;
   external?: boolean;
@@ -123,7 +126,7 @@ function ExpandToggle({ id, label, expanded, onToggle }: { id: string; label: st
 function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
   // Zoomed out, a name is too small to read, so the Node is its icon; the full name stays in the tooltip.
   const showName = useStore((s) => namesShownAt(s.transform[2]));
-  const className = ['truss-node', data.changed ? 'changed' : '', data.external ? 'external' : '', data.hoisted ? 'hoisted' : '', data.expanded ? 'expanded' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
+  const className = ['truss-node', data.changed ? 'changed' : '', data.removed ? 'removed' : '', data.external ? 'external' : '', data.hoisted ? 'hoisted' : '', data.expanded ? 'expanded' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
   const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
   return (
     <div className={className} title={tooltip}>
@@ -152,6 +155,11 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
       {data.changed ? (
         <span className="changed-badge" title="The Draft changes this">
           changed
+        </span>
+      ) : null}
+      {data.removed ? (
+        <span className="changed-badge removed" title="The Draft deletes this">
+          removed
         </span>
       ) : null}
       {data.added ? (
@@ -237,6 +245,7 @@ function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, 
         ...(n.lock ? { lock: n.lock } : {}),
         ...(n.changed ? { changed: true } : {}),
         ...(n.added ? { added: true } : {}),
+        ...(n.removed ? { removed: true } : {}),
         ...(badges.has(n.id) ? { badge: badges.get(n.id)! } : {}),
         ...(n.external ? { external: true } : {}),
         ...(n.hoisted ? { hoisted: true } : {}),
@@ -244,6 +253,7 @@ function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, 
         expanded: expandable && expanded.has(n.id),
         onToggle,
       },
+      ...(n.removed ? { draggable: false } : {}),
     };
   });
   // The children of an expanded Node sit inside its box, and are read-only: they can be selected but not moved.
@@ -310,7 +320,15 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onDuplicate, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onDuplicate(): void; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onDuplicate, onRemove, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onDuplicate(): void; onRemove(): void; onOpen(at: SourceLocation): void }) {
+  if (node.removed) {
+    return (
+      <aside className="note-panel">
+        <h2>{node.label}</h2>
+        <p className="lock-reason">Deleted in the Draft: Save removes it from your code. Undo or Discard brings it back.</p>
+      </aside>
+    );
+  }
   const causers = (node.causedBy ?? []).map((id) => nodes.find((n) => n.id === id)?.label ?? id);
   return (
     <aside className="note-panel">
@@ -325,6 +343,11 @@ function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onDupl
       {props.status === 'ready' && props.panel.kind === 'node' && props.panel.idEdit && !props.panel.readOnly ? (
         <button type="button" className="duplicate" onClick={onDuplicate}>
           Duplicate
+        </button>
+      ) : null}
+      {props.status === 'ready' && props.panel.kind === 'node' && props.panel.idEdit && !props.panel.readOnly ? (
+        <button type="button" className="remove" onClick={onRemove}>
+          Remove
         </button>
       ) : null}
       {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
@@ -429,7 +452,9 @@ export function App() {
   const flowEdges = useMemo(() => (shown ? toFlowEdges(shown) : []), [shown]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
-  const [notice, setNotice] = useState<string>();
+  const [shownNotice, setShownNotice] = useState<{ text: string; uses?: SourceUse[] }>();
+  const notice = shownNotice?.text;
+  const setNotice = useCallback((text?: string, uses?: readonly SourceUse[]) => setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}) } : undefined), []);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [linkedProblem, setLinkedProblem] = useState<string>();
   // Opening a Node must not move the viewport, so only the Nodes and boxes of the Design decide when to fit it again.
@@ -449,12 +474,12 @@ export function App() {
   const request = useCallback(
     async (req: ClientRequest) => {
       const outcome = await send(req);
-      setNotice(outcome.ok ? undefined : outcome.reason);
+      setNotice(outcome.ok ? undefined : outcome.reason, outcome.ok ? undefined : outcome.uses);
       // A refused change never reached the Sidecar, so put every Node back where the View has it.
       if (!outcome.ok) setNodes(keepSelection(flowNodes));
       return outcome.ok;
     },
-    [send, flowNodes, keepSelection],
+    [send, flowNodes, keepSelection, setNotice],
   );
 
   const onNodeDragStop = useCallback(
@@ -645,6 +670,18 @@ export function App() {
           {notice ? (
             <div className="banner notice" role="alert">
               {notice}
+              {shownNotice?.uses ? (
+                <ul className="uses">
+                  {shownNotice.uses.map((u) => (
+                    <li key={`${u.file}:${u.line}:${u.col}`}>
+                      <button type="button" className="open-in-editor" onClick={() => openInEditor(u)}>
+                        {u.file}:{u.line}
+                      </button>{' '}
+                      <code>{u.text}</code>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -677,7 +714,7 @@ export function App() {
           </button>
         )}
         {draft ? <DraftBar draft={draft} busy={view.synthing || saving} blockers={view.problems.filter((p) => p.blocking)} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} onShowProblem={showProblem} /> : null}
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onDuplicate={() => void request({ type: 'duplicate', id: selected.id })} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onDuplicate={() => void request({ type: 'duplicate', id: selected.id })} onRemove={() => void request({ type: 'removeNode', id: selected.id })} onOpen={openInEditor} /> : null}
         {asking ? <AddForm key={asking.fqn} name={asking.name} props={asking.props} onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)} onCancel={() => setAsking(undefined)} /> : null}
         {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onRename={rename(openStack.id, stackNodeId)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}

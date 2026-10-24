@@ -871,3 +871,75 @@ describe('adding a Node, and duplicating one', () => {
     expect(r.session.draftSize()).toBe(0);
   });
 });
+
+describe('removing a Node', () => {
+  const remove = (r: Rig, id: string): Promise<Reply> => r.session.handle({ type: 'removeNode', requestId: `r${++n}`, id });
+  const ORDERS = 'ShopStack/Orders';
+  const sidecar = (nodes: object) => JSON.stringify({ formatVersion: 1, nodes });
+
+  /** Synth of the fixture with the Uploads subtree gone, once the code no longer makes it. */
+  const synthWithout = () => {
+    const synth = new FakeSynth();
+    synth.result = (overlay) => {
+      const assembly = readFixtureAssembly('straight-line');
+      if (overlay?.get(SHOP) && !overlay.get(SHOP)!.includes("'Uploads'")) {
+        const stack = assembly.tree.children.find((c) => c.path === 'ShopStack')!;
+        stack.children = stack.children.filter((c) => c.path !== UPLOADS);
+      }
+      return { ok: true, assembly };
+    };
+    return synth;
+  };
+
+  it('stages the removal, shows the Node as a ghost, and writes the deletion on Save with the Sidecar entry gone', async () => {
+    const r = await rig({ synth: synthWithout() });
+    r.files.texts.set('truss.json', sidecar({ [UPLOADS]: { position: { x: 1, y: 2 } }, [`${UPLOADS}/Resource`]: { note: 'deep' }, [ORDERS]: { position: { x: 5, y: 6 } } }));
+    await r.session.handle({ type: 'note', requestId: 'n', id: ORDERS, note: 'keep' });
+    expect(await remove(r, UPLOADS)).toMatchObject({ type: 'ack' });
+    expect(r.session.view().draft?.items).toEqual([{ id: UPLOADS, label: 'Uploads', summary: 'Remove Uploads' }]);
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain("-    new s3.Bucket(this, 'Uploads', {");
+    await settled(r);
+    expect(r.session.view().draft?.problems).toEqual([]);
+    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)).toMatchObject({ removed: true, label: 'Uploads', stackId: 'ShopStack' });
+    expect(r.session.view().nodes.filter((x) => x.removed)).toHaveLength(1);
+    expect(r.files.writes).not.toContain(SHOP);
+
+    expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
+    expect(r.files.texts.get(SHOP)).not.toContain('Uploads');
+    expect(JSON.parse(r.files.texts.get('truss.json')!).nodes).toEqual({ [ORDERS]: { position: { x: 5, y: 6 }, note: 'keep' } });
+    await settled(r);
+    expect(r.session.view().nodes.some((x) => x.removed)).toBe(false);
+  });
+
+  it('takes the ghost away on undo', async () => {
+    const r = await rig({ synth: synthWithout() });
+    await remove(r, UPLOADS);
+    await send(r, 'undo');
+    expect(r.session.view().nodes.some((x) => x.removed)).toBe(false);
+    expect(r.session.draftSize()).toBe(0);
+  });
+
+  it('refuses to save a removal that synth shows took more than the Node away', async () => {
+    const r = await rig();
+    await remove(r, UPLOADS);
+    await settled(r);
+    expect(refusal(await send(r, 'save'))).toMatch(/ShopStack\/Uploads was not removed/);
+    expect(r.files.writes).toEqual([]);
+  });
+
+  it('refuses a Node that other code uses, and lists where', async () => {
+    const r = await rig();
+    // The statement keeps its line and column, so the creation site synth recorded still points at it.
+    r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("super(scope, id, props);\n\n    new s3.Bucket(this, 'Uploads', {", "super(scope, id, props);\n    const uploads =\n    new s3.Bucket(this, 'Uploads', {").replace('    });\n\n    new sqs', '    });\n    console.log(uploads);\n    new sqs'));
+    r.files.change();
+    await settled(r);
+    const reply = await remove(r, UPLOADS);
+    expect(reply).toMatchObject({ type: 'refused', uses: [{ file: SHOP, text: 'console.log(uploads);' }] });
+    expect(r.session.draftSize()).toBe(0);
+  });
+
+  it('refuses what is not there', async () => {
+    const r = await rig();
+    expect(refusal(await remove(r, 'ShopStack/Nope'))).toMatch(/No Node/);
+  });
+});

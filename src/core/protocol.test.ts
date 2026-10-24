@@ -44,6 +44,11 @@ describe('parseClientMessage', () => {
     });
   });
 
+  it('reads a removeNode, which names the Node', () => {
+    expect(parse({ type: 'removeNode', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'removeNode', requestId: '1', id: 'A/B' } });
+    expect(parse({ type: 'removeNode', requestId: '1' })).toMatchObject({ ok: false });
+  });
+
   it('reads a duplicate, which names the Node', () => {
     expect(parse({ type: 'duplicate', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'duplicate', requestId: '1', id: 'A/B' } });
     expect(parse({ type: 'duplicate', requestId: '1' })).toMatchObject({ ok: false });

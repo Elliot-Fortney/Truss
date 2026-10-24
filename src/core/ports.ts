@@ -22,7 +22,16 @@ export interface Synth {
 }
 
 /** The changes that make the code say what the intents mean, by file; or the first intent Source could not place, and why. */
-export type PlanResult = { ok: true; changes: Record<string, TextChange[]> } | { ok: false; intent: number; reason: string };
+export type PlanResult = { ok: true; changes: Record<string, TextChange[]> } | { ok: false; intent: number; reason: string; uses?: SourceUse[] };
+
+/** A place in the app's code that uses a construct an intent would remove. Lines and columns are 1-based. */
+export interface SourceUse {
+  file: string;
+  line: number;
+  col: number;
+  /** The line of code the use is on, trimmed. */
+  text: string;
+}
 
 /** A TypeScript error or warning in a file of the app. */
 export interface Diagnostic {

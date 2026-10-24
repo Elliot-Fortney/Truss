@@ -67,7 +67,16 @@ export interface DuplicateIntent {
   newId: string;
 }
 
-export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent;
+/** Deletes the statement that makes an editable Node, with the comment above it. Refused while other code still uses the Node. */
+export interface RemoveNodeIntent {
+  type: 'removeNode';
+  /** The construct path of the Node as the Draft shows it when the edit is made. */
+  path: string;
+  /** The class as written and the literal ID at the time of the edit. */
+  expect: { className: string; literalId: string };
+}
+
+export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent | RemoveNodeIntent;
 
 /** The path a construct made by `intent` has, in the paths as they are once the intents before it have been made. Undefined for an intent that makes none. */
 export const createdPath = (intent: Intent): string | undefined => (intent.type === 'addNode' ? `${intent.path}/${intent.id}` : intent.type === 'duplicate' ? withId(intent.path, intent.newId) : undefined);
@@ -163,6 +172,8 @@ export function describeIntent(intent: Intent): string {
       return `Construct ID → ${JSON.stringify(intent.newId)}`;
     case 'addNode':
       return `Add ${intent.fqn.split('.').at(-1)} ${JSON.stringify(intent.id)}`;
+    case 'removeNode':
+      return `Remove ${intent.expect.literalId}`;
     case 'duplicate':
       return `Duplicate as ${JSON.stringify(intent.newId)}`;
     case 'setProp':

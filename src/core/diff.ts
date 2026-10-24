@@ -3,8 +3,8 @@ export interface TextChange {
   start: number;
   end: number;
   text: string;
-  /** `import` for a line added to the file's imports; `add` for a statement or field that makes a new construct; every other change belongs to the construct an intent names. */
-  purpose?: 'import' | 'add';
+  /** `import` for a line added to the file's imports; `add` for a statement or field that makes a new construct; `remove` for the statement (and field) of a construct that is deleted; every other change belongs to the construct an intent names. */
+  purpose?: 'import' | 'add' | 'remove';
 }
 
 /** Applies changes made against `text`. They must not overlap; insertions at one offset keep the order given. */

@@ -2,7 +2,7 @@ import type { TreeNode } from './assembly.ts';
 import { constructIdProblem, siblingIds } from './construct-id.ts';
 import { entryFor, type Catalog, type CatalogProp } from './catalog.ts';
 import type { NodeFacts } from './facts.ts';
-import type { AddedProp, AddNodeIntent, DuplicateIntent, PropValue } from './intents.ts';
+import type { AddedProp, AddNodeIntent, DuplicateIntent, PropValue, RemoveNodeIntent } from './intents.ts';
 import { valueFits, type PanelView } from './panel.ts';
 
 /** The Construct ID for a new construct named `base`: `base` itself when it is free, else `base` without any number it ends in, then 2, 3 and so on. */
@@ -60,4 +60,12 @@ export function intentForDuplicate(panel: PanelView | undefined, id: string): { 
   if (!panel.idEdit || panel.literalId === undefined) return { ok: false, reason: `${id} can't be duplicated here` };
   const newId = freshId(panel.literalId, [...panel.idEdit.siblings, panel.literalId]);
   return { ok: true, intent: { type: 'duplicate', path: id, expect: { className: panel.className, literalId: panel.literalId }, newId } };
+}
+
+/** What deleting the Node whose panel this is means for the Draft. */
+export function intentForRemove(panel: PanelView | undefined, id: string): { ok: true; intent: RemoveNodeIntent } | { ok: false; reason: string } {
+  if (!panel || panel.kind !== 'node') return { ok: false, reason: `No Node at ${id}` };
+  if (panel.readOnly) return { ok: false, reason: panel.readOnly };
+  if (!panel.idEdit || panel.literalId === undefined) return { ok: false, reason: `${id} can't be removed here` };
+  return { ok: true, intent: { type: 'removeNode', path: id, expect: { className: panel.className, literalId: panel.literalId } } };
 }
