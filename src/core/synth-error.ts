@@ -20,7 +20,12 @@ export function locateError(error: SynthError, appDir: string): SourceLocation |
 
 function relativeToApp(path: string, root: string): string | undefined {
   const p = path.replaceAll('\\', '/').replace(/^file:\/\//, '');
-  const rel = p.startsWith('/') || /^[A-Za-z]:\//.test(p) ? (p.startsWith(`${root}/`) ? p.slice(root.length + 1) : undefined) : p.replace(/^\.\//, '');
+  const rel =
+    p.startsWith('/') || /^[A-Za-z]:\//.test(p)
+      ? p.startsWith(`${root}/`)
+        ? p.slice(root.length + 1)
+        : undefined
+      : p.replace(/^\.\//, '');
   if (!rel || rel.split('/').some((s) => s === '..' || s === 'node_modules')) return undefined;
   return rel;
 }

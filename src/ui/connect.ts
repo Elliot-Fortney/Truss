@@ -20,7 +20,8 @@ export type Drop =
 
 /** What a drop on the Node `to` comes to, given what the drag was told. */
 export function dropOn(targets: Targets | undefined, to: string | undefined): Drop {
-  if (!targets) return { kind: 'refused', reason: 'Truss is still working out where this can connect. Try again in a moment.' };
+  if (!targets)
+    return { kind: 'refused', reason: 'Truss is still working out where this can connect. Try again in a moment.' };
   if (to === undefined) return { kind: 'refused', reason: 'Drop on a Node to connect to it.' };
   const check = targets[to];
   if (!check) return { kind: 'refused', reason: 'A Node can’t connect to itself.' };
@@ -31,7 +32,9 @@ export function dropOn(targets: Targets | undefined, to: string | undefined): Dr
   if (!only && hints.length === 1) return { kind: 'hint', hint: hints[0]! };
   if (more.length > 0 || hints.length > 0) return { kind: 'choose', options: check.options, hints };
   if (!only) return { kind: 'refused', reason: 'Nothing here takes it.' };
-  return only.replaces ? { kind: 'replace', prop: only.prop, current: only.replaces.label } : { kind: 'connect', prop: only.prop };
+  return only.replaces
+    ? { kind: 'replace', prop: only.prop, current: only.replaces.label }
+    : { kind: 'connect', prop: only.prop };
 }
 
 /** Whether the drag can end on `id`, which the canvas dims the Nodes that can't for. The Node the drag started from takes no part. */
@@ -46,7 +49,8 @@ export function canRepoint(targets: Targets | undefined, to: string, prop: strin
 }
 
 /** An edge's name for the canvas, e.g. `vpc` or `securityGroups[1]`. */
-export const edgeLabel = (e: Pick<EdgeView, 'prop' | 'index'>): string => (e.index === undefined ? e.prop : `${e.prop}[${e.index}]`);
+export const edgeLabel = (e: Pick<EdgeView, 'prop' | 'index'>): string =>
+  e.index === undefined ? e.prop : `${e.prop}[${e.index}]`;
 
 /** What an edge says when pointed at, and what it is, for a screen reader. */
 export function edgeTitle(e: EdgeView, names: ReadonlyMap<string, string>): string {

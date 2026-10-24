@@ -4,7 +4,14 @@ import { loadCatalog } from '../adapters/catalog/read-catalog.ts';
 import { TsSource } from '../adapters/source/ts-source.ts';
 import { ToolkitSynth } from '../adapters/synth/toolkit-synth.ts';
 import type { Catalog } from '../core/catalog.ts';
-import { connectionProps, hintsFor, intentForAddConnection, intentForChangeConnection, intentForRemoveConnection, type HintContext } from '../core/connection.ts';
+import {
+  connectionProps,
+  hintsFor,
+  intentForAddConnection,
+  intentForChangeConnection,
+  intentForRemoveConnection,
+  type HintContext,
+} from '../core/connection.ts';
 import { emptySidecar } from '../core/sidecar.ts';
 import type { Intent } from '../core/intents.ts';
 import { buildView } from '../core/view.ts';
@@ -43,7 +50,9 @@ const add = (a: string, b: string, text: RegExp, env?: string | null): Intent =>
 };
 
 const idsOf = (on: string, peer: string, role?: 'primary' | 'secondary') =>
-  (ctx.facts.calls ?? []).filter((c) => c.on === P(on) && c.peer === P(peer) && (role === undefined || c.role === role)).map((c) => c.id);
+  (ctx.facts.calls ?? [])
+    .filter((c) => c.on === P(on) && c.peer === P(peer) && (role === undefined || c.role === role))
+    .map((c) => c.id);
 
 const FILE = 'lib/wiring-stack.ts';
 
@@ -52,7 +61,7 @@ describe('assertEditHolds on the connections fixture', () => {
   it('holds for a Grant, written with the environment variable that goes with it', async () => {
     const { files } = await assertEditHolds(app, [add('Catalog', 'Idle', /is read by/)]);
     const text = files.get(FILE)!;
-    expect(text).toContain('catalog.grants.readData(idle);\n    idle.addEnvironment(\'TABLE_NAME\', catalog.tableName);');
+    expect(text).toContain("catalog.grants.readData(idle);\n    idle.addEnvironment('TABLE_NAME', catalog.tableName);");
   });
 
   it('holds for a Grant with the environment variable renamed, and with it left out', async () => {
@@ -65,7 +74,9 @@ describe('assertEditHolds on the connections fixture', () => {
   it('holds for an Integration, with the imports its arguments need', async () => {
     const { files } = await assertEditHolds(app, [add('Uploads', 'Worker', /invokes/)]);
     const text = files.get(FILE)!;
-    expect(text).toMatch(/uploads\.addEventNotification\(\w+\.EventType\.OBJECT_CREATED, new \w+\.LambdaDestination\(worker\)\);/);
+    expect(text).toMatch(
+      /uploads\.addEventNotification\(\w+\.EventType\.OBJECT_CREATED, new \w+\.LambdaDestination\(worker\)\);/,
+    );
     expect(text).toContain('aws-cdk-lib/aws-s3-notifications');
   });
 
@@ -103,11 +114,15 @@ describe('assertEditHolds on the connections fixture', () => {
   });
 
   it('holds for a Connection changed to another kind, in the place of the old calls', async () => {
-    const made = intentForChangeConnection(ctx, [...idsOf('Uploads', 'Handler'), ...idsOf('Handler', 'Uploads')], { hint: hint('Uploads', 'Handler', /read and written/) });
+    const made = intentForChangeConnection(ctx, [...idsOf('Uploads', 'Handler'), ...idsOf('Handler', 'Uploads')], {
+      hint: hint('Uploads', 'Handler', /read and written/),
+    });
     if (!made.ok) throw new Error(made.reason);
     const { files } = await assertEditHolds(app, [made.intent]);
     const text = files.get(FILE)!;
-    expect(text).toContain('uploads.grants.readWrite(handler);\n    handler.addEnvironment(\'BUCKET_NAME\', uploads.bucketName);');
+    expect(text).toContain(
+      "uploads.grants.readWrite(handler);\n    handler.addEnvironment('BUCKET_NAME', uploads.bucketName);",
+    );
     expect(text).not.toContain('grantRead(handler)');
   });
 
@@ -115,7 +130,9 @@ describe('assertEditHolds on the connections fixture', () => {
     const ids = [...idsOf('Uploads', 'Handler'), ...idsOf('Handler', 'Uploads')];
     const renamed = intentForChangeConnection(ctx, ids, { env: 'BUCKET' });
     if (!renamed.ok) throw new Error(renamed.reason);
-    expect((await assertEditHolds(app, [renamed.intent])).files.get(FILE)).toContain("handler.addEnvironment('BUCKET', uploads.bucketName);");
+    expect((await assertEditHolds(app, [renamed.intent])).files.get(FILE)).toContain(
+      "handler.addEnvironment('BUCKET', uploads.bucketName);",
+    );
     const off = intentForChangeConnection(ctx, ids, { env: null });
     if (!off.ok) throw new Error(off.reason);
     const { files } = await assertEditHolds(app, [off.intent]);
@@ -127,7 +144,11 @@ describe('assertEditHolds on the connections fixture', () => {
     const edge = ctx.view.edges.find((e) => e.id === `grant:${P('Handler')}->${P('Catalog')}`)!;
     const props = connectionProps(ctx, edge);
     expect(props?.combine?.text).toMatch(/is read and written by/);
-    const made = intentForChangeConnection(ctx, edge.calls!.map((c) => c.id), { hint: props!.combine!.hint });
+    const made = intentForChangeConnection(
+      ctx,
+      edge.calls!.map((c) => c.id),
+      { hint: props!.combine!.hint },
+    );
     if (!made.ok) throw new Error(made.reason);
     const { files } = await assertEditHolds(app, [made.intent]);
     expect(files.get(FILE)).toContain('catalog.grants.readWriteData(handler);');
@@ -135,7 +156,9 @@ describe('assertEditHolds on the connections fixture', () => {
   });
 
   it('holds for a Node deleted, which takes the calls that connect it with it', async () => {
-    const { files } = await assertEditHolds(app, [{ type: 'removeNode', path: P('Uploads'), expect: { className: 's3.Bucket', literalId: 'Uploads' } }]);
+    const { files } = await assertEditHolds(app, [
+      { type: 'removeNode', path: P('Uploads'), expect: { className: 's3.Bucket', literalId: 'Uploads' } },
+    ]);
     expect(files.get(FILE)).not.toContain('uploads');
     expect(files.get(FILE)).not.toContain('BUCKET_NAME');
   });

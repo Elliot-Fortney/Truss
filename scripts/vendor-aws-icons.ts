@@ -14,7 +14,8 @@ const walk = (dir: string) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) walk(path);
-    else if (entry.name.endsWith('.svg') && !path.includes('__MACOSX')) found.set(entry.name, [...(found.get(entry.name) ?? []), path]);
+    else if (entry.name.endsWith('.svg') && !path.includes('__MACOSX'))
+      found.set(entry.name, [...(found.get(entry.name) ?? []), path]);
   }
 };
 walk(resolve(source));

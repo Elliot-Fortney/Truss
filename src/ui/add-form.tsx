@@ -5,13 +5,25 @@ import { writtenOf } from './add.ts';
 import { PropEditor } from './prop-inputs.tsx';
 
 /** Asks for the props a construct needs and has no default for, before anything is staged. */
-export function AddForm({ name, props, onAdd, onCancel }: { name: string; props: readonly CatalogProp[]; onAdd(values: Record<string, PropValue>): void; onCancel(): void }) {
+export function AddForm({
+  name,
+  props,
+  onAdd,
+  onCancel,
+}: {
+  name: string;
+  props: readonly CatalogProp[];
+  onAdd(values: Record<string, PropValue>): void;
+  onCancel(): void;
+}) {
   const [values, setValues] = useState<Record<string, PropValue>>({});
   const complete = props.every((p) => values[p.name] !== undefined);
   return (
     <aside className="note-panel add-form" aria-label={`Add ${name}`}>
       <h2>Add {name}</h2>
-      <p className="lock-reason">{name} needs {props.length === 1 ? 'a value' : 'values'} before it can be added.</p>
+      <p className="lock-reason">
+        {name} needs {props.length === 1 ? 'a value' : 'values'} before it can be added.
+      </p>
       {props.map((p) => (
         <div key={p.name} className="prop-field">
           <div className="prop-head">

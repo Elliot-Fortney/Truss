@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { afterMoves, beforeMoves, createdPath, describeIntent, emptyDraftHistory, movesOf, onBase, redo, stage, undo, withIntents, type Intent, type PropValue } from './intents.ts';
+import {
+  afterMoves,
+  beforeMoves,
+  createdPath,
+  describeIntent,
+  emptyDraftHistory,
+  movesOf,
+  onBase,
+  redo,
+  stage,
+  undo,
+  withIntents,
+  type Intent,
+  type PropValue,
+} from './intents.ts';
 
-const set = (prop: string[], value: PropValue, path = 'A/B'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'B' }, prop, value });
+const set = (prop: string[], value: PropValue, path = 'A/B'): Intent => ({
+  type: 'setProp',
+  path,
+  expect: { className: 's3.Bucket', literalId: 'B' },
+  prop,
+  value,
+});
 const bool = (value: boolean): PropValue => ({ kind: 'boolean', value });
 
 describe('the Draft', () => {
@@ -41,7 +61,10 @@ describe('describeIntent', () => {
     [bool(true), 'versioned → true'],
     [{ kind: 'string', value: 'a b' } as PropValue, 'versioned → "a b"'],
     [{ kind: 'number', value: 3 } as PropValue, 'versioned → 3'],
-    [{ kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY' } as PropValue, 'versioned → RemovalPolicy.DESTROY'],
+    [
+      { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY' } as PropValue,
+      'versioned → RemovalPolicy.DESTROY',
+    ],
     [{ kind: 'duration', unit: 'seconds', amount: 30 } as PropValue, 'versioned → 30 seconds'],
     [{ kind: 'size', unit: 'mebibytes', amount: 512 } as PropValue, 'versioned → 512 mebibytes'],
   ])('writes %j as %s', (value, text) => {
@@ -49,7 +72,9 @@ describe('describeIntent', () => {
   });
 
   it('writes a field of a prop with a dot', () => {
-    expect(describeIntent(set(['partitionKey', 'name'], { kind: 'string', value: 'id' }))).toBe('partitionKey.name → "id"');
+    expect(describeIntent(set(['partitionKey', 'name'], { kind: 'string', value: 'id' }))).toBe(
+      'partitionKey.name → "id"',
+    );
   });
 });
 
@@ -57,32 +82,78 @@ describe('withIntents', () => {
   it('replaces a prop the code writes, adds one it does not, and builds the objects around a field', () => {
     const props = withIntents(
       { form: 'object', props: [{ name: 'versioned', kind: 'literal', text: 'true', value: true }] },
-      [set(['versioned'], bool(false)), set(['bucketName'], { kind: 'string', value: 'x' }), set(['partitionKey', 'name'], { kind: 'string', value: 'id' })],
+      [
+        set(['versioned'], bool(false)),
+        set(['bucketName'], { kind: 'string', value: 'x' }),
+        set(['partitionKey', 'name'], { kind: 'string', value: 'id' }),
+      ],
     );
     expect(props).toEqual({
       form: 'object',
       props: [
         { name: 'versioned', kind: 'literal', text: 'false', value: false },
         { name: 'bucketName', kind: 'literal', text: '"x"', value: 'x' },
-        { name: 'partitionKey', kind: 'object', text: '{ … }', fields: [{ name: 'name', kind: 'literal', text: '"id"', value: 'id' }] },
+        {
+          name: 'partitionKey',
+          kind: 'object',
+          text: '{ … }',
+          fields: [{ name: 'name', kind: 'literal', text: '"id"', value: 'id' }],
+        },
       ],
     });
   });
 
   it('sets a field inside an object the code writes, keeping its other fields', () => {
     const props = withIntents(
-      { form: 'object', props: [{ name: 'k', kind: 'object', text: '{…}', fields: [{ name: 'a', kind: 'literal', text: '1', value: 1 }, { name: 'b', kind: 'literal', text: '2', value: 2 }] }] },
+      {
+        form: 'object',
+        props: [
+          {
+            name: 'k',
+            kind: 'object',
+            text: '{…}',
+            fields: [
+              { name: 'a', kind: 'literal', text: '1', value: 1 },
+              { name: 'b', kind: 'literal', text: '2', value: 2 },
+            ],
+          },
+        ],
+      },
       [set(['k', 'a'], { kind: 'number', value: 9 })],
     );
-    expect(props).toMatchObject({ props: [{ fields: [{ name: 'a', value: 9 }, { name: 'b', value: 2 }] }] });
+    expect(props).toMatchObject({
+      props: [
+        {
+          fields: [
+            { name: 'a', value: 9 },
+            { name: 'b', value: 2 },
+          ],
+        },
+      ],
+    });
   });
 
   it('shows enums and quantities as the code would write them', () => {
-    expect(withIntents(undefined, [set(['p'], { kind: 'enum', type: 'aws-cdk-lib.aws_s3.BucketEncryption', member: 'KMS' }), set(['t'], { kind: 'duration', unit: 'days', amount: 2 })])).toEqual({
+    expect(
+      withIntents(undefined, [
+        set(['p'], { kind: 'enum', type: 'aws-cdk-lib.aws_s3.BucketEncryption', member: 'KMS' }),
+        set(['t'], { kind: 'duration', unit: 'days', amount: 2 }),
+      ]),
+    ).toEqual({
       form: 'object',
       props: [
-        { name: 'p', kind: 'expression', text: 'BucketEncryption.KMS', member: { type: 'BucketEncryption', name: 'KMS' } },
-        { name: 't', kind: 'expression', text: 'Duration.days(2)', quantity: { type: 'Duration', unit: 'days', amount: 2 } },
+        {
+          name: 'p',
+          kind: 'expression',
+          text: 'BucketEncryption.KMS',
+          member: { type: 'BucketEncryption', name: 'KMS' },
+        },
+        {
+          name: 't',
+          kind: 'expression',
+          text: 'Duration.days(2)',
+          quantity: { type: 'Duration', unit: 'days', amount: 2 },
+        },
       ],
     });
   });
@@ -95,7 +166,12 @@ describe('withIntents', () => {
 });
 
 describe('renameId', () => {
-  const rename = (path: string, newId: string, literalId = path.split('/').at(-1)!): Intent => ({ type: 'renameId', path, expect: { className: 's3.Bucket', literalId }, newId });
+  const rename = (path: string, newId: string, literalId = path.split('/').at(-1)!): Intent => ({
+    type: 'renameId',
+    path,
+    expect: { className: 's3.Bucket', literalId },
+    newId,
+  });
 
   it('is worded for the Draft list', () => {
     expect(describeIntent(rename('A/B', 'C'))).toBe('Construct ID → "C"');
@@ -144,7 +220,10 @@ describe('renameId', () => {
   describe('onBase', () => {
     it('names the Base’s path and ID in an edit made after a rename', () => {
       const edit = set(['a'], bool(true), 'A/C');
-      expect(onBase([rename('A/B', 'C'), { ...edit, expect: { ...edit.expect, literalId: 'C' } }])[1]).toMatchObject({ path: 'A/B', expect: { literalId: 'B' } });
+      expect(onBase([rename('A/B', 'C'), { ...edit, expect: { ...edit.expect, literalId: 'C' } }])[1]).toMatchObject({
+        path: 'A/B',
+        expect: { literalId: 'B' },
+      });
     });
 
     it('keeps the ID an edit expects when it is a Node beneath the renamed one that it names', () => {
@@ -161,7 +240,14 @@ describe('renameId', () => {
 });
 
 describe('adding and copying', () => {
-  const add: Intent = { type: 'addNode', path: 'S', expect: { className: 'Stack', literalId: 'S' }, fqn: 'aws-cdk-lib.aws_s3.Bucket', id: 'Data', props: [] };
+  const add: Intent = {
+    type: 'addNode',
+    path: 'S',
+    expect: { className: 'Stack', literalId: 'S' },
+    fqn: 'aws-cdk-lib.aws_s3.Bucket',
+    id: 'Data',
+    props: [],
+  };
   const copy: Intent = { type: 'duplicate', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'A2' };
 
   it('words them for the Draft list', () => {
@@ -172,7 +258,9 @@ describe('adding and copying', () => {
   it('names the path of the construct they make', () => {
     expect(createdPath(add)).toBe('S/Data');
     expect(createdPath(copy)).toBe('S/A2');
-    expect(createdPath({ type: 'renameId', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'B' })).toBeUndefined();
+    expect(
+      createdPath({ type: 'renameId', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'B' }),
+    ).toBeUndefined();
   });
 
   it('keeps every one as its own step of undo', () => {
@@ -183,20 +271,44 @@ describe('adding and copying', () => {
 
   it('names the Stack by its old path once it has been renamed', () => {
     const rename: Intent = { type: 'renameId', path: 'S', expect: { className: 'Stack', literalId: 'S' }, newId: 'T' };
-    expect(onBase([rename, { ...add, path: 'T', expect: { className: 'Stack', literalId: 'T' } }])[1]).toMatchObject({ path: 'S', expect: { literalId: 'S' } });
+    expect(onBase([rename, { ...add, path: 'T', expect: { className: 'Stack', literalId: 'T' } }])[1]).toMatchObject({
+      path: 'S',
+      expect: { literalId: 'S' },
+    });
   });
 });
 
 describe('Reference intents', () => {
   const ref = (id: string) => ({ path: `A/${id}`, className: 'kms.Key', literalId: id });
   const expectB = { className: 's3.Bucket', literalId: 'B' };
-  const add = (to: string, prop = 'encryptionKey'): Intent => ({ type: 'addReference', path: 'A/B', expect: expectB, prop, to: ref(to) });
-  const remove = (to: string, prop = 'encryptionKey'): Intent => ({ type: 'removeReference', path: 'A/B', expect: expectB, prop, to: ref(to) });
-  const repoint = (was: string, to: string, prop = 'encryptionKey'): Intent => ({ type: 'repointReference', path: 'A/B', expect: expectB, prop, was: ref(was), to: ref(to) });
+  const add = (to: string, prop = 'encryptionKey'): Intent => ({
+    type: 'addReference',
+    path: 'A/B',
+    expect: expectB,
+    prop,
+    to: ref(to),
+  });
+  const remove = (to: string, prop = 'encryptionKey'): Intent => ({
+    type: 'removeReference',
+    path: 'A/B',
+    expect: expectB,
+    prop,
+    to: ref(to),
+  });
+  const repoint = (was: string, to: string, prop = 'encryptionKey'): Intent => ({
+    type: 'repointReference',
+    path: 'A/B',
+    expect: expectB,
+    prop,
+    was: ref(was),
+    to: ref(to),
+  });
 
   it('words each of them for the Draft list', () => {
     expect(describeIntent(add('Key'))).toBe('encryptionKey → Key');
-    expect(describeIntent({ ...(add('Key') as Extract<Intent, { type: 'addReference' }>), many: true })).toBe('encryptionKey → add Key');
+    expect(describeIntent({ ...(add('Key') as Extract<Intent, { type: 'addReference' }>), many: true })).toBe(
+      'encryptionKey → add Key',
+    );
     expect(describeIntent(remove('Key'))).toBe('encryptionKey → remove Key');
     expect(describeIntent(repoint('Key', 'Other'))).toBe('encryptionKey → Other (was Key)');
   });
@@ -212,7 +324,9 @@ describe('Reference intents', () => {
 
   it('folds a re-point of a Reference just added into the add, and a run of re-points into one', () => {
     expect(stage(stage(emptyDraftHistory, add('Key')), repoint('Key', 'Other')).intents).toEqual([add('Other')]);
-    expect(stage(stage(emptyDraftHistory, repoint('Key', 'Other')), repoint('Other', 'Third')).intents).toEqual([repoint('Key', 'Third')]);
+    expect(stage(stage(emptyDraftHistory, repoint('Key', 'Other')), repoint('Other', 'Third')).intents).toEqual([
+      repoint('Key', 'Third'),
+    ]);
   });
 
   it('drops a re-point that is pointed back, and turns a re-point then removal into the removal of the first Node', () => {
@@ -221,14 +335,30 @@ describe('Reference intents', () => {
   });
 
   it('names the Nodes by their paths on the Base, after a rename', () => {
-    const rename: Intent = { type: 'renameId', path: 'A/Key', expect: { className: 'kms.Key', literalId: 'Key' }, newId: 'Vault' };
-    const [, onDisk] = onBase([rename, { ...(add('Vault') as Extract<Intent, { type: 'addReference' }>), to: { path: 'A/Vault', className: 'kms.Key', literalId: 'Vault' } }]);
+    const rename: Intent = {
+      type: 'renameId',
+      path: 'A/Key',
+      expect: { className: 'kms.Key', literalId: 'Key' },
+      newId: 'Vault',
+    };
+    const [, onDisk] = onBase([
+      rename,
+      {
+        ...(add('Vault') as Extract<Intent, { type: 'addReference' }>),
+        to: { path: 'A/Vault', className: 'kms.Key', literalId: 'Vault' },
+      },
+    ]);
     expect(onDisk).toMatchObject({ type: 'addReference', to: { path: 'A/Key', literalId: 'Key' } });
   });
 });
 
 describe('stage with Connection edits', () => {
-  const self = { path: 'S/A', expect: { className: 's3.Bucket', literalId: 'A' }, peer: { path: 'S/B', className: 'lambda.Function', literalId: 'B' }, kind: 'grant' as const };
+  const self = {
+    path: 'S/A',
+    expect: { className: 's3.Bucket', literalId: 'A' },
+    peer: { path: 'S/B', className: 'lambda.Function', literalId: 'B' },
+    kind: 'grant' as const,
+  };
   const plan = (method: string[]) => ({ on: 'self' as const, method, args: ['{peer}'], role: 'primary' as const });
   const add = (method: string[]): Intent => ({ type: 'addConnection', ...self, calls: [plan(method)] });
   const refOf = (method: string[]) => ({ role: 'primary' as const, on: 'S/A', peer: 'S/B', method });
@@ -241,7 +371,12 @@ describe('stage with Connection edits', () => {
 
   it('turns an added Connection that is then changed into the one Connection it ends as', () => {
     const added = stage(emptyDraftHistory, add(['grantRead']));
-    const changed = stage(added, { type: 'replaceConnection', ...self, was: [refOf(['grantRead'])], calls: [plan(['grantWrite'])] });
+    const changed = stage(added, {
+      type: 'replaceConnection',
+      ...self,
+      was: [refOf(['grantRead'])],
+      calls: [plan(['grantWrite'])],
+    });
     expect(changed.intents).toEqual([add(['grantWrite'])]);
   });
 

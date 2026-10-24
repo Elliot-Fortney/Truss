@@ -7,12 +7,38 @@ import type { Intent } from './intents.ts';
 
 const text = 'aaaa\nnew X(this, "A", {})\nnew X(this, "B", {})\nzzzz\n';
 const span = (line: number, endCol: number) => ({ file: 'f.ts', start: { line, col: 1 }, end: { line, col: endCol } });
-const node = (line: number): NodeFacts => ({ span: span(line, 26), className: 'X', literalId: 'A', pathsOnSpan: 1, binding: 'none' });
+const node = (line: number): NodeFacts => ({
+  span: span(line, 26),
+  className: 'X',
+  literalId: 'A',
+  pathsOnSpan: 1,
+  binding: 'none',
+});
 const facts: Facts = { nodes: { 'S/A': node(2), 'S/B': { ...node(3), literalId: 'B' }, 'T/A': node(2) } };
-const A: Array<[string, string]> = [['S/A', 'x'], ['T/A', 'x']];
-const intent = (path: string): Intent => ({ type: 'setProp', path, expect: { className: 'X', literalId: 'A' }, prop: ['p'], value: { kind: 'boolean', value: true } });
-const tree = (...paths: Array<[string, string]>): TreeNode => ({ id: '', path: '', fqn: 'App', children: paths.map(([path, fqn]) => ({ id: path, path, fqn, children: [] })) });
-const assembly = (t: TreeNode, stacks: Assembly['stacks'] = []): Assembly => ({ schemaVersion: '1', tree: t, stacks, creation: {}, resourceRefs: [] });
+const A: Array<[string, string]> = [
+  ['S/A', 'x'],
+  ['T/A', 'x'],
+];
+const intent = (path: string): Intent => ({
+  type: 'setProp',
+  path,
+  expect: { className: 'X', literalId: 'A' },
+  prop: ['p'],
+  value: { kind: 'boolean', value: true },
+});
+const tree = (...paths: Array<[string, string]>): TreeNode => ({
+  id: '',
+  path: '',
+  fqn: 'App',
+  children: paths.map(([path, fqn]) => ({ id: path, path, fqn, children: [] })),
+});
+const assembly = (t: TreeNode, stacks: Assembly['stacks'] = []): Assembly => ({
+  schemaVersion: '1',
+  tree: t,
+  stacks,
+  creation: {},
+  resourceRefs: [],
+});
 const files = new Map([['f.ts', text]]);
 const inA: TextChange = { start: text.indexOf('{}'), end: text.indexOf('{}') + 2, text: '{ p: true }' };
 const check = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
@@ -39,10 +65,18 @@ describe('judgeEdit', () => {
 
   it('fails a change outside the calls the intents name, but lets an import line in', () => {
     const outside: TextChange = { start: 0, end: 4, text: 'bbbb' };
-    expect(check({ changes: { 'f.ts': [inA, outside] } })).toEqual([expect.stringContaining('outside the code it was meant to change')]);
-    const next: TextChange = { start: text.indexOf('{}', inA.end), end: text.indexOf('{}', inA.end) + 2, text: '{ x: 1 }' };
+    expect(check({ changes: { 'f.ts': [inA, outside] } })).toEqual([
+      expect.stringContaining('outside the code it was meant to change'),
+    ]);
+    const next: TextChange = {
+      start: text.indexOf('{}', inA.end),
+      end: text.indexOf('{}', inA.end) + 2,
+      text: '{ x: 1 }',
+    };
     expect(check({ changes: { 'f.ts': [inA, next] } })).toHaveLength(1);
-    expect(check({ changes: { 'f.ts': [inA, { start: 0, end: 0, text: 'import x;\n', purpose: 'import' }] } })).toEqual([]);
+    expect(check({ changes: { 'f.ts': [inA, { start: 0, end: 0, text: 'import x;\n', purpose: 'import' }] } })).toEqual(
+      [],
+    );
   });
 
   it('fails an edit that changes a construct other than the targets', () => {
@@ -61,7 +95,10 @@ describe('judgeEdit', () => {
   });
 
   it('lets a target Stack’s environment change and no other Stack’s', () => {
-    const stacks = (env: string, other: string) => [{ path: 'S/A', env }, { path: 'Z', env: other }];
+    const stacks = (env: string, other: string) => [
+      { path: 'S/A', env },
+      { path: 'Z', env: other },
+    ];
     const after = (env: string, other: string) => assembly(tree(...A, ['S/B', 'x']), stacks(env, other));
     const before = assembly(tree(...A, ['S/B', 'x']), stacks('aws://1/a', 'aws://1/a'));
     expect(check({ before, after: after('aws://1/b', 'aws://1/a') })).toEqual([]);
@@ -73,7 +110,8 @@ describe('judgeEdit of a rename', () => {
   const rename: Intent = { type: 'renameId', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'C' };
   const base = assembly(tree(...A, ['S/B', 'x'], ['S/A/Resource', 'r']));
   const moved = (...rest: Array<[string, string]>) => assembly(tree(['T/A', 'x'], ['S/B', 'x'], ...rest));
-  const judge = (after: Assembly, over: Partial<Parameters<typeof judgeEdit>[0]> = {}) => judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents: [rename], before: base, after, ...over });
+  const judge = (after: Assembly, over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
+    judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents: [rename], before: base, after, ...over });
 
   it('holds when the construct and what is beneath it are somewhere else and nothing else is', () => {
     expect(judge(moved(['S/C', 'x'], ['S/C/Resource', 'r']))).toEqual([]);
@@ -95,11 +133,24 @@ describe('judgeEdit of a rename', () => {
   it('follows the new path of a Stack that is renamed', () => {
     const stack: Intent = { type: 'renameId', path: 'S', expect: { className: 'X', literalId: 'A' }, newId: 'R' };
     const stackFacts: Facts = { nodes: { S: node(2) } };
-    const before = assembly(tree(['S', 'x'], ['S/B', 'x']), [{ path: 'S', env: 'a' }, { path: 'Z', env: 'a' }]);
-    const after = assembly(tree(['R', 'x'], ['R/B', 'x']), [{ path: 'R', env: 'a' }, { path: 'Z', env: 'a' }]);
-    expect(judgeEdit({ files, changes: { 'f.ts': [inA] }, facts: stackFacts, intents: [stack], before, after })).toEqual([]);
-    const other = assembly(tree(['R', 'x'], ['R/B', 'x']), [{ path: 'R', env: 'a' }, { path: 'Z', env: 'b' }]);
-    expect(judgeEdit({ files, changes: { 'f.ts': [inA] }, facts: stackFacts, intents: [stack], before, after: other })).toEqual([expect.stringContaining('Stack')]);
+    const before = assembly(tree(['S', 'x'], ['S/B', 'x']), [
+      { path: 'S', env: 'a' },
+      { path: 'Z', env: 'a' },
+    ]);
+    const after = assembly(tree(['R', 'x'], ['R/B', 'x']), [
+      { path: 'R', env: 'a' },
+      { path: 'Z', env: 'a' },
+    ]);
+    expect(
+      judgeEdit({ files, changes: { 'f.ts': [inA] }, facts: stackFacts, intents: [stack], before, after }),
+    ).toEqual([]);
+    const other = assembly(tree(['R', 'x'], ['R/B', 'x']), [
+      { path: 'R', env: 'a' },
+      { path: 'Z', env: 'b' },
+    ]);
+    expect(
+      judgeEdit({ files, changes: { 'f.ts': [inA] }, facts: stackFacts, intents: [stack], before, after: other }),
+    ).toEqual([expect.stringContaining('Stack')]);
   });
 
   it('judges an edit made after the rename by the construct’s path in the Base', () => {
@@ -125,12 +176,32 @@ describe('newDiagnostics', () => {
 });
 
 describe('judgeEdit for added and copied constructs', () => {
-  const add: Intent = { type: 'addNode', path: 'S', expect: { className: 'Stack', literalId: 'S' }, fqn: 'lib.Bucket', id: 'New', props: [] };
+  const add: Intent = {
+    type: 'addNode',
+    path: 'S',
+    expect: { className: 'Stack', literalId: 'S' },
+    fqn: 'lib.Bucket',
+    id: 'New',
+    props: [],
+  };
   const withStack: Facts = { nodes: { ...facts.nodes, S: { ...node(1), className: 'Stack', literalId: 'S' } } };
-  const statement: TextChange = { start: text.indexOf('zzzz'), end: text.indexOf('zzzz'), text: 'new Bucket(this, "New");\n', purpose: 'add' };
+  const statement: TextChange = {
+    start: text.indexOf('zzzz'),
+    end: text.indexOf('zzzz'),
+    text: 'new Bucket(this, "New");\n',
+    purpose: 'add',
+  };
   const base = assembly(tree(...A, ['S/B', 'x']));
   const run = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
-    judgeEdit({ files, changes: { 'f.ts': [statement] }, facts: withStack, intents: [add], before: base, after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Bucket'], ['S/New/Resource', 'lib.CfnBucket'])), ...over });
+    judgeEdit({
+      files,
+      changes: { 'f.ts': [statement] },
+      facts: withStack,
+      intents: [add],
+      before: base,
+      after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Bucket'], ['S/New/Resource', 'lib.CfnBucket'])),
+      ...over,
+    });
 
   it('holds for one new path of the expected class and what it creates beneath itself', () => {
     expect(run()).toEqual([]);
@@ -142,15 +213,27 @@ describe('judgeEdit for added and copied constructs', () => {
 
   it('fails when the new path is missing, is another class, or something else changed too', () => {
     expect(run({ after: base })[0]).toContain('S/New was not added');
-    expect(run({ after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Other'])) })[0]).toContain('not the lib.Bucket');
+    expect(run({ after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Other'])) })[0]).toContain(
+      'not the lib.Bucket',
+    );
     expect(run({ after: assembly(tree(...A, ['S/B', 'changed'], ['S/New', 'lib.Bucket'])) })[0]).toContain('S/B');
-    expect(run({ after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Bucket'], ['S/Extra', 'lib.Bucket'])) })[0]).toContain('S/Extra');
+    expect(
+      run({ after: assembly(tree(...A, ['S/B', 'x'], ['S/New', 'lib.Bucket'], ['S/Extra', 'lib.Bucket'])) })[0],
+    ).toContain('S/Extra');
   });
 
   it('expects the copy of a Node to be the same class under the new ID', () => {
     const copy: Intent = { type: 'duplicate', path: 'S/B', expect: { className: 'X', literalId: 'B' }, newId: 'B2' };
     const mine = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
-      judgeEdit({ files, changes: { 'f.ts': [statement] }, facts, intents: [copy], before: base, after: assembly(tree(...A, ['S/B', 'x'], ['S/B2', 'x'])), ...over });
+      judgeEdit({
+        files,
+        changes: { 'f.ts': [statement] },
+        facts,
+        intents: [copy],
+        before: base,
+        after: assembly(tree(...A, ['S/B', 'x'], ['S/B2', 'x'])),
+        ...over,
+      });
     expect(mine()).toEqual([]);
     expect(mine({ after: assembly(tree(...A, ['S/B', 'x'], ['S/B2', 'y'])) })[0]).toContain('S/B2');
   });
@@ -158,10 +241,23 @@ describe('judgeEdit for added and copied constructs', () => {
 
 describe('judgeEdit for a removed Node', () => {
   const gone: Intent = { type: 'removeNode', path: 'S/B', expect: { className: 'X', literalId: 'B' } };
-  const cut: TextChange = { start: text.indexOf('new X(this, "B"'), end: text.indexOf('zzzz'), text: '', purpose: 'remove' };
+  const cut: TextChange = {
+    start: text.indexOf('new X(this, "B"'),
+    end: text.indexOf('zzzz'),
+    text: '',
+    purpose: 'remove',
+  };
   const base = assembly(tree(...A, ['S/B', 'x'], ['S/B/Resource', 'r']));
   const run = (over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
-    judgeEdit({ files, changes: { 'f.ts': [cut] }, facts, intents: [gone], before: base, after: assembly(tree(...A)), ...over });
+    judgeEdit({
+      files,
+      changes: { 'f.ts': [cut] },
+      facts,
+      intents: [gone],
+      before: base,
+      after: assembly(tree(...A)),
+      ...over,
+    });
 
   it('holds when exactly that subtree is gone', () => {
     expect(run()).toEqual([]);
@@ -184,7 +280,13 @@ describe('judgeEdit for a removed Node', () => {
 });
 
 describe('judgeEdit on a Reference', () => {
-  const resource = (path: string): TreeNode => ({ id: path.split('/').at(-1)!, path, fqn: 'x', cfnType: 'AWS::X::Y', children: [] });
+  const resource = (path: string): TreeNode => ({
+    id: path.split('/').at(-1)!,
+    path,
+    fqn: 'x',
+    cfnType: 'AWS::X::Y',
+    children: [],
+  });
   const withResources = (): TreeNode => ({
     id: '',
     path: '',
@@ -195,9 +297,22 @@ describe('judgeEdit on a Reference', () => {
       { id: 'T/A', path: 'T/A', fqn: 'x', children: [] },
     ],
   });
-  const add: Extract<Intent, { type: 'addReference' }> = { type: 'addReference', path: 'S/A', expect: { className: 'X', literalId: 'A' }, prop: 'p', to: { path: 'S/B', className: 'X', literalId: 'B' } };
+  const add: Extract<Intent, { type: 'addReference' }> = {
+    type: 'addReference',
+    path: 'S/A',
+    expect: { className: 'X', literalId: 'A' },
+    prop: 'p',
+    to: { path: 'S/B', className: 'X', literalId: 'B' },
+  };
   const judge = (resourceRefs: Assembly['resourceRefs'], intents: Intent[] = [add]) =>
-    judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents, before: assembly(withResources()), after: { ...assembly(withResources()), resourceRefs } });
+    judgeEdit({
+      files,
+      changes: { 'f.ts': [inA] },
+      facts,
+      intents,
+      before: assembly(withResources()),
+      after: { ...assembly(withResources()), resourceRefs },
+    });
 
   it('holds when a resource of the source points at a resource of the target', () => {
     expect(judge([{ from: 'S/A/Resource', to: 'S/B/Resource' }])).toEqual([]);
@@ -208,15 +323,46 @@ describe('judgeEdit on a Reference', () => {
   });
 
   it('checks a re-point the same way, and not a removal', () => {
-    const repoint: Intent = { type: 'repointReference', path: 'S/A', expect: add.expect, prop: 'p', was: { path: 'S/C', className: 'X', literalId: 'C' }, to: { path: 'S/B', className: 'X', literalId: 'B' } };
+    const repoint: Intent = {
+      type: 'repointReference',
+      path: 'S/A',
+      expect: add.expect,
+      prop: 'p',
+      was: { path: 'S/C', className: 'X', literalId: 'C' },
+      to: { path: 'S/B', className: 'X', literalId: 'B' },
+    };
     expect(judge([], [repoint])).toEqual(['S/A does not point at S/B after the edit']);
-    const remove: Intent = { type: 'removeReference', path: 'S/A', expect: add.expect, prop: 'p', to: { path: 'S/B', className: 'X', literalId: 'B' } };
+    const remove: Intent = {
+      type: 'removeReference',
+      path: 'S/A',
+      expect: add.expect,
+      prop: 'p',
+      to: { path: 'S/B', className: 'X', literalId: 'B' },
+    };
     expect(judge([], [remove])).toEqual([]);
   });
 
   it('does not check a Reference to a Node with no resource, or one made in another Stack', () => {
-    const bare: TreeNode = { id: '', path: '', fqn: 'App', children: [{ id: 'S/A', path: 'S/A', fqn: 'x', children: [resource('S/A/Resource')] }, { id: 'S/B', path: 'S/B', fqn: 'x', children: [] }, { id: 'T/A', path: 'T/A', fqn: 'x', children: [] }] };
-    expect(judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents: [add], before: assembly(bare), after: assembly(bare) })).toEqual([]);
+    const bare: TreeNode = {
+      id: '',
+      path: '',
+      fqn: 'App',
+      children: [
+        { id: 'S/A', path: 'S/A', fqn: 'x', children: [resource('S/A/Resource')] },
+        { id: 'S/B', path: 'S/B', fqn: 'x', children: [] },
+        { id: 'T/A', path: 'T/A', fqn: 'x', children: [] },
+      ],
+    };
+    expect(
+      judgeEdit({
+        files,
+        changes: { 'f.ts': [inA] },
+        facts,
+        intents: [add],
+        before: assembly(bare),
+        after: assembly(bare),
+      }),
+    ).toEqual([]);
     expect(judge([], [{ ...add, to: { path: 'T/B', className: 'X', literalId: 'B' } }])).toEqual([]);
   });
 });

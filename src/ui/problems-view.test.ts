@@ -2,10 +2,23 @@ import { describe, expect, it } from 'vitest';
 import type { Problem } from '../core/problems.ts';
 import { jumpTarget, listProblems } from './problems-view.ts';
 
-const p = (id: string, extra: Partial<Problem> = {}): Problem => ({ id, severity: 'error', source: 'annotation', message: id, draft: false, blocking: false, ...extra });
+const p = (id: string, extra: Partial<Problem> = {}): Problem => ({
+  id,
+  severity: 'error',
+  source: 'annotation',
+  message: id,
+  draft: false,
+  blocking: false,
+  ...extra,
+});
 
 describe('listProblems', () => {
-  const all = [p('info', { severity: 'info' }), p('warn', { severity: 'warning', draft: true }), p('old-error'), p('new-error', { draft: true })];
+  const all = [
+    p('info', { severity: 'info' }),
+    p('warn', { severity: 'warning', draft: true }),
+    p('old-error'),
+    p('new-error', { draft: true }),
+  ];
   it('lists errors first, then warnings, in the order found, and never info', () => {
     expect(listProblems(all, 'all').map((x) => x.id)).toEqual(['old-error', 'new-error', 'warn']);
   });

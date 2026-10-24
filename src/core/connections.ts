@@ -69,7 +69,11 @@ type Kind = 'grant' | 'integration' | 'network';
 const READ_ONLY = 'Truss reads this from what the app synthesizes, and no call it recognises makes it';
 const CROSS_STACK = "It reads another Stack's export through Fn::ImportValue, which Truss does not edit";
 
-const NOUN: Record<Kind, [string, string]> = { grant: ['permission', 'permissions'], integration: ['trigger', 'triggers'], network: ['rule', 'rules'] };
+const NOUN: Record<Kind, [string, string]> = {
+  grant: ['permission', 'permissions'],
+  integration: ['trigger', 'triggers'],
+  network: ['rule', 'rules'],
+};
 
 const callView = (c: CallFacts): EdgeCallView => ({
   id: c.id,
@@ -104,7 +108,12 @@ export interface Connections {
  * listed on the Node that owns it instead. A reference across Stacks is a read-only Reference edge, unless the code's own
  * References (`existing`) already draw one between the same Nodes.
  */
-export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly ConnectableNode[], existing: readonly Pick<ConnectionEdge, 'from' | 'to'>[]): Connections {
+export function connectionsOf(
+  assembly: Assembly,
+  facts: Facts,
+  nodes: readonly ConnectableNode[],
+  existing: readonly Pick<ConnectionEdge, 'from' | 'to'>[],
+): Connections {
   const ids = new Set(nodes.map((n) => n.id));
   const label = new Map(nodes.map((n) => [n.id, n.label]));
   const unitOf = (path: string): string | undefined => {
@@ -114,13 +123,21 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
     }
     return undefined;
   };
-  const externals = nodes.flatMap((n) => (facts.nodes[n.id]?.identifiers ?? []).map((name) => ({ id: n.id, pattern: new RegExp(`(^|[:/])${escapeRegExp(name)}($|[/:*])`) })));
+  const externals = nodes.flatMap((n) =>
+    (facts.nodes[n.id]?.identifiers ?? []).map((name) => ({
+      id: n.id,
+      pattern: new RegExp(`(^|[:/])${escapeRegExp(name)}($|[/:*])`),
+    })),
+  );
   const endNodes = (end: EffectEnd): string[] => {
     const found = [...new Set(end.paths.flatMap((p) => unitOf(p) ?? []))];
     return found.length > 0 ? found : [...new Set(externals.filter((x) => x.pattern.test(end.text)).map((x) => x.id))];
   };
   const pretty = (end: EffectEnd): string => {
-    const text = end.text.replace(/\{([^}]+)\}/g, (_, path: string) => label.get(unitOf(path) ?? '') ?? path.split('/').slice(-2).join('/'));
+    const text = end.text.replace(
+      /\{([^}]+)\}/g,
+      (_, path: string) => label.get(unitOf(path) ?? '') ?? path.split('/').slice(-2).join('/'),
+    );
     return text === '' ? 'nothing' : text;
   };
 
@@ -135,7 +152,11 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
   for (const effect of assembly.effects ?? []) {
     const sources = endNodes(effect.source);
     const targets = endNodes(effect.target);
-    const view: EffectView = { detail: effect.detail, summary: `${effect.detail} · ${pretty(effect.source)} → ${pretty(effect.target)}`, at: effect.at };
+    const view: EffectView = {
+      detail: effect.detail,
+      summary: `${effect.detail} · ${pretty(effect.source)} → ${pretty(effect.target)}`,
+      at: effect.at,
+    };
     const pairs = sources.flatMap((from) => targets.filter((to) => to !== from).map((to) => [from, to] as const));
     if (pairs.length === 0) {
       const owner = sources[0] ?? unitOf(effect.at) ?? targets[0];
@@ -159,7 +180,9 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
     const mine = calls.get(`${kind}\0${from}\0${to}`) ?? [];
     calls.delete(`${kind}\0${from}\0${to}`);
     const primary = mine.find((c) => c.role === 'primary');
-    const source = primary?.span ? { file: primary.span.file, line: primary.span.start.line, col: primary.span.start.col } : (nodeById.get(from)?.source ?? nodeById.get(to)?.source);
+    const source = primary?.span
+      ? { file: primary.span.file, line: primary.span.start.line, col: primary.span.start.col }
+      : (nodeById.get(from)?.source ?? nodeById.get(to)?.source);
     const [one, many] = NOUN[kind];
     const lock = readOnlyOf(mine);
     return {
@@ -202,7 +225,17 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
     const id = `${from}->${to}:${r.prop}`;
     if (out.some((e) => e.id === id)) continue;
     const source = nodeById.get(from)?.source;
-    out.push({ id, kind: 'reference', from, to, prop: r.prop, text: 'Fn::ImportValue', readOnly: CROSS_STACK, fromSynth: true, ...(source ? { source } : {}) });
+    out.push({
+      id,
+      kind: 'reference',
+      from,
+      to,
+      prop: r.prop,
+      text: 'Fn::ImportValue',
+      readOnly: CROSS_STACK,
+      fromSynth: true,
+      ...(source ? { source } : {}),
+    });
   }
   return { edges: out, other };
 }

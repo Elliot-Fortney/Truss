@@ -1,4 +1,17 @@
-import { applyNodeChanges, Background, Controls, Handle, MarkerType, Position, ReactFlow, useStore, type Edge, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
+import {
+  applyNodeChanges,
+  Background,
+  Controls,
+  Handle,
+  MarkerType,
+  Position,
+  ReactFlow,
+  useStore,
+  type Edge,
+  type Node,
+  type NodeProps,
+  type OnNodesChange,
+} from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import { withId } from '../core/construct-id.ts';
@@ -73,7 +86,12 @@ interface LayerNodeData extends Record<string, unknown> {
 function ProblemBadge({ badge }: { badge: Badge | undefined }) {
   if (!badge || (badge.errors === 0 && badge.warnings === 0)) return null;
   const error = badge.errors > 0;
-  const title = [badge.errors > 0 ? `${badge.errors} ${badge.errors === 1 ? 'error' : 'errors'}` : '', badge.warnings > 0 ? `${badge.warnings} ${badge.warnings === 1 ? 'warning' : 'warnings'}` : ''].filter(Boolean).join(', ');
+  const title = [
+    badge.errors > 0 ? `${badge.errors} ${badge.errors === 1 ? 'error' : 'errors'}` : '',
+    badge.warnings > 0 ? `${badge.warnings} ${badge.warnings === 1 ? 'warning' : 'warnings'}` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
     <span className={`problem-badge ${error ? 'error' : 'warning'}`} title={title} role="img" aria-label={title}>
       {badge.errors > 0 ? `✕ ${badge.errors}` : ''}
@@ -110,7 +128,17 @@ const ICON_SIZE = 36;
 const ICON_ONLY_SIZE = 44;
 const LAYER_ICON_SIZE = 24;
 
-function ExpandToggle({ id, label, expanded, onToggle }: { id: string; label: string; expanded: boolean; onToggle(id: string): void }) {
+function ExpandToggle({
+  id,
+  label,
+  expanded,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  expanded: boolean;
+  onToggle(id: string): void;
+}) {
   return (
     <button
       type="button"
@@ -132,13 +160,38 @@ function ExpandToggle({ id, label, expanded, onToggle }: { id: string; label: st
 function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
   // Zoomed out, a name is too small to read, so the Node is its icon; the full name stays in the tooltip.
   const showName = useStore((s) => namesShownAt(s.transform[2]));
-  const className = ['truss-node', data.changed ? 'changed' : '', data.removed ? 'removed' : '', data.external ? 'external' : '', data.hoisted ? 'hoisted' : '', data.expanded ? 'expanded' : '', showName ? '' : 'icon-only'].filter(Boolean).join(' ');
-  const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
+  const className = [
+    'truss-node',
+    data.changed ? 'changed' : '',
+    data.removed ? 'removed' : '',
+    data.external ? 'external' : '',
+    data.hoisted ? 'hoisted' : '',
+    data.expanded ? 'expanded' : '',
+    showName ? '' : 'icon-only',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const tooltip = data.external
+    ? `${data.label} · ${data.fqn} · refers to an existing resource`
+    : `${data.label} · ${data.fqn}`;
   return (
     <div className={className} title={tooltip}>
       {/* Lines end here. A drag starts only from the right-hand handle of a Node whose props Truss can edit, and ends where it is dropped, not on a handle. */}
-      <Handle type="target" position={Position.Left} isConnectableStart={false} isConnectableEnd={false} className="truss-handle" />
-      <Handle type="source" position={Position.Right} isConnectableStart={data.connectable === true} isConnectableEnd={false} className={data.connectable ? 'truss-handle drag-handle' : 'truss-handle'} title={data.connectable ? 'Drag to connect' : undefined} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        isConnectableStart={false}
+        isConnectableEnd={false}
+        className="truss-handle"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        isConnectableStart={data.connectable === true}
+        isConnectableEnd={false}
+        className={data.connectable ? 'truss-handle drag-handle' : 'truss-handle'}
+        title={data.connectable ? 'Drag to connect' : undefined}
+      />
       <div className="node-head">
         <NodeIcon icon={data.icon} size={showName ? ICON_SIZE : ICON_ONLY_SIZE} />
         {/* Always in the page, so screen readers have the name; zoomed out it is clipped away rather than removed. */}
@@ -146,7 +199,9 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
           <div className="node-label">{data.label}</div>
           <div className="node-subtitle">{data.subtitle}</div>
         </div>
-        {data.expandable && data.onToggle ? <ExpandToggle id={id} label={data.label} expanded={data.expanded === true} onToggle={data.onToggle} /> : null}
+        {data.expandable && data.onToggle ? (
+          <ExpandToggle id={id} label={data.label} expanded={data.expanded === true} onToggle={data.onToggle} />
+        ) : null}
       </div>
       {data.lock ? (
         <span className="node-lock" title={data.lock} aria-label={`Read-only: ${data.lock}`} role="img">
@@ -188,7 +243,9 @@ function LayerNode({ id, data }: NodeProps<Node<LayerNodeData>>) {
           <div className="node-label">{data.label}</div>
           <div className="node-subtitle">{data.subtitle}</div>
         </div>
-        {data.expandable ? <ExpandToggle id={id} label={data.label} expanded={data.expanded} onToggle={data.onToggle} /> : null}
+        {data.expandable ? (
+          <ExpandToggle id={id} label={data.label} expanded={data.expanded} onToggle={data.onToggle} />
+        ) : null}
       </div>
       <ProblemBadge badge={data.badge} />
     </div>
@@ -207,10 +264,20 @@ type Layout = ReturnType<typeof layoutView>;
 
 /** The construct paths that are drawn: Stack boxes, Nodes, and the children of the Nodes that are open. */
 function drawnIds(layout: Layout): Set<string> {
-  return new Set([...layout.stacks.map((s) => s.id), ...layout.nodes.map((n) => n.id), ...layout.layers.map((l) => l.id)]);
+  return new Set([
+    ...layout.stacks.map((s) => s.id),
+    ...layout.nodes.map((n) => n.id),
+    ...layout.layers.map((l) => l.id),
+  ]);
 }
 
-function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, onToggle: (id: string) => void, editable: boolean): Node[] {
+function toFlowNodes(
+  view: View,
+  layout: Layout,
+  expanded: ReadonlySet<string>,
+  onToggle: (id: string) => void,
+  editable: boolean,
+): Node[] {
   const badges = badgesFor(view.problems, drawnIds(layout));
   const stacksById = new Map(view.stacks.map((s) => [s.id, s]));
   const boxesById = new Map(layout.stacks.map((b) => [b.id, b]));
@@ -227,7 +294,12 @@ function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, 
       ...(parent ? { parentId: stackNodeId(parent.id) } : {}),
       position: { x: box.x - (parent?.x ?? 0), y: box.y - (parent?.y ?? 0) },
       style: { width: box.width, height: box.height },
-      data: { label: stack.label, env: stack.env, ...(stack.changed ? { changed: true } : {}), ...(badges.has(stack.id) ? { badge: badges.get(stack.id)! } : {}) } satisfies StackData,
+      data: {
+        label: stack.label,
+        env: stack.env,
+        ...(stack.changed ? { changed: true } : {}),
+        ...(badges.has(stack.id) ? { badge: badges.get(stack.id)! } : {}),
+      } satisfies StackData,
       // Selecting a Stack opens its panel; it can't be dragged.
       draggable: false,
     };
@@ -296,25 +368,34 @@ function toFlowEdges(view: View): Edge[] {
   const causes = view.nodes.flatMap((n) =>
     (n.causedBy ?? [])
       .filter((cause) => shown.has(cause))
-      .map((cause): Edge => ({ id: `cause:${cause}>${n.id}`, source: cause, target: n.id, className: 'cause-edge', selectable: false, focusable: false })),
+      .map((cause): Edge => ({
+        id: `cause:${cause}>${n.id}`,
+        source: cause,
+        target: n.id,
+        className: 'cause-edge',
+        selectable: false,
+        focusable: false,
+      })),
   );
   const references = view.edges
     .filter((e) => shown.has(e.from) && shown.has(e.to))
-    .map(
-      (e): Edge => ({
-        id: e.id,
-        source: e.from,
-        target: e.to,
-        label: edgeLabel(e),
-        className: [`${e.kind}-edge`, 'reference-edge', e.readOnly ? 'read-only' : '', e.changed ? 'changed' : ''].filter(Boolean).join(' '),
-        // The arrow is at the end data or requests flow to, which for a prop the Overlay marks is the Node whose prop it is.
-        ...(e.flow === 'in' ? { markerStart: { type: MarkerType.ArrowClosed } } : { markerEnd: { type: MarkerType.ArrowClosed } }),
-        // Only the arrow's end moves: the Node whose prop it is stays the Node.
-        reconnectable: e.readOnly || e.kind !== 'reference' ? false : 'target',
-        ariaLabel: edgeTitle(e, names),
-        data: { edge: e },
-      }),
-    );
+    .map((e): Edge => ({
+      id: e.id,
+      source: e.from,
+      target: e.to,
+      label: edgeLabel(e),
+      className: [`${e.kind}-edge`, 'reference-edge', e.readOnly ? 'read-only' : '', e.changed ? 'changed' : '']
+        .filter(Boolean)
+        .join(' '),
+      // The arrow is at the end data or requests flow to, which for a prop the Overlay marks is the Node whose prop it is.
+      ...(e.flow === 'in'
+        ? { markerStart: { type: MarkerType.ArrowClosed } }
+        : { markerEnd: { type: MarkerType.ArrowClosed } }),
+      // Only the arrow's end moves: the Node whose prop it is stays the Node.
+      reconnectable: e.readOnly || e.kind !== 'reference' ? false : 'target',
+      ariaLabel: edgeTitle(e, names),
+      data: { edge: e },
+    }));
   return [...causes, ...references];
 }
 
@@ -329,7 +410,15 @@ function canvasPosition(node: Node, all: Node[]): { x: number; y: number } {
   return { x, y };
 }
 
-function StagePicker({ stages, value, onChange }: { stages: View['stages']; value: string | undefined; onChange(id: string): void }) {
+function StagePicker({
+  stages,
+  value,
+  onChange,
+}: {
+  stages: View['stages'];
+  value: string | undefined;
+  onChange(id: string): void;
+}) {
   return (
     <div className="stage-bar">
       <label>
@@ -346,12 +435,38 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, props, paused, pick, onSave, onSet, onRename, onDuplicate, onRemove, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; pick: PickNodes; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onDuplicate(): void; onRemove(): void; onOpen(at: SourceLocation): void }) {
+function NodePanel({
+  node,
+  nodes,
+  props,
+  paused,
+  pick,
+  onSave,
+  onSet,
+  onRename,
+  onDuplicate,
+  onRemove,
+  onOpen,
+}: {
+  node: NodeView;
+  nodes: readonly NodeView[];
+  props: PanelState;
+  paused: boolean;
+  pick: PickNodes;
+  onSave: (note: string) => void;
+  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  onRename(newId: string): Promise<boolean>;
+  onDuplicate(): void;
+  onRemove(): void;
+  onOpen(at: SourceLocation): void;
+}) {
   if (node.removed) {
     return (
       <aside className="note-panel">
         <h2>{node.label}</h2>
-        <p className="lock-reason">Deleted in the Draft: Save removes it from your code. Undo or Discard brings it back.</p>
+        <p className="lock-reason">
+          Deleted in the Draft: Save removes it from your code. Undo or Discard brings it back.
+        </p>
       </aside>
     );
   }
@@ -397,7 +512,19 @@ function NodePanel({ node, nodes, props, paused, pick, onSave, onSet, onRename, 
 }
 
 /** The panel of a Stack box: its own props, which are the only settings of it Truss shows. */
-function StackPanel({ stack, props, onSet, onRename, onOpen }: { stack: StackBoxView; props: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onOpen(at: SourceLocation): void }) {
+function StackPanel({
+  stack,
+  props,
+  onSet,
+  onRename,
+  onOpen,
+}: {
+  stack: StackBoxView;
+  props: PanelState;
+  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  onRename(newId: string): Promise<boolean>;
+  onOpen(at: SourceLocation): void;
+}) {
   const source = props.status === 'ready' ? props.panel.source : undefined;
   return (
     <aside className="note-panel">
@@ -441,10 +568,31 @@ function LayerPanel({ child, node }: { child: LayerChildView; node: NodeView }) 
   );
 }
 
-const KIND_NAME: Record<EdgeView['kind'], string> = { reference: 'Reference', grant: 'Grant', integration: 'Integration', network: 'Network Connection' };
+const KIND_NAME: Record<EdgeView['kind'], string> = {
+  reference: 'Reference',
+  grant: 'Grant',
+  integration: 'Integration',
+  network: 'Network Connection',
+};
 
 /** The panel of a Connection: what it is, where the code writes it, and a way to take it out. */
-function EdgePanel({ edge, names, paused, onRemove, onOpen, onChange, onRemoveCalls }: { edge: EdgeView; names: ReadonlyMap<string, string>; paused: boolean; onRemove(): void; onOpen(at: SourceLocation): void; onChange(change: { hint?: string; env?: string | null }): void; onRemoveCalls(ids: string[]): void }) {
+function EdgePanel({
+  edge,
+  names,
+  paused,
+  onRemove,
+  onOpen,
+  onChange,
+  onRemoveCalls,
+}: {
+  edge: EdgeView;
+  names: ReadonlyMap<string, string>;
+  paused: boolean;
+  onRemove(): void;
+  onOpen(at: SourceLocation): void;
+  onChange(change: { hint?: string; env?: string | null }): void;
+  onRemoveCalls(ids: string[]): void;
+}) {
   const at = edge.source;
   const props = edge.connection;
   const callIds = edge.calls?.map((c) => c.id) ?? [];
@@ -457,7 +605,17 @@ function EdgePanel({ edge, names, paused, onRemove, onOpen, onChange, onRemoveCa
       </h2>
       {edge.fromSynth ? (
         <>
-          <p className="lock-reason">{KIND_NAME[edge.kind]} · from the synthesized app{edge.effects ? '' : <> (<code>{edge.text}</code>)</>}</p>
+          <p className="lock-reason">
+            {KIND_NAME[edge.kind]} · from the synthesized app
+            {edge.effects ? (
+              ''
+            ) : (
+              <>
+                {' '}
+                (<code>{edge.text}</code>)
+              </>
+            )}
+          </p>
           <ul className="edge-effects">
             {edge.effects?.map((e, i) => (
               <li key={`${i}:${e.at}`} title={e.at}>
@@ -477,7 +635,12 @@ function EdgePanel({ edge, names, paused, onRemove, onOpen, onChange, onRemoveCa
           {props.access ? (
             <label>
               Access
-              <select className="prop-input" value={props.access.current} disabled={paused} onChange={(e) => onChange({ hint: e.currentTarget.value })}>
+              <select
+                className="prop-input"
+                value={props.access.current}
+                disabled={paused}
+                onChange={(e) => onChange({ hint: e.currentTarget.value })}
+              >
                 {props.access.options.map((o) => (
                   <option key={o.hint} value={o.hint}>
                     {o.text}
@@ -494,7 +657,13 @@ function EdgePanel({ edge, names, paused, onRemove, onOpen, onChange, onRemoveCa
           {props.env ? (
             <div className="hint-env">
               <label>
-                <input type="checkbox" checked={props.env.on} disabled={paused} onChange={(e) => onChange({ env: e.currentTarget.checked ? env || props.env!.default : null })} /> Environment variable
+                <input
+                  type="checkbox"
+                  checked={props.env.on}
+                  disabled={paused}
+                  onChange={(e) => onChange({ env: e.currentTarget.checked ? env || props.env!.default : null })}
+                />{' '}
+                Environment variable
               </label>
               <input
                 className="prop-input"
@@ -514,7 +683,13 @@ function EdgePanel({ edge, names, paused, onRemove, onOpen, onChange, onRemoveCa
             <li key={c.id} title={c.reason}>
               <code>{c.text}</code>
               {c.editable ? (
-                <button type="button" className="picked-remove" aria-label={`Remove ${c.text}`} disabled={paused} onClick={() => onRemoveCalls([c.id])}>
+                <button
+                  type="button"
+                  className="picked-remove"
+                  aria-label={`Remove ${c.text}`}
+                  disabled={paused}
+                  onClick={() => onRemoveCalls([c.id])}
+                >
                   ✕
                 </button>
               ) : (
@@ -556,7 +731,17 @@ function RefusalTip({ tip, onOpen, onClose }: { tip: Tip; onOpen(at: SourceLocat
 }
 
 /** What a drop that asks something shows: which prop, or whether to replace. */
-function ConnectMenu({ choice, onPick, onHint, onClose }: { choice: Choice; onPick(prop: string, replace: boolean): void; onHint(hint: HintOption, env: string | null | undefined): void; onClose(): void }) {
+function ConnectMenu({
+  choice,
+  onPick,
+  onHint,
+  onClose,
+}: {
+  choice: Choice;
+  onPick(prop: string, replace: boolean): void;
+  onHint(hint: HintOption, env: string | null | undefined): void;
+  onClose(): void;
+}) {
   const hints = choice.kind === 'choose' ? choice.hints : [];
   const [picked, setPicked] = useState(0);
   const chosen = hints[picked];
@@ -596,12 +781,22 @@ function ConnectMenu({ choice, onPick, onHint, onClose }: { choice: Choice; onPi
               {chosen?.env ? (
                 <div className="hint-env">
                   <label>
-                    <input type="checkbox" checked={envOn} onChange={(e) => setEnvOn(e.currentTarget.checked)} /> Set environment variable
+                    <input type="checkbox" checked={envOn} onChange={(e) => setEnvOn(e.currentTarget.checked)} /> Set
+                    environment variable
                   </label>
-                  <input className="prop-input" aria-label="Environment variable" disabled={!envOn} value={env ?? chosen.env} onChange={(e) => setEnv(e.currentTarget.value)} />
+                  <input
+                    className="prop-input"
+                    aria-label="Environment variable"
+                    disabled={!envOn}
+                    value={env ?? chosen.env}
+                    onChange={(e) => setEnv(e.currentTarget.value)}
+                  />
                 </div>
               ) : null}
-              <button type="button" onClick={() => chosen && onHint(chosen, chosen.env ? (envOn ? env : null) : undefined)}>
+              <button
+                type="button"
+                onClick={() => chosen && onHint(chosen, chosen.env ? (envOn ? env : null) : undefined)}
+              >
                 Connect
               </button>
             </fieldset>
@@ -640,14 +835,36 @@ interface Tip {
 
 /** A drop that needs an answer before anything is staged. */
 type Choice =
-  | { kind: 'replace'; x: number; y: number; from: string; to: string; fromId: string; toId: string; prop: string; current: string }
-  | { kind: 'choose'; x: number; y: number; from: string; to: string; fromId: string; toId: string; options: readonly ConnectOption[]; hints: readonly HintOption[] };
+  | {
+      kind: 'replace';
+      x: number;
+      y: number;
+      from: string;
+      to: string;
+      fromId: string;
+      toId: string;
+      prop: string;
+      current: string;
+    }
+  | {
+      kind: 'choose';
+      x: number;
+      y: number;
+      from: string;
+      to: string;
+      fromId: string;
+      toId: string;
+      options: readonly ConnectOption[];
+      hints: readonly HintOption[];
+    };
 
 /** The Truss Node under a pointer at the end of a drag. */
 function nodeUnder(event: MouseEvent | TouchEvent): { id: string | undefined; x: number; y: number } {
   const point = 'changedTouches' in event ? event.changedTouches[0] : event;
   if (!point) return { id: undefined, x: 0, y: 0 };
-  const el = document.elementsFromPoint(point.clientX, point.clientY).find((e) => e.classList.contains('react-flow__node-truss'));
+  const el = document
+    .elementsFromPoint(point.clientX, point.clientY)
+    .find((e) => e.classList.contains('react-flow__node-truss'));
   return { id: el?.getAttribute('data-id') ?? undefined, x: point.clientX, y: point.clientY };
 }
 
@@ -670,14 +887,21 @@ export function App() {
   );
   const layout = useMemo(() => (shown ? layoutView(shown, expanded) : undefined), [shown, expanded]);
   const editable = view !== undefined && view.error === undefined;
-  const flowNodes = useMemo(() => (shown && layout ? toFlowNodes(shown, layout, expanded, toggle, editable) : []), [shown, layout, expanded, toggle, editable]);
+  const flowNodes = useMemo(
+    () => (shown && layout ? toFlowNodes(shown, layout, expanded, toggle, editable) : []),
+    [shown, layout, expanded, toggle, editable],
+  );
   const flowEdges = useMemo(() => (shown ? toFlowEdges(shown) : []), [shown]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
   const [shownNotice, setShownNotice] = useState<{ text: string; uses?: SourceUse[]; at?: SourceLocation }>();
   const notice = shownNotice?.text;
-  const setNotice = useCallback((text?: string, uses?: readonly SourceUse[], at?: SourceLocation) => setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}), ...(at ? { at } : {}) } : undefined), []);
+  const setNotice = useCallback(
+    (text?: string, uses?: readonly SourceUse[], at?: SourceLocation) =>
+      setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}), ...(at ? { at } : {}) } : undefined),
+    [],
+  );
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [linkedProblem, setLinkedProblem] = useState<string>();
   // Opening a Node must not move the viewport, so only the Nodes and boxes of the Design decide when to fit it again.
@@ -690,14 +914,24 @@ export function App() {
   // must not close the panel the user is editing in, so what is selected stays selected.
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
-  const keepSelection = useCallback((all: Node[]) => all.map((n) => (n.id === selectedRef.current ? { ...n, selected: true } : n)), []);
+  const keepSelection = useCallback(
+    (all: Node[]) => all.map((n) => (n.id === selectedRef.current ? { ...n, selected: true } : n)),
+    [],
+  );
   useEffect(() => setNodes(keepSelection(flowNodes)), [flowNodes, keepSelection]);
-  const onNodesChange = useCallback<OnNodesChange>((changes) => setNodes((current) => applyNodeChanges(changes, current)), []);
+  const onNodesChange = useCallback<OnNodesChange>(
+    (changes) => setNodes((current) => applyNodeChanges(changes, current)),
+    [],
+  );
 
   const request = useCallback(
     async (req: ClientRequest) => {
       const outcome = await send(req);
-      setNotice(outcome.ok ? undefined : outcome.reason, outcome.ok ? undefined : outcome.uses, outcome.ok ? undefined : outcome.at);
+      setNotice(
+        outcome.ok ? undefined : outcome.reason,
+        outcome.ok ? undefined : outcome.uses,
+        outcome.ok ? undefined : outcome.at,
+      );
       // A refused change never reached the Sidecar, so put every Node back where the View has it.
       if (!outcome.ok) setNodes(keepSelection(flowNodes));
       return outcome.ok;
@@ -724,7 +958,12 @@ export function App() {
   const names = useMemo(() => new Map((shown?.nodes ?? []).map((n) => [n.id, n.label])), [shown]);
   /** Takes an edge out of the code: a Reference by its prop, a Connection by the calls that make it. */
   const removeEdge = useCallback(
-    (edge: EdgeView) => void request(edge.calls ? { type: 'removeConnection', calls: edge.calls.filter((c) => c.editable).map((c) => c.id) } : { type: 'disconnect', from: edge.from, to: edge.to, prop: edge.prop }),
+    (edge: EdgeView) =>
+      void request(
+        edge.calls
+          ? { type: 'removeConnection', calls: edge.calls.filter((c) => c.editable).map((c) => c.id) }
+          : { type: 'disconnect', from: edge.from, to: edge.to, prop: edge.prop },
+      ),
     [request],
   );
   const labelOf = useCallback((id: string) => names.get(id) ?? id, [names]);
@@ -734,7 +973,9 @@ export function App() {
       setChoice(undefined);
       if (from === null) return;
       setDrag({ from });
-      void connectable(from).then((answer) => setDrag((now) => (now?.from === from ? (answer.ok ? { from, targets: answer.targets } : { from }) : now)));
+      void connectable(from).then((answer) =>
+        setDrag((now) => (now?.from === from ? (answer.ok ? { from, targets: answer.targets } : { from }) : now)),
+      );
     },
     [connectable],
   );
@@ -759,10 +1000,32 @@ export function App() {
       if (outcome.kind === 'refused') {
         const source = view?.nodes.find((n) => n.id === from)?.source;
         setTip({ ...at, reason: outcome.reason, ...(source ? { at: source } : {}) });
-      } else if (outcome.kind === 'connect') void submit({ type: 'connect', from, to: over.id, prop: outcome.prop }, at);
-      else if (outcome.kind === 'hint') void submit({ type: 'addConnection', a: from, b: over.id, hint: outcome.hint.hint }, at);
-      else if (outcome.kind === 'replace') setChoice({ kind: 'replace', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, prop: outcome.prop, current: outcome.current });
-      else setChoice({ kind: 'choose', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, options: outcome.options, hints: outcome.hints });
+      } else if (outcome.kind === 'connect')
+        void submit({ type: 'connect', from, to: over.id, prop: outcome.prop }, at);
+      else if (outcome.kind === 'hint')
+        void submit({ type: 'addConnection', a: from, b: over.id, hint: outcome.hint.hint }, at);
+      else if (outcome.kind === 'replace')
+        setChoice({
+          kind: 'replace',
+          ...at,
+          from: labelOf(from),
+          to: labelOf(over.id),
+          fromId: from,
+          toId: over.id,
+          prop: outcome.prop,
+          current: outcome.current,
+        });
+      else
+        setChoice({
+          kind: 'choose',
+          ...at,
+          from: labelOf(from),
+          to: labelOf(over.id),
+          fromId: from,
+          toId: over.id,
+          options: outcome.options,
+          hints: outcome.hints,
+        });
     },
     [drag, submit, labelOf, view],
   );
@@ -777,7 +1040,11 @@ export function App() {
       if (!canRepoint(now?.targets, over.id, e.prop)) {
         const check = now?.targets?.[over.id];
         const source = view?.nodes.find((n) => n.id === e.from)?.source;
-        setTip({ ...at, reason: check && !check.ok ? check.reason : `${labelOf(e.from)}.${e.prop} doesn't take ${labelOf(over.id)}`, ...(source ? { at: source } : {}) });
+        setTip({
+          ...at,
+          reason: check && !check.ok ? check.reason : `${labelOf(e.from)}.${e.prop} doesn't take ${labelOf(over.id)}`,
+          ...(source ? { at: source } : {}),
+        });
         return;
       }
       void submit({ type: 'repoint', from: e.from, was: e.to, to: over.id, prop: e.prop }, at);
@@ -804,7 +1071,9 @@ export function App() {
   }, [tip, choice]);
   const dragged = useMemo(() => {
     if (!drag?.targets) return nodes;
-    return nodes.map((n) => (n.type === 'truss' && dimmed(drag.targets, n.id, drag.from) ? { ...n, className: 'connect-dim' } : n));
+    return nodes.map((n) =>
+      n.type === 'truss' && dimmed(drag.targets, n.id, drag.from) ? { ...n, className: 'connect-dim' } : n,
+    );
   }, [nodes, drag]);
 
   /** Selects what a Problem is on, bubbling to the nearest drawn construct as its badge does. */
@@ -821,7 +1090,8 @@ export function App() {
   );
   /** Where in the code a Problem is: its own place, else the code of the Node it is on. */
   const locate = useCallback(
-    (problem: Problem): SourceLocation | undefined => problem.location ?? view?.nodes.find((n) => n.id === problem.path)?.source,
+    (problem: Problem): SourceLocation | undefined =>
+      problem.location ?? view?.nodes.find((n) => n.id === problem.path)?.source,
     [view],
   );
   const showProblem = useCallback((id: string) => {
@@ -856,7 +1126,8 @@ export function App() {
   /** The Node picker of the open panel edits the same Reference a drag does. */
   const pickFor = useCallback(
     (from: string): PickNodes => ({
-      connect: (prop, to, replace) => request({ type: 'connect', from, to, prop, ...(replace ? { replace: true } : {}) }),
+      connect: (prop, to, replace) =>
+        request({ type: 'connect', from, to, prop, ...(replace ? { replace: true } : {}) }),
       disconnect: (prop, to) => request({ type: 'disconnect', from, to, prop }),
     }),
     [request],
@@ -876,7 +1147,11 @@ export function App() {
     },
     [addNode],
   );
-  const onAdd = useCallback((scope: string | undefined, hit: SearchHit) => (scope ? add(scope, hit.fqn, hit.displayName ?? hit.name) : undefined), [add]);
+  const onAdd = useCallback(
+    (scope: string | undefined, hit: SearchHit) =>
+      scope ? add(scope, hit.fqn, hit.displayName ?? hit.name) : undefined,
+    [add],
+  );
   const undo = useCallback(() => void request({ type: 'undo' }), [request]);
   const redo = useCallback(() => void request({ type: 'redo' }), [request]);
   const save = useCallback(async () => {
@@ -950,7 +1225,11 @@ export function App() {
         <p>{error.message}</p>
         <ErrorLocation error={error} onOpen={openInEditor} />
         {error.output ? <pre>{error.output}</pre> : null}
-        {error.kind === 'sidecar' ? null : view.synthing ? <p className="muted">synthing…</p> : <p className="muted">Truss is watching your files and will load the Design as soon as the app synths.</p>}
+        {error.kind === 'sidecar' ? null : view.synthing ? (
+          <p className="muted">synthing…</p>
+        ) : (
+          <p className="muted">Truss is watching your files and will load the Design as soon as the app synths.</p>
+        )}
       </div>
     );
   }
@@ -975,7 +1254,9 @@ export function App() {
           if (!fqn) return;
           e.preventDefault();
           // Boxes are drawn beside each other, not inside each other, so the first one under the pointer is the innermost.
-          const box = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.classList.contains('react-flow__node-stack'));
+          const box = document
+            .elementsFromPoint(e.clientX, e.clientY)
+            .find((el) => el.classList.contains('react-flow__node-stack'));
           const scope = stackPathOf(box?.getAttribute('data-id') ?? undefined);
           if (scope) void add(scope, fqn, fqn.split('.').at(-1)!);
           else setNotice('Drop a construct on a Stack to add it there.');
@@ -991,7 +1272,11 @@ export function App() {
           ) : null}
           {error ? (
             <div className="banner error-banner" role="alert">
-              <strong>{error.kind === 'draft' ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.' : `Your app no longer synths. Showing the last good Design.${unsaved ? ' Your Draft is held as it was: Save is paused until the app synths again, and Discard still works.' : ''}`}</strong>
+              <strong>
+                {error.kind === 'draft'
+                  ? 'The Draft makes your app fail to synth. Showing the last good Design; undo the last edit to fix it.'
+                  : `Your app no longer synths. Showing the last good Design.${unsaved ? ' Your Draft is held as it was: Save is paused until the app synths again, and Discard still works.' : ''}`}
+              </strong>
               <span>{error.message}</span>
               <ErrorLocation error={error} onOpen={openInEditor} />
               {error.output ? (
@@ -1035,7 +1320,10 @@ export function App() {
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
           onSelectionChange={({ nodes: picked, edges: pickedEdges }) => {
-            setSelectedId((picked.find((n) => n.type === 'truss' || n.type === 'layer') ?? picked.find((n) => n.type === 'stack'))?.id);
+            setSelectedId(
+              (picked.find((n) => n.type === 'truss' || n.type === 'layer') ?? picked.find((n) => n.type === 'stack'))
+                ?.id,
+            );
             setSelectedEdgeId(pickedEdges.find((e) => (e.data as { edge?: EdgeView } | undefined)?.edge)?.id);
           }}
           edges={flowEdges}
@@ -1059,20 +1347,105 @@ export function App() {
         </ReactFlow>
         <Palette search={search} scope={addScope} onAdd={(hit) => void onAdd(addScope, hit)} />
         {problemsOpen ? (
-          <ProblemsPanel problems={view.problems} output={error?.output} highlighted={linkedProblem} onJump={jumpTo} locate={locate} onOpen={openInEditor} onClose={() => setProblemsOpen(false)} />
+          <ProblemsPanel
+            problems={view.problems}
+            output={error?.output}
+            highlighted={linkedProblem}
+            onJump={jumpTo}
+            locate={locate}
+            onOpen={openInEditor}
+            onClose={() => setProblemsOpen(false)}
+          />
         ) : (
           <button type="button" className="problems-toggle" onClick={() => setProblemsOpen(true)}>
             Problems · {view.problems.filter(isBadged).length}
           </button>
         )}
-        {draft ? <DraftBar draft={draft} busy={view.synthing || saving} blockers={view.problems.filter((p) => p.blocking)} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} onShowProblem={showProblem} /> : null}
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} pick={pickFor(selected.id)} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onDuplicate={() => void request({ type: 'duplicate', id: selected.id })} onRemove={() => void request({ type: 'removeNode', id: selected.id })} onOpen={openInEditor} /> : null}
-        {asking ? <AddForm key={asking.fqn} name={asking.name} props={asking.props} onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)} onCancel={() => setAsking(undefined)} /> : null}
-        {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onRename={rename(openStack.id, stackNodeId)} onOpen={openInEditor} /> : null}
+        {draft ? (
+          <DraftBar
+            draft={draft}
+            busy={view.synthing || saving}
+            blockers={view.problems.filter((p) => p.blocking)}
+            held={!!error && error.kind !== 'draft'}
+            onUndo={undo}
+            onRedo={redo}
+            onSave={() => void save()}
+            onDiscard={discard}
+            onShowProblem={showProblem}
+          />
+        ) : null}
+        {selected ? (
+          <NodePanel
+            node={selected}
+            nodes={shown?.nodes ?? []}
+            props={panelState}
+            paused={error !== undefined}
+            pick={pickFor(selected.id)}
+            onSave={(note) => void request({ type: 'note', id: selected.id, note })}
+            onSet={stage(selected.id)}
+            onRename={rename(selected.id, (path) => path)}
+            onDuplicate={() => void request({ type: 'duplicate', id: selected.id })}
+            onRemove={() => void request({ type: 'removeNode', id: selected.id })}
+            onOpen={openInEditor}
+          />
+        ) : null}
+        {asking ? (
+          <AddForm
+            key={asking.fqn}
+            name={asking.name}
+            props={asking.props}
+            onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)}
+            onCancel={() => setAsking(undefined)}
+          />
+        ) : null}
+        {openStack ? (
+          <StackPanel
+            stack={openStack}
+            props={panelState}
+            onSet={stage(openStack.id)}
+            onRename={rename(openStack.id, stackNodeId)}
+            onOpen={openInEditor}
+          />
+        ) : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
-        {selectedEdge ? <EdgePanel edge={selectedEdge} names={names} paused={error !== undefined} onRemove={() => removeEdge(selectedEdge)} onOpen={openInEditor} onChange={(change) => void request({ type: 'changeConnection', calls: selectedEdge.calls?.map((c) => c.id) ?? [], ...change })} onRemoveCalls={(calls) => void request({ type: 'removeConnection', calls })} /> : null}
+        {selectedEdge ? (
+          <EdgePanel
+            edge={selectedEdge}
+            names={names}
+            paused={error !== undefined}
+            onRemove={() => removeEdge(selectedEdge)}
+            onOpen={openInEditor}
+            onChange={(change) =>
+              void request({ type: 'changeConnection', calls: selectedEdge.calls?.map((c) => c.id) ?? [], ...change })
+            }
+            onRemoveCalls={(calls) => void request({ type: 'removeConnection', calls })}
+          />
+        ) : null}
         {tip ? <RefusalTip tip={tip} onOpen={openInEditor} onClose={() => setTip(undefined)} /> : null}
-        {choice ? <ConnectMenu choice={choice} onHint={(hint, env) => void submit({ type: 'addConnection', a: choice.fromId, b: choice.toId, hint: hint.hint, ...(env !== undefined ? { env } : {}) }, { x: choice.x, y: choice.y })} onPick={(prop, replace) => void submit({ type: 'connect', from: choice.fromId, to: choice.toId, prop, ...(replace ? { replace: true } : {}) }, { x: choice.x, y: choice.y })} onClose={() => setChoice(undefined)} /> : null}
+        {choice ? (
+          <ConnectMenu
+            choice={choice}
+            onHint={(hint, env) =>
+              void submit(
+                {
+                  type: 'addConnection',
+                  a: choice.fromId,
+                  b: choice.toId,
+                  hint: hint.hint,
+                  ...(env !== undefined ? { env } : {}),
+                },
+                { x: choice.x, y: choice.y },
+              )
+            }
+            onPick={(prop, replace) =>
+              void submit(
+                { type: 'connect', from: choice.fromId, to: choice.toId, prop, ...(replace ? { replace: true } : {}) },
+                { x: choice.x, y: choice.y },
+              )
+            }
+            onClose={() => setChoice(undefined)}
+          />
+        ) : null}
       </div>
     </div>
   );

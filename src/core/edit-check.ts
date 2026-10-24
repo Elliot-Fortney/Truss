@@ -6,7 +6,8 @@ import { afterMoves, beforeMoves, isConnectionIntent, movesOf, onBase, sameCall,
 import { NESTED_STACK_FQN, STAGE_FQN } from './tree.ts';
 import type { Diagnostic, FileSet } from './ports.ts';
 
-const spanKey = (f: { span: { file: string; start: { line: number; col: number } } }) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
+const spanKey = (f: { span: { file: string; start: { line: number; col: number } } }) =>
+  `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
 /** Every path on the span of the construct at `path`: more than one for a Stack class created several times. */
 const targetPathsOfSpan = (facts: Facts, path: string): string[] => {
@@ -17,7 +18,11 @@ const targetPathsOfSpan = (facts: Facts, path: string): string[] => {
 /** The paths in the Base of every construct made by the `new` call an intent names, which is more than one for a Stack class created several times (ADR 0008). */
 export function targetPaths(facts: Facts, intents: readonly Intent[]): Set<string> {
   // An added or copied construct changes nothing that is already there, so the Stack or Node it is made from isn't a target.
-  const spans = new Set(onBase(intents).flatMap((i) => (i.type !== 'addNode' && i.type !== 'duplicate' && facts.nodes[i.path] ? [spanKey(facts.nodes[i.path]!)] : [])));
+  const spans = new Set(
+    onBase(intents).flatMap((i) =>
+      i.type !== 'addNode' && i.type !== 'duplicate' && facts.nodes[i.path] ? [spanKey(facts.nodes[i.path]!)] : [],
+    ),
+  );
   return new Set(Object.entries(facts.nodes).flatMap(([path, f]) => (spans.has(spanKey(f)) ? [path] : [])));
 }
 
@@ -28,7 +33,8 @@ export function removedPaths(facts: Facts, intents: readonly Intent[]): Set<stri
 
 /** Whether the construct at `path` has an L1 resource at or beneath it. */
 function hasResources(tree: TreeNode, path: string): boolean {
-  const find = (n: TreeNode): TreeNode | undefined => (n.path === path ? n : n.children.map(find).find((c) => c !== undefined));
+  const find = (n: TreeNode): TreeNode | undefined =>
+    n.path === path ? n : n.children.map(find).find((c) => c !== undefined);
   const has = (n: TreeNode): boolean => n.cfnType !== undefined || n.children.some(has);
   const at = find(tree);
   return at !== undefined && has(at);
@@ -49,7 +55,11 @@ const underPath = (path: string, root: string) => path === root || path.startsWi
 /** What the synthesized app grants, triggers or opens between two Nodes, either way round, in words that don't mention where. */
 function between(a: Assembly, x: string, y: string): string[] {
   return (a.effects ?? [])
-    .filter((e) => (e.source.paths.some((p) => underPath(p, x)) && e.target.paths.some((p) => underPath(p, y))) || (e.source.paths.some((p) => underPath(p, y)) && e.target.paths.some((p) => underPath(p, x))))
+    .filter(
+      (e) =>
+        (e.source.paths.some((p) => underPath(p, x)) && e.target.paths.some((p) => underPath(p, y))) ||
+        (e.source.paths.some((p) => underPath(p, y)) && e.target.paths.some((p) => underPath(p, x))),
+    )
     .map((e) => `${e.kind}|${e.detail}`)
     .sort();
 }
@@ -81,14 +91,35 @@ export interface EditCheck {
 export function judgeEdit({ files, changes, facts, intents, before, after }: EditCheck): string[] {
   const failures: string[] = [];
   const onDisk = onBase(intents);
-  const targets = [...new Set(onDisk.flatMap((i) => (i.type !== 'addNode' && i.type !== 'duplicate' && facts.nodes[i.path] ? [facts.nodes[i.path]!] : [])))];
+  const targets = [
+    ...new Set(
+      onDisk.flatMap((i) =>
+        i.type !== 'addNode' && i.type !== 'duplicate' && facts.nodes[i.path] ? [facts.nodes[i.path]!] : [],
+      ),
+    ),
+  ];
 
   // Confined diff: every change is inside a `new` call an intent names, or adds an import.
   for (const [file, list] of Object.entries(changes)) {
     const text = files.get(file) ?? '';
-    const inside = targets.filter((t) => t.span.file === file).map((t) => [offsetOf(text, t.span.start.line, t.span.start.col), offsetOf(text, t.span.end.line, t.span.end.col)] as const);
+    const inside = targets
+      .filter((t) => t.span.file === file)
+      .map(
+        (t) =>
+          [
+            offsetOf(text, t.span.start.line, t.span.start.col),
+            offsetOf(text, t.span.end.line, t.span.end.col),
+          ] as const,
+      );
     for (const c of list) {
-      if (c.purpose === 'import' || c.purpose === 'add' || c.purpose === 'remove' || c.purpose === 'move' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
+      if (
+        c.purpose === 'import' ||
+        c.purpose === 'add' ||
+        c.purpose === 'remove' ||
+        c.purpose === 'move' ||
+        inside.some(([start, end]) => c.start >= start && c.end <= end)
+      )
+        continue;
       failures.push(`The edit changes ${file} outside the code it was meant to change`);
       break;
     }
@@ -105,7 +136,9 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     onDisk.flatMap((i) => {
       if (isConnectionIntent(i)) return [i.path, i.peer.path];
       if (i.type !== 'removeNode') return [];
-      return (facts.calls ?? []).filter((c) => c.editable && (c.on === i.path || c.peer === i.path)).flatMap((c) => [c.on, c.peer]);
+      return (facts.calls ?? [])
+        .filter((c) => c.editable && (c.on === i.path || c.peer === i.path))
+        .flatMap((c) => [c.on, c.peer]);
     }),
   );
   const connecting = reachedByConnections.size > 0;
@@ -116,56 +149,81 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     if (fqn === NESTED_STACK_FQN || fqn === STAGE_FQN) return false;
     return !nodesOfCode.some((n) => underPath(path, n));
   };
-  const below = (path: string) => [...paths, ...[...reachedByConnections].map((p) => afterMoves(moves, p)), ...reachedByConnections].some((t) => path.startsWith(`${t}/`)) || (connecting && plumbing(path, after.tree) && plumbing(path, before.tree));
+  const below = (path: string) =>
+    [...paths, ...[...reachedByConnections].map((p) => afterMoves(moves, p)), ...reachedByConnections].some((t) =>
+      path.startsWith(`${t}/`),
+    ) ||
+    (connecting && plumbing(path, after.tree) && plumbing(path, before.tree));
   const was = pathsOf(before.tree);
   const reached = pathsOf(after.tree);
   const now = new Map([...reached].map(([path, fqn]) => [beforeMoves(moves, path), fqn]));
   // A removed construct is meant to go, and everything beneath it with it.
-  const removed = targetPaths(facts, onDisk.filter((i) => i.type === 'removeNode'));
+  const removed = targetPaths(
+    facts,
+    onDisk.filter((i) => i.type === 'removeNode'),
+  );
   const kept = [...paths].filter((path) => !removed.has(path));
   for (const path of [...removed].sort()) {
     if (!was.has(path)) failures.push(`${path} is no longer the same construct after the edit`);
-    else for (const gonePath of [...was.keys()].filter((p) => p === path || p.startsWith(`${path}/`)).sort()) if (now.has(gonePath)) failures.push(`${gonePath} was not removed`);
+    else
+      for (const gonePath of [...was.keys()].filter((p) => p === path || p.startsWith(`${path}/`)).sort())
+        if (now.has(gonePath)) failures.push(`${gonePath} was not removed`);
   }
   for (const path of kept.sort()) {
-    if (!was.has(path) || !now.has(path) || was.get(path) !== now.get(path)) failures.push(`${path} is no longer the same construct after the edit`);
+    if (!was.has(path) || !now.has(path) || was.get(path) !== now.get(path))
+      failures.push(`${path} is no longer the same construct after the edit`);
   }
   for (const path of kept) {
     const to = afterMoves(moves, path);
     if (to !== path && (!reached.has(to) || reached.has(path))) failures.push(`${path} was not renamed to ${to}`);
   }
   // What lies beneath a construct that is only renamed goes with it whole, where a prop may make the construct create more beneath itself.
-  const edited = targetPaths(facts, onDisk.filter((i) => i.type === 'setProp'));
-  for (const root of onDisk.flatMap((i) => (i.type === 'renameId' && !edited.has(i.path) && !removed.has(i.path) ? [i.path] : []))) {
-    const lost = [...new Set([...was.keys(), ...now.keys()])].filter((path) => path.startsWith(`${root}/`) && was.get(path) !== now.get(path));
-    for (const path of lost) if (!lost.some((other) => path.startsWith(`${other}/`))) failures.push(`${path} did not move with ${root}`);
+  const edited = targetPaths(
+    facts,
+    onDisk.filter((i) => i.type === 'setProp'),
+  );
+  for (const root of onDisk.flatMap((i) =>
+    i.type === 'renameId' && !edited.has(i.path) && !removed.has(i.path) ? [i.path] : [],
+  )) {
+    const lost = [...new Set([...was.keys(), ...now.keys()])].filter(
+      (path) => path.startsWith(`${root}/`) && was.get(path) !== now.get(path),
+    );
+    for (const path of lost)
+      if (!lost.some((other) => path.startsWith(`${other}/`))) failures.push(`${path} did not move with ${root}`);
   }
   // An added or copied construct is one new path of the expected class, and what it creates beneath itself.
   const made = new Map<string, string | undefined>();
   for (const i of onDisk) {
     if (i.type === 'addNode') for (const scope of targetPathsOfSpan(facts, i.path)) made.set(`${scope}/${i.id}`, i.fqn);
-    if (i.type === 'duplicate') for (const source of targetPathsOfSpan(facts, i.path)) made.set(withId(source, i.newId), was.get(source));
+    if (i.type === 'duplicate')
+      for (const source of targetPathsOfSpan(facts, i.path)) made.set(withId(source, i.newId), was.get(source));
   }
   for (const [path, fqn] of made) {
     if (was.has(path)) failures.push(`${path} was already there, so the edit did not add it`);
     else if (!now.has(path)) failures.push(`${path} was not added`);
-    else if (fqn !== undefined && now.get(path) !== fqn) failures.push(`${path} is a ${now.get(path)}, not the ${fqn} that was meant`);
+    else if (fqn !== undefined && now.get(path) !== fqn)
+      failures.push(`${path} is a ${now.get(path)}, not the ${fqn} that was meant`);
   }
   const within = (path: string) => [...made.keys()].some((m) => path === m || path.startsWith(`${m}/`));
-  const changed = [...new Set([...was.keys(), ...now.keys()])].filter((path) => !paths.has(path) && was.get(path) !== now.get(path) && !below(path) && !within(path));
+  const changed = [...new Set([...was.keys(), ...now.keys()])].filter(
+    (path) => !paths.has(path) && was.get(path) !== now.get(path) && !below(path) && !within(path),
+  );
   // A construct that came or went takes everything beneath it along, which is one thing to say, not many.
   for (const path of changed) {
-    if (!changed.some((other) => path.startsWith(`${other}/`))) failures.push(`The edit changes ${path}, which it should not touch`);
+    if (!changed.some((other) => path.startsWith(`${other}/`)))
+      failures.push(`The edit changes ${path}, which it should not touch`);
   }
   // A Reference an edit adds or points elsewhere is one the template shows: a resource of the source points at a resource of the target.
   // Between Nodes of one Stack only; across Stacks CDK writes exports and imports instead of a plain reference.
   for (const i of onDisk) {
-    if ((i.type !== 'addReference' && i.type !== 'repointReference') || parentPath(i.path) !== parentPath(i.to.path)) continue;
+    if ((i.type !== 'addReference' && i.type !== 'repointReference') || parentPath(i.path) !== parentPath(i.to.path))
+      continue;
     const from = afterMoves(moves, i.path);
     const to = afterMoves(moves, i.to.path);
     if (!hasResources(after.tree, to) || !hasResources(after.tree, from)) continue;
     const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
-    if (!after.resourceRefs.some((r) => under(r.from, from) && under(r.to, to))) failures.push(`${from} does not point at ${to} after the edit`);
+    if (!after.resourceRefs.some((r) => under(r.from, from) && under(r.to, to)))
+      failures.push(`${from} does not point at ${to} after the edit`);
   }
   // A Connection an edit makes, or takes away the last of, shows in the synthesized app: what is granted, triggered or opened between its Nodes changes.
   for (const i of onDisk) {
@@ -176,16 +234,34 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     const y = afterMoves(moves, i.peer.path);
     const had = between(before, i.path, i.peer.path);
     const has = between(after, x, y);
-    const inside = (a: Assembly, p: string, q: string) => `${beneath(a.tree, p).join(',')}|${beneath(a.tree, q).join(',')}`;
+    const inside = (a: Assembly, p: string, q: string) =>
+      `${beneath(a.tree, p).join(',')}|${beneath(a.tree, q).join(',')}`;
     const changed = had.join('\n') !== has.join('\n') || inside(before, i.path, i.peer.path) !== inside(after, x, y);
     if (i.type === 'addConnection' && !changed) failures.push(`${x} and ${y} are no more connected after the edit`);
     if (i.type === 'removeConnection') {
-      const left = (facts.calls ?? []).filter((c) => c.role === 'primary' && [c.on, c.peer].sort().join() === [i.path, i.peer.path].sort().join() && !i.calls.some((r) => sameCall(r, { role: c.role, on: c.on, peer: c.peer, method: c.method, ...(c.env !== undefined ? { env: c.env } : {}) })));
-      if (left.length === 0 && had.length > 0 && has.length > 0) failures.push(`${x} and ${y} are still connected after the edit`);
+      const left = (facts.calls ?? []).filter(
+        (c) =>
+          c.role === 'primary' &&
+          [c.on, c.peer].sort().join() === [i.path, i.peer.path].sort().join() &&
+          !i.calls.some((r) =>
+            sameCall(r, {
+              role: c.role,
+              on: c.on,
+              peer: c.peer,
+              method: c.method,
+              ...(c.env !== undefined ? { env: c.env } : {}),
+            }),
+          ),
+      );
+      if (left.length === 0 && had.length > 0 && has.length > 0)
+        failures.push(`${x} and ${y} are still connected after the edit`);
       else if (!changed) failures.push(`${x} and ${y} are no less connected after the edit`);
     }
   }
-  const stacks = (a: Assembly) => JSON.stringify(a.stacks.filter((s) => !paths.has(beforeMoves(moves, s.path)) && !below(beforeMoves(moves, s.path))));
+  const stacks = (a: Assembly) =>
+    JSON.stringify(
+      a.stacks.filter((s) => !paths.has(beforeMoves(moves, s.path)) && !below(beforeMoves(moves, s.path))),
+    );
   if (stacks(before) !== stacks(after)) failures.push('The edit changes a Stack it should not touch');
   return failures;
 }

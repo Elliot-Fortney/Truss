@@ -3,15 +3,30 @@ import { applyChanges, offsetOf, unifiedDiff } from './diff.ts';
 
 describe('applyChanges', () => {
   it('replaces and inserts by offset into the original text', () => {
-    expect(applyChanges('hello world', [{ start: 6, end: 11, text: 'there' }, { start: 0, end: 0, text: '>> ' }])).toBe('>> hello there');
+    expect(
+      applyChanges('hello world', [
+        { start: 6, end: 11, text: 'there' },
+        { start: 0, end: 0, text: '>> ' },
+      ]),
+    ).toBe('>> hello there');
   });
 
   it('keeps insertions at one offset in the order given', () => {
-    expect(applyChanges('ab', [{ start: 1, end: 1, text: 'X' }, { start: 1, end: 1, text: 'Y' }])).toBe('aXYb');
+    expect(
+      applyChanges('ab', [
+        { start: 1, end: 1, text: 'X' },
+        { start: 1, end: 1, text: 'Y' },
+      ]),
+    ).toBe('aXYb');
   });
 
   it('refuses changes that overlap', () => {
-    expect(() => applyChanges('abcdef', [{ start: 0, end: 4, text: '' }, { start: 2, end: 3, text: 'x' }])).toThrow(/overlap/);
+    expect(() =>
+      applyChanges('abcdef', [
+        { start: 0, end: 4, text: '' },
+        { start: 2, end: 3, text: 'x' },
+      ]),
+    ).toThrow(/overlap/);
   });
 });
 
@@ -35,7 +50,20 @@ describe('unifiedDiff', () => {
     const before = lines(12).join('\n') + '\n';
     const after = before.replace('line 6\n', 'changed\n');
     expect(unifiedDiff('a.ts', before, after)?.diff).toBe(
-      ['--- a/a.ts', '+++ b/a.ts', '@@ -3,7 +3,7 @@', ' line 3', ' line 4', ' line 5', '-line 6', '+changed', ' line 7', ' line 8', ' line 9', ''].join('\n'),
+      [
+        '--- a/a.ts',
+        '+++ b/a.ts',
+        '@@ -3,7 +3,7 @@',
+        ' line 3',
+        ' line 4',
+        ' line 5',
+        '-line 6',
+        '+changed',
+        ' line 7',
+        ' line 8',
+        ' line 9',
+        '',
+      ].join('\n'),
     );
   });
 
@@ -49,7 +77,9 @@ describe('unifiedDiff', () => {
   });
 
   it('shows added lines and removed lines at the ends of a file', () => {
-    expect(unifiedDiff('a.ts', 'a\n', 'new\na\nb\n')?.diff).toBe(['--- a/a.ts', '+++ b/a.ts', '@@ -1,1 +1,3 @@', '+new', ' a', '+b', ''].join('\n'));
+    expect(unifiedDiff('a.ts', 'a\n', 'new\na\nb\n')?.diff).toBe(
+      ['--- a/a.ts', '+++ b/a.ts', '@@ -1,1 +1,3 @@', '+new', ' a', '+b', ''].join('\n'),
+    );
     expect(unifiedDiff('a.ts', 'a\nb\n', 'b\n')?.diff).toContain('-a\n b');
   });
 

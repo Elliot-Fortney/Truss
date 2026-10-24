@@ -4,7 +4,17 @@ import type { Overlay } from '../overlay.ts';
 const overlay: Overlay = {
   fqn: 'aws-cdk-lib.aws_rds.DatabaseInstance',
   displayName: 'RDS Database Instance',
-  featuredProps: ['engine', 'vpc', 'instanceType', 'allocatedStorage', 'databaseName', 'multiAz', 'backupRetention', 'deletionProtection', 'removalPolicy'],
+  featuredProps: [
+    'engine',
+    'vpc',
+    'instanceType',
+    'allocatedStorage',
+    'databaseName',
+    'multiAz',
+    'backupRetention',
+    'deletionProtection',
+    'removalPolicy',
+  ],
   connections: [
     {
       kind: 'network',

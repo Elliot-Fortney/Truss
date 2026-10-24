@@ -62,7 +62,13 @@ export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ?
 export type Reply =
   | { type: 'ack'; requestId: string }
   /** `uses` are the places in the code that keep a Node from being removed. */
-  | { type: 'refused'; requestId: string; reason: string; uses?: SourceUse[]; /** The code the refusal is about, which the user can open in their editor. */ at?: SourceLocation }
+  | {
+      type: 'refused';
+      requestId: string;
+      reason: string;
+      uses?: SourceUse[];
+      /** The code the refusal is about, which the user can open in their editor. */ at?: SourceLocation;
+    }
   | { type: 'results'; requestId: string; hits: SearchHit[] }
   /** Nothing was staged: the construct needs these props, which only the user can give. */
   | { type: 'form'; requestId: string; fqn: string; props: CatalogProp[] }
@@ -99,24 +105,33 @@ export function parsePropValue(raw: unknown): { ok: true; value: PropValue } | {
   switch (raw['kind']) {
     case 'string':
       if (typeof raw['value'] !== 'string') return { ok: false, reason: 'A string value needs text' };
-      if (raw['value'].length > MAX_STRING_VALUE_LENGTH) return { ok: false, reason: `A string can be at most ${MAX_STRING_VALUE_LENGTH} characters` };
+      if (raw['value'].length > MAX_STRING_VALUE_LENGTH)
+        return { ok: false, reason: `A string can be at most ${MAX_STRING_VALUE_LENGTH} characters` };
       return { ok: true, value: { kind: 'string', value: raw['value'] } };
     case 'number':
-      return finite(raw['value']) ? { ok: true, value: { kind: 'number', value: raw['value'] } } : { ok: false, reason: 'A number value needs a finite number' };
+      return finite(raw['value'])
+        ? { ok: true, value: { kind: 'number', value: raw['value'] } }
+        : { ok: false, reason: 'A number value needs a finite number' };
     case 'boolean':
-      return typeof raw['value'] === 'boolean' ? { ok: true, value: { kind: 'boolean', value: raw['value'] } } : { ok: false, reason: 'A boolean value needs true or false' };
+      return typeof raw['value'] === 'boolean'
+        ? { ok: true, value: { kind: 'boolean', value: raw['value'] } }
+        : { ok: false, reason: 'A boolean value needs true or false' };
     case 'enum': {
       const { type, member } = raw;
-      if (typeof type !== 'string' || !/^aws-cdk-lib(\.[A-Za-z0-9_]+){1,2}$/.test(type)) return { ok: false, reason: 'An enum value needs the enum from aws-cdk-lib' };
-      if (typeof member !== 'string' || !IDENTIFIER.test(member)) return { ok: false, reason: 'An enum value needs a member name' };
+      if (typeof type !== 'string' || !/^aws-cdk-lib(\.[A-Za-z0-9_]+){1,2}$/.test(type))
+        return { ok: false, reason: 'An enum value needs the enum from aws-cdk-lib' };
+      if (typeof member !== 'string' || !IDENTIFIER.test(member))
+        return { ok: false, reason: 'An enum value needs a member name' };
       return { ok: true, value: { kind: 'enum', type, member } };
     }
     case 'duration':
     case 'size': {
       const units: readonly string[] = raw['kind'] === 'duration' ? DURATION_UNITS : SIZE_UNITS;
       const { unit, amount } = raw;
-      if (typeof unit !== 'string' || !units.includes(unit)) return { ok: false, reason: `A ${raw['kind']} needs one of ${units.join(', ')}` };
-      if (!finite(amount) || amount < 0) return { ok: false, reason: `A ${raw['kind']} needs an amount of zero or more` };
+      if (typeof unit !== 'string' || !units.includes(unit))
+        return { ok: false, reason: `A ${raw['kind']} needs one of ${units.join(', ')}` };
+      if (!finite(amount) || amount < 0)
+        return { ok: false, reason: `A ${raw['kind']} needs an amount of zero or more` };
       return { ok: true, value: { kind: raw['kind'], unit, amount } as PropValue };
     }
     default:
@@ -125,7 +140,9 @@ export function parsePropValue(raw: unknown): { ok: true; value: PropValue } | {
 }
 
 /** Checks a frame from the browser. Anything that isn't a well-formed request is refused with a reason. */
-export function parseClientMessage(text: string): { ok: true; message: ClientMessage } | { ok: false; requestId: string; reason: string } {
+export function parseClientMessage(
+  text: string,
+): { ok: true; message: ClientMessage } | { ok: false; requestId: string; reason: string } {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -156,35 +173,74 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
       return { ok: true, message: { type: 'repoint', requestId, from, was, to, prop } };
     }
     if (raw['type'] === 'disconnect') return { ok: true, message: { type: 'disconnect', requestId, from, to, prop } };
-    return { ok: true, message: { type: 'connect', requestId, from, to, prop, ...(raw['replace'] === true ? { replace: true } : {}) } };
+    return {
+      ok: true,
+      message: { type: 'connect', requestId, from, to, prop, ...(raw['replace'] === true ? { replace: true } : {}) },
+    };
   }
   if (raw['type'] === 'addConnection' || raw['type'] === 'changeConnection' || raw['type'] === 'removeConnection') {
     const env = raw['env'];
-    if (env !== undefined && env !== null && (typeof env !== 'string' || !IDENTIFIER.test(env) || env.length > MAX_ID_LENGTH)) return refuse('An environment variable needs a name made of letters, digits and underscores');
+    if (
+      env !== undefined &&
+      env !== null &&
+      (typeof env !== 'string' || !IDENTIFIER.test(env) || env.length > MAX_ID_LENGTH)
+    )
+      return refuse('An environment variable needs a name made of letters, digits and underscores');
     const hint = raw['hint'];
     const hintOk = typeof hint === 'string' && /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_]+){1,2}#\d{1,4}$/.test(hint);
     if (raw['type'] === 'addConnection') {
       const { a, b } = raw;
-      if (typeof a !== 'string' || a === '' || a.length > MAX_PATH_LENGTH || typeof b !== 'string' || b === '' || b.length > MAX_PATH_LENGTH) return refuse('An addConnection needs the construct paths as "a" and "b"');
+      if (
+        typeof a !== 'string' ||
+        a === '' ||
+        a.length > MAX_PATH_LENGTH ||
+        typeof b !== 'string' ||
+        b === '' ||
+        b.length > MAX_PATH_LENGTH
+      )
+        return refuse('An addConnection needs the construct paths as "a" and "b"');
       if (!hintOk) return refuse('An addConnection needs the hint it makes');
-      return { ok: true, message: { type: 'addConnection', requestId, a, b, hint, ...(env !== undefined ? { env } : {}) } };
+      return {
+        ok: true,
+        message: { type: 'addConnection', requestId, a, b, hint, ...(env !== undefined ? { env } : {}) },
+      };
     }
     const calls = raw['calls'];
-    if (!Array.isArray(calls) || calls.length === 0 || calls.length > MAX_CALLS || !calls.every((c) => typeof c === 'string' && c !== '' && c.length <= MAX_PATH_LENGTH)) return refuse(`A ${raw['type']} needs the calls as a list of ids`);
-    if (raw['type'] === 'removeConnection') return { ok: true, message: { type: 'removeConnection', requestId, calls: calls as string[] } };
+    if (
+      !Array.isArray(calls) ||
+      calls.length === 0 ||
+      calls.length > MAX_CALLS ||
+      !calls.every((c) => typeof c === 'string' && c !== '' && c.length <= MAX_PATH_LENGTH)
+    )
+      return refuse(`A ${raw['type']} needs the calls as a list of ids`);
+    if (raw['type'] === 'removeConnection')
+      return { ok: true, message: { type: 'removeConnection', requestId, calls: calls as string[] } };
     if (hint !== undefined && !hintOk) return refuse('A changeConnection takes the hint as the one it is changed to');
-    return { ok: true, message: { type: 'changeConnection', requestId, calls: calls as string[], ...(hintOk ? { hint } : {}), ...(env !== undefined ? { env } : {}) } };
+    return {
+      ok: true,
+      message: {
+        type: 'changeConnection',
+        requestId,
+        calls: calls as string[],
+        ...(hintOk ? { hint } : {}),
+        ...(env !== undefined ? { env } : {}),
+      },
+    };
   }
   if (raw['type'] === 'addNode') {
     const { scope, fqn } = raw;
     if (typeof scope !== 'string' || scope === '') return refuse('An addNode needs the Stack path as "scope"');
-    if (typeof fqn !== 'string' || !/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_]+){1,2}$/.test(fqn)) return refuse('An addNode needs the construct as "fqn"');
+    if (typeof fqn !== 'string' || !/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_]+){1,2}$/.test(fqn))
+      return refuse('An addNode needs the construct as "fqn"');
     const given = raw['props'];
     if (given === undefined) return { ok: true, message: { type: 'addNode', requestId, scope, fqn } };
-    if (!isObject(given) || Object.keys(given).length > MAX_FORM_PROPS) return refuse('An addNode takes its props as an object of values');
+    if (!isObject(given) || Object.keys(given).length > MAX_FORM_PROPS)
+      return refuse('An addNode takes its props as an object of values');
     const props: Record<string, PropValue> = {};
     for (const [name, value] of Object.entries(given)) {
-      const parsed = IDENTIFIER.test(name) ? parsePropValue(value) : ({ ok: false, reason: `${name} is not a prop name` } as const);
+      const parsed = IDENTIFIER.test(name)
+        ? parsePropValue(value)
+        : ({ ok: false, reason: `${name} is not a prop name` } as const);
       if (!parsed.ok) return refuse(parsed.reason);
       props[name] = parsed.value;
     }
@@ -223,7 +279,12 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
     }
     case 'setProp': {
       const prop = raw['prop'];
-      if (!Array.isArray(prop) || prop.length === 0 || prop.length > MAX_PROP_DEPTH || !prop.every((p) => typeof p === 'string' && IDENTIFIER.test(p))) {
+      if (
+        !Array.isArray(prop) ||
+        prop.length === 0 ||
+        prop.length > MAX_PROP_DEPTH ||
+        !prop.every((p) => typeof p === 'string' && IDENTIFIER.test(p))
+      ) {
         return refuse('A setProp needs the prop as a list of names');
       }
       const value = parsePropValue(raw['value']);

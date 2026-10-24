@@ -3,7 +3,12 @@ import { buildCatalog, digestAssembly, entryFor, searchCatalog, type Catalog } f
 import type { Overlay } from './overlay.ts';
 
 const doc = (summary: string, extra: Record<string, unknown> = {}) => ({ summary, stability: 'stable', ...extra });
-const prop = (name: string, type: unknown, extra: Record<string, unknown> = {}) => ({ name, type, docs: doc(`The ${name}.`), ...extra });
+const prop = (name: string, type: unknown, extra: Record<string, unknown> = {}) => ({
+  name,
+  type,
+  docs: doc(`The ${name}.`),
+  ...extra,
+});
 const init = (propsFqn?: string) => ({
   parameters: [
     { name: 'scope', type: { fqn: 'constructs.Construct' } },
@@ -42,12 +47,23 @@ function cdkLib(version = '2.274.0') {
     cls('aws-cdk-lib.App', { base: 'aws-cdk-lib.Stage', initializer: init() }),
     cls('aws-cdk-lib.NestedStack', { base: 'aws-cdk-lib.Stack', initializer: init() }),
 
-    cls('aws-cdk-lib.aws_s3.Bucket', { base: 'aws-cdk-lib.Resource', initializer: init('aws-cdk-lib.aws_s3.BucketProps') }),
+    cls('aws-cdk-lib.aws_s3.Bucket', {
+      base: 'aws-cdk-lib.Resource',
+      initializer: init('aws-cdk-lib.aws_s3.BucketProps'),
+    }),
     struct('aws-cdk-lib.aws_s3.BucketProps', [
-      prop('bucketName', { primitive: 'string' }, { optional: true, docs: doc('Physical name.', { default: '- Assigned by CloudFormation.' }) }),
+      prop(
+        'bucketName',
+        { primitive: 'string' },
+        { optional: true, docs: doc('Physical name.', { default: '- Assigned by CloudFormation.' }) },
+      ),
       prop('versioned', { primitive: 'boolean' }, { optional: true }),
       prop('tags', { collection: { kind: 'map', elementtype: { primitive: 'string' } } }, { optional: true }),
-      prop('lifecycleRules', { collection: { kind: 'array', elementtype: { fqn: 'aws-cdk-lib.aws_s3.LifecycleRule' } } }, { optional: true }),
+      prop(
+        'lifecycleRules',
+        { collection: { kind: 'array', elementtype: { fqn: 'aws-cdk-lib.aws_s3.LifecycleRule' } } },
+        { optional: true },
+      ),
       prop('removalPolicy', { fqn: 'aws-cdk-lib.RemovalPolicy' }, { optional: true }),
     ]),
     cls('aws-cdk-lib.aws_s3.CfnBucket', {
@@ -56,35 +72,66 @@ function cdkLib(version = '2.274.0') {
       docs: doc('The `AWS::S3::Bucket` resource.', { custom: { cloudformationResource: 'AWS::S3::Bucket' } }),
     }),
     struct('aws-cdk-lib.aws_s3.CfnBucketProps', [
-      prop('accessControl', { union: { types: [{ primitive: 'string' }, { fqn: 'aws-cdk-lib.interfaces.aws_s3.IBucketRef' }] } }, { optional: true }),
+      prop(
+        'accessControl',
+        { union: { types: [{ primitive: 'string' }, { fqn: 'aws-cdk-lib.interfaces.aws_s3.IBucketRef' }] } },
+        { optional: true },
+      ),
     ]),
 
-    cls('aws-cdk-lib.aws_lambda.Function', { base: 'aws-cdk-lib.Resource', initializer: init('aws-cdk-lib.aws_lambda.FunctionProps') }),
+    cls('aws-cdk-lib.aws_lambda.Function', {
+      base: 'aws-cdk-lib.Resource',
+      initializer: init('aws-cdk-lib.aws_lambda.FunctionProps'),
+    }),
     cls('aws-cdk-lib.aws_lambda.CfnFunction', {
       base: 'aws-cdk-lib.CfnResource',
       initializer: init('aws-cdk-lib.aws_lambda.CfnFunctionProps'),
-      docs: doc('The `AWS::Lambda::Function` resource.', { custom: { cloudformationResource: 'AWS::Lambda::Function' } }),
+      docs: doc('The `AWS::Lambda::Function` resource.', {
+        custom: { cloudformationResource: 'AWS::Lambda::Function' },
+      }),
     }),
     struct('aws-cdk-lib.aws_lambda.CfnFunctionProps', []),
-    struct('aws-cdk-lib.aws_lambda.FunctionProps', [prop('code', { fqn: 'aws-cdk-lib.aws_lambda.Code' }), prop('handler', { primitive: 'string' })], {
-      interfaces: ['aws-cdk-lib.aws_lambda.FunctionOptions'],
-    }),
-    struct('aws-cdk-lib.aws_lambda.FunctionOptions', [prop('timeout', { fqn: 'aws-cdk-lib.Duration' }, { optional: true }), prop('handler', { primitive: 'string' }, { optional: true })], {
-      interfaces: ['aws-cdk-lib.aws_lambda.EventInvokeConfigOptions'],
-    }),
-    struct('aws-cdk-lib.aws_lambda.EventInvokeConfigOptions', [prop('retryAttempts', { primitive: 'number' }, { optional: true })]),
+    struct(
+      'aws-cdk-lib.aws_lambda.FunctionProps',
+      [prop('code', { fqn: 'aws-cdk-lib.aws_lambda.Code' }), prop('handler', { primitive: 'string' })],
+      {
+        interfaces: ['aws-cdk-lib.aws_lambda.FunctionOptions'],
+      },
+    ),
+    struct(
+      'aws-cdk-lib.aws_lambda.FunctionOptions',
+      [
+        prop('timeout', { fqn: 'aws-cdk-lib.Duration' }, { optional: true }),
+        prop('handler', { primitive: 'string' }, { optional: true }),
+      ],
+      {
+        interfaces: ['aws-cdk-lib.aws_lambda.EventInvokeConfigOptions'],
+      },
+    ),
+    struct('aws-cdk-lib.aws_lambda.EventInvokeConfigOptions', [
+      prop('retryAttempts', { primitive: 'number' }, { optional: true }),
+    ]),
 
     cls('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService', {
       base: 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedServiceBase',
       initializer: init('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateServiceProps'),
     }),
-    cls('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedServiceBase', { base: 'constructs.Construct', abstract: true }),
-    struct('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateServiceProps', [prop('cpu', { primitive: 'number' }, { optional: true })]),
+    cls('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedServiceBase', {
+      base: 'constructs.Construct',
+      abstract: true,
+    }),
+    struct('aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateServiceProps', [
+      prop('cpu', { primitive: 'number' }, { optional: true }),
+    ]),
 
     cls('aws-cdk-lib.aws_s3.Notifier', { base: 'constructs.Construct', initializer: { ...init(), protected: true } }),
     cls('aws-cdk-lib.aws_sqs.Queue', { base: 'aws-cdk-lib.Resource', initializer: init() }),
     cls('aws-cdk-lib.aws_stepfunctions_tasks.SqsSendMessage', { base: 'constructs.Construct', initializer: init() }),
-    cls('aws-cdk-lib.aws_kms.OldKey', { base: 'aws-cdk-lib.Resource', initializer: init(), docs: doc('Old.', { stability: 'deprecated' }) }),
+    cls('aws-cdk-lib.aws_kms.OldKey', {
+      base: 'aws-cdk-lib.Resource',
+      initializer: init(),
+      docs: doc('Old.', { stability: 'deprecated' }),
+    }),
     cls('aws-cdk-lib.Duration', { initializer: undefined }),
   ];
   return { name: LIB, version, types: Object.fromEntries(types.map((t) => [t.fqn, t])) };
@@ -127,9 +174,12 @@ describe('digestAssembly', () => {
     expect(JSON.parse(JSON.stringify(d))).toEqual(d);
   });
 
-  it.each([null, 'text', {}, { name: 'x' }, { name: 'x', version: '1.0.0' }])('refuses %j as a jsii assembly', (raw) => {
-    expect(() => digestAssembly(raw)).toThrow(/jsii assembly/);
-  });
+  it.each([null, 'text', {}, { name: 'x' }, { name: 'x', version: '1.0.0' }])(
+    'refuses %j as a jsii assembly',
+    (raw) => {
+      expect(() => digestAssembly(raw)).toThrow(/jsii assembly/);
+    },
+  );
 });
 
 describe('buildCatalog', () => {
@@ -156,7 +206,10 @@ describe('buildCatalog', () => {
   });
 
   it('puts a construct in a *_patterns module at L3, under its service', () => {
-    expect(entryFor(catalog, 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService')).toMatchObject({ tier: 'L3', service: 'ECS' });
+    expect(entryFor(catalog, 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService')).toMatchObject({
+      tier: 'L3',
+      service: 'ECS',
+    });
   });
 
   it('leaves out what can never be placed: abstract classes, protected constructors, Stacks, Stages, and the two base classes', () => {
@@ -214,7 +267,9 @@ describe('buildCatalog', () => {
     });
 
     it('keeps the widening of L1 prop types contained: a Ref alternative to string is not shown', () => {
-      expect(entryFor(catalog, 'aws-cdk-lib.aws_s3.CfnBucket')!.props).toEqual([expect.objectContaining({ name: 'accessControl', type: 'string' })]);
+      expect(entryFor(catalog, 'aws-cdk-lib.aws_s3.CfnBucket')!.props).toEqual([
+        expect.objectContaining({ name: 'accessControl', type: 'string' }),
+      ]);
     });
 
     it('flattens props inherited through struct bases, nearest struct first', () => {
@@ -228,7 +283,9 @@ describe('buildCatalog', () => {
     });
 
     it('flags required props', () => {
-      const required = entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.filter((p) => p.required).map((p) => p.name);
+      const required = entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!
+        .props.filter((p) => p.required)
+        .map((p) => p.name);
       expect(required).toEqual(['handler', 'code']);
     });
 
@@ -238,14 +295,25 @@ describe('buildCatalog', () => {
 
     it('survives a struct that inherits from itself', () => {
       const raw = cdkLib() as { types: Record<string, { interfaces?: string[] }> };
-      raw.types['aws-cdk-lib.aws_lambda.EventInvokeConfigOptions']!.interfaces = ['aws-cdk-lib.aws_lambda.FunctionProps'];
+      raw.types['aws-cdk-lib.aws_lambda.EventInvokeConfigOptions']!.interfaces = [
+        'aws-cdk-lib.aws_lambda.FunctionProps',
+      ];
       const c = catalogOf(raw);
-      expect(entryFor(c, 'aws-cdk-lib.aws_lambda.Function')!.props.map((p) => p.name).sort()).toEqual(['code', 'handler', 'retryAttempts', 'timeout']);
+      expect(
+        entryFor(c, 'aws-cdk-lib.aws_lambda.Function')!
+          .props.map((p) => p.name)
+          .sort(),
+      ).toEqual(['code', 'handler', 'retryAttempts', 'timeout']);
     });
 
     it('keeps props from a struct base in another library when that library is in the Catalog, and skips it when not', () => {
-      expect(entryFor(catalogOf(cdkLib(), thirdParty()), 'my-constructs.Queueish')!.props.map((p) => p.name)).toEqual(['retryAttempts', 'queueName']);
-      expect(entryFor(catalogOf(thirdParty()), 'my-constructs.Queueish')!.props.map((p) => p.name)).toEqual(['queueName']);
+      expect(entryFor(catalogOf(cdkLib(), thirdParty()), 'my-constructs.Queueish')!.props.map((p) => p.name)).toEqual([
+        'retryAttempts',
+        'queueName',
+      ]);
+      expect(entryFor(catalogOf(thirdParty()), 'my-constructs.Queueish')!.props.map((p) => p.name)).toEqual([
+        'queueName',
+      ]);
     });
   });
 
@@ -254,7 +322,12 @@ describe('buildCatalog', () => {
     function withInputs() {
       const raw = cdkLib() as { types: Record<string, unknown> };
       Object.assign(raw.types, {
-        'aws-cdk-lib.RemovalPolicy': { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }, { name: 'RETAIN' }] },
+        'aws-cdk-lib.RemovalPolicy': {
+          kind: 'enum',
+          fqn: 'aws-cdk-lib.RemovalPolicy',
+          name: 'RemovalPolicy',
+          members: [{ name: 'DESTROY' }, { name: 'RETAIN' }],
+        },
         'other-lib.Color': { kind: 'enum', fqn: 'other-lib.Color', name: 'Color', members: [{ name: 'RED' }] },
         'aws-cdk-lib.Size': cls('aws-cdk-lib.Size'),
         'aws-cdk-lib.aws_sqs.QueueProps': struct('aws-cdk-lib.aws_sqs.QueueProps', [
@@ -270,22 +343,36 @@ describe('buildCatalog', () => {
           prop('maxReceiveCount', { primitive: 'number' }),
           prop('queues', { collection: { kind: 'array', elementtype: { primitive: 'string' } } }, { optional: true }),
         ]),
-        'aws-cdk-lib.aws_sqs.Selfish': struct('aws-cdk-lib.aws_sqs.Selfish', [prop('again', { fqn: 'aws-cdk-lib.aws_sqs.Selfish' }, { optional: true })]),
+        'aws-cdk-lib.aws_sqs.Selfish': struct('aws-cdk-lib.aws_sqs.Selfish', [
+          prop('again', { fqn: 'aws-cdk-lib.aws_sqs.Selfish' }, { optional: true }),
+        ]),
       });
-      raw.types['aws-cdk-lib.aws_sqs.Queue'] = cls('aws-cdk-lib.aws_sqs.Queue', { base: 'aws-cdk-lib.Resource', initializer: init('aws-cdk-lib.aws_sqs.QueueProps') });
-      return Object.fromEntries(entryFor(catalogOf(raw), 'aws-cdk-lib.aws_sqs.Queue')!.props.map((p) => [p.name, p.input]));
+      raw.types['aws-cdk-lib.aws_sqs.Queue'] = cls('aws-cdk-lib.aws_sqs.Queue', {
+        base: 'aws-cdk-lib.Resource',
+        initializer: init('aws-cdk-lib.aws_sqs.QueueProps'),
+      });
+      return Object.fromEntries(
+        entryFor(catalogOf(raw), 'aws-cdk-lib.aws_sqs.Queue')!.props.map((p) => [p.name, p.input]),
+      );
     }
 
     it('offers an input for a Duration, a Size and an enum of CDK itself with its members', () => {
       const inputs = withInputs();
       expect(inputs['visibilityTimeout']).toEqual({ kind: 'duration' });
       expect(inputs['maxMessageSize']).toEqual({ kind: 'size' });
-      expect(inputs['removalPolicy']).toEqual({ kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', members: ['DESTROY', 'RETAIN'] });
+      expect(inputs['removalPolicy']).toEqual({
+        kind: 'enum',
+        fqn: 'aws-cdk-lib.RemovalPolicy',
+        members: ['DESTROY', 'RETAIN'],
+      });
     });
 
     it('lists the fields of a struct that Truss can write a literal for, and leaves out the rest', () => {
       const dead = withInputs()['deadLetter'];
-      expect(dead).toEqual({ kind: 'struct', fields: [expect.objectContaining({ name: 'maxReceiveCount', required: true, input: { kind: 'number' } })] });
+      expect(dead).toEqual({
+        kind: 'struct',
+        fields: [expect.objectContaining({ name: 'maxReceiveCount', required: true, input: { kind: 'number' } })],
+      });
     });
 
     it('offers nothing for an enum of another library, a union of several types, or a struct that contains itself', () => {
@@ -301,7 +388,12 @@ describe('buildCatalog', () => {
 
     function withEnum() {
       const raw = cdkLib() as { types: Record<string, unknown> };
-      raw.types['aws-cdk-lib.RemovalPolicy'] = { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }] };
+      raw.types['aws-cdk-lib.RemovalPolicy'] = {
+        kind: 'enum',
+        fqn: 'aws-cdk-lib.RemovalPolicy',
+        name: 'RemovalPolicy',
+        members: [{ name: 'DESTROY' }],
+      };
       return raw;
     }
   });
@@ -309,7 +401,11 @@ describe('buildCatalog', () => {
   describe('third-party libraries', () => {
     it('adds their constructs even when the library holding Construct is not loaded', () => {
       const c = catalogOf(cdkLib(), thirdParty());
-      expect(entryFor(c, 'my-constructs.Queueish')).toMatchObject({ library: 'my-constructs', tier: 'L2', name: 'Queueish' });
+      expect(entryFor(c, 'my-constructs.Queueish')).toMatchObject({
+        library: 'my-constructs',
+        tier: 'L2',
+        name: 'Queueish',
+      });
     });
 
     it('has no service for a library that does not follow the aws-cdk-lib module layout', () => {
@@ -385,7 +481,11 @@ describe('searchCatalog', () => {
 });
 
 describe('Overlays', () => {
-  const bucket: Overlay = { fqn: 'aws-cdk-lib.aws_s3.Bucket', displayName: 'S3 Bucket', featuredProps: ['versioned', 'bucketName'] };
+  const bucket: Overlay = {
+    fqn: 'aws-cdk-lib.aws_s3.Bucket',
+    displayName: 'S3 Bucket',
+    featuredProps: ['versioned', 'bucketName'],
+  };
   const withOverlays = (...overlays: Overlay[]) => buildCatalog([digestAssembly(cdkLib())], overlays);
 
   it('gives a construct its friendly name and marks it featured in the palette', () => {
@@ -416,21 +516,46 @@ describe('Overlays', () => {
       const raw = cdkLib() as { types: Record<string, unknown> };
       const t = raw.types;
       const method = (name: string) => ({ name, parameters: [] });
-      t['aws-cdk-lib.aws_s3.Bucket'] = { ...(t['aws-cdk-lib.aws_s3.Bucket'] as object), base: 'aws-cdk-lib.aws_s3.BucketBase', methods: [method('addLifecycleRule')] };
+      t['aws-cdk-lib.aws_s3.Bucket'] = {
+        ...(t['aws-cdk-lib.aws_s3.Bucket'] as object),
+        base: 'aws-cdk-lib.aws_s3.BucketBase',
+        methods: [method('addLifecycleRule')],
+      };
       t['aws-cdk-lib.aws_s3.BucketBase'] = cls('aws-cdk-lib.aws_s3.BucketBase', {
         base: 'aws-cdk-lib.Resource',
         abstract: true,
-        methods: [method('grantRead'), { name: 'protectedThing', protected: true }, { name: 'fromBucketName', static: true }],
+        methods: [
+          method('grantRead'),
+          { name: 'protectedThing', protected: true },
+          { name: 'fromBucketName', static: true },
+        ],
         properties: [
           prop('grants', { fqn: 'aws-cdk-lib.aws_s3.BucketGrants' }, { immutable: true }),
           prop('bucketArn', { primitive: 'string' }),
           prop('root', { fqn: 'aws-cdk-lib.aws_s3.IFolder' }),
         ],
       });
-      t['aws-cdk-lib.aws_s3.IFolder'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_s3.IFolder', name: 'IFolder', interfaces: ['aws-cdk-lib.aws_s3.IBaseFolder'], methods: [method('addFolder')] };
-      t['aws-cdk-lib.aws_s3.IBaseFolder'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_s3.IBaseFolder', name: 'IBaseFolder', methods: [method('addFile')], properties: [prop('path', { primitive: 'string' })] };
+      t['aws-cdk-lib.aws_s3.IFolder'] = {
+        kind: 'interface',
+        fqn: 'aws-cdk-lib.aws_s3.IFolder',
+        name: 'IFolder',
+        interfaces: ['aws-cdk-lib.aws_s3.IBaseFolder'],
+        methods: [method('addFolder')],
+      };
+      t['aws-cdk-lib.aws_s3.IBaseFolder'] = {
+        kind: 'interface',
+        fqn: 'aws-cdk-lib.aws_s3.IBaseFolder',
+        name: 'IBaseFolder',
+        methods: [method('addFile')],
+        properties: [prop('path', { primitive: 'string' })],
+      };
       t['aws-cdk-lib.aws_s3.BucketGrants'] = cls('aws-cdk-lib.aws_s3.BucketGrants', { methods: [method('read')] });
-      t['aws-cdk-lib.RemovalPolicy'] = { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }] };
+      t['aws-cdk-lib.RemovalPolicy'] = {
+        kind: 'enum',
+        fqn: 'aws-cdk-lib.RemovalPolicy',
+        name: 'RemovalPolicy',
+        members: [{ name: 'DESTROY' }],
+      };
       t['aws-cdk-lib.aws_lambda.Function'] = {
         ...(t['aws-cdk-lib.aws_lambda.Function'] as object),
         methods: [method('addEnvironment'), method('addEventSource')],
@@ -439,7 +564,11 @@ describe('Overlays', () => {
       return raw;
     }
     const build = (...overlays: Overlay[]) => buildCatalog([digestAssembly(overlayLib())], overlays);
-    const bucketWith = (extra: Partial<Overlay>): Overlay => ({ fqn: 'aws-cdk-lib.aws_s3.Bucket', displayName: 'S3 Bucket', ...extra });
+    const bucketWith = (extra: Partial<Overlay>): Overlay => ({
+      fqn: 'aws-cdk-lib.aws_s3.Bucket',
+      displayName: 'S3 Bucket',
+      ...extra,
+    });
 
     it('drops a whole Overlay whose construct is not in the Catalog, and says so', () => {
       const c = build({ fqn: 'aws-cdk-lib.aws_s3.NoSuchThing', displayName: 'Nothing' });
@@ -457,7 +586,11 @@ describe('Overlays', () => {
       const ok = { code: 'RemovalPolicy.DESTROY', uses: ['aws-cdk-lib.RemovalPolicy'] };
       const c = build(
         bucketWith({
-          defaults: { removalPolicy: ok, gone: { code: '1' }, versioned: { code: 'Nope.X', uses: ['aws-cdk-lib.Nope'] } },
+          defaults: {
+            removalPolicy: ok,
+            gone: { code: '1' },
+            versioned: { code: 'Nope.X', uses: ['aws-cdk-lib.Nope'] },
+          },
           fixtures: { bucketName: { code: "'b'" }, alsoGone: { code: '1' } },
         }),
       );
@@ -487,26 +620,40 @@ describe('Overlays', () => {
       });
 
       it('drops the spellings of a call that do not resolve, so the app is written in the form it has', () => {
-        const old = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [['grants', 'readAll'], ['grantRead']] } }] }));
+        const old = build(
+          bucketWith({
+            connections: [
+              { ...grantRead, primary: { ...grantRead.primary, forms: [['grants', 'readAll'], ['grantRead']] } },
+            ],
+          }),
+        );
         expect(hintsOf(old)[0]!.primary.forms).toEqual([['grantRead']]);
         expect(old.dropped).toEqual([expect.stringMatching(/form grants\.readAll/)]);
       });
 
       it('drops a hint none of whose primary spellings resolve', () => {
-        const c = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [['grantNothing']] } }] }));
+        const c = build(
+          bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [['grantNothing']] } }] }),
+        );
         expect(hintsOf(c)).toEqual([]);
         expect(c.dropped.join('\n')).toMatch(/hint "is read by".*grantNothing/);
       });
 
       it('does not take a static or protected method for one the Node can be called with', () => {
         for (const member of ['fromBucketName', 'protectedThing']) {
-          const c = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [[member]] } }] }));
+          const c = build(
+            bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, forms: [[member]] } }] }),
+          );
           expect(hintsOf(c), member).toEqual([]);
         }
       });
 
       it('drops peers that are not in the libraries, and the hint when none are left', () => {
-        const some = build(bucketWith({ connections: [{ ...grantRead, peers: ['aws-cdk-lib.aws_lambda.Function', 'aws-cdk-lib.aws_nope.Thing'] }] }));
+        const some = build(
+          bucketWith({
+            connections: [{ ...grantRead, peers: ['aws-cdk-lib.aws_lambda.Function', 'aws-cdk-lib.aws_nope.Thing'] }],
+          }),
+        );
         expect(hintsOf(some)[0]!.peers).toEqual(['aws-cdk-lib.aws_lambda.Function']);
         const none = build(bucketWith({ connections: [{ ...grantRead, peers: ['aws-cdk-lib.aws_nope.Thing'] }] }));
         expect(hintsOf(none)).toEqual([]);
@@ -520,7 +667,11 @@ describe('Overlays', () => {
       });
 
       it('drops a hint whose arguments name a class that is not there', () => {
-        const c = build(bucketWith({ connections: [{ ...grantRead, primary: { ...grantRead.primary, uses: ['aws-cdk-lib.aws_nope.Thing'] } }] }));
+        const c = build(
+          bucketWith({
+            connections: [{ ...grantRead, primary: { ...grantRead.primary, uses: ['aws-cdk-lib.aws_nope.Thing'] } }],
+          }),
+        );
         expect(hintsOf(c)).toEqual([]);
       });
 
@@ -534,7 +685,11 @@ describe('Overlays', () => {
     });
 
     describe('reference flows', () => {
-      const fn = (referenceFlows: Overlay['referenceFlows']): Overlay => ({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Function', referenceFlows });
+      const fn = (referenceFlows: Overlay['referenceFlows']): Overlay => ({
+        fqn: 'aws-cdk-lib.aws_lambda.Function',
+        displayName: 'Function',
+        referenceFlows,
+      });
 
       it('keeps the props the construct has, and drops the ones it does not, saying so', () => {
         const c = build(fn({ timeout: 'in', gone: 'in' }));
@@ -548,11 +703,17 @@ describe('Overlays', () => {
     });
 
     describe('accessors', () => {
-      const fn = (accessors: Overlay['accessors']): Overlay => ({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Function', accessors });
+      const fn = (accessors: Overlay['accessors']): Overlay => ({
+        fqn: 'aws-cdk-lib.aws_lambda.Function',
+        displayName: 'Function',
+        accessors,
+      });
 
       it('keeps an accessor whose path follows properties the construct has, and drops one that does not', () => {
         const good = { as: 'grantee' as const, path: ['role'] };
-        const c = build(fn([good, { as: 'grantee', path: ['nope', 'role'] }, { as: 'connectable', path: ['role', 'deeper'] }]));
+        const c = build(
+          fn([good, { as: 'grantee', path: ['nope', 'role'] }, { as: 'connectable', path: ['role', 'deeper'] }]),
+        );
         expect(entryFor(c, 'aws-cdk-lib.aws_lambda.Function')!.overlay!.accessors).toEqual([good]);
         expect(c.dropped).toHaveLength(2);
       });
@@ -565,21 +726,51 @@ describe('props that take constructs', () => {
   function withReferences() {
     const raw = cdkLib() as { types: Record<string, unknown> };
     const t = raw.types;
-    t['aws-cdk-lib.aws_ec2.IVpc'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_ec2.IVpc', name: 'IVpc', interfaces: ['aws-cdk-lib.IResource'] };
+    t['aws-cdk-lib.aws_ec2.IVpc'] = {
+      kind: 'interface',
+      fqn: 'aws-cdk-lib.aws_ec2.IVpc',
+      name: 'IVpc',
+      interfaces: ['aws-cdk-lib.IResource'],
+    };
     t['aws-cdk-lib.IResource'] = { kind: 'interface', fqn: 'aws-cdk-lib.IResource', name: 'IResource' };
-    t['aws-cdk-lib.aws_ec2.ISecurityGroup'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup', name: 'ISecurityGroup' };
-    t['aws-cdk-lib.aws_ec2.Vpc'] = cls('aws-cdk-lib.aws_ec2.Vpc', { base: 'aws-cdk-lib.Resource', interfaces: ['aws-cdk-lib.aws_ec2.IVpc'], initializer: init() });
-    t['aws-cdk-lib.aws_ec2.SecurityGroup'] = cls('aws-cdk-lib.aws_ec2.SecurityGroup', { base: 'aws-cdk-lib.Resource', interfaces: ['aws-cdk-lib.aws_ec2.ISecurityGroup'], initializer: init() });
+    t['aws-cdk-lib.aws_ec2.ISecurityGroup'] = {
+      kind: 'interface',
+      fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup',
+      name: 'ISecurityGroup',
+    };
+    t['aws-cdk-lib.aws_ec2.Vpc'] = cls('aws-cdk-lib.aws_ec2.Vpc', {
+      base: 'aws-cdk-lib.Resource',
+      interfaces: ['aws-cdk-lib.aws_ec2.IVpc'],
+      initializer: init(),
+    });
+    t['aws-cdk-lib.aws_ec2.SecurityGroup'] = cls('aws-cdk-lib.aws_ec2.SecurityGroup', {
+      base: 'aws-cdk-lib.Resource',
+      interfaces: ['aws-cdk-lib.aws_ec2.ISecurityGroup'],
+      initializer: init(),
+    });
     t['aws-cdk-lib.aws_lambda.FunctionOptions'] = struct('aws-cdk-lib.aws_lambda.FunctionOptions', [
       prop('timeout', { fqn: 'aws-cdk-lib.Duration' }, { optional: true }),
       prop('vpc', { fqn: 'aws-cdk-lib.aws_ec2.IVpc' }, { optional: true }),
-      prop('securityGroups', { collection: { kind: 'array', elementtype: { fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup' } } }, { optional: true }),
-      prop('role', { union: { types: [{ fqn: 'aws-cdk-lib.aws_ec2.IVpc' }, { fqn: 'aws-cdk-lib.interfaces.aws_iam.IRoleRef' }] } }, { optional: true }),
-      prop('tags', { collection: { kind: 'map', elementtype: { fqn: 'aws-cdk-lib.aws_ec2.IVpc' } } }, { optional: true }),
+      prop(
+        'securityGroups',
+        { collection: { kind: 'array', elementtype: { fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup' } } },
+        { optional: true },
+      ),
+      prop(
+        'role',
+        { union: { types: [{ fqn: 'aws-cdk-lib.aws_ec2.IVpc' }, { fqn: 'aws-cdk-lib.interfaces.aws_iam.IRoleRef' }] } },
+        { optional: true },
+      ),
+      prop(
+        'tags',
+        { collection: { kind: 'map', elementtype: { fqn: 'aws-cdk-lib.aws_ec2.IVpc' } } },
+        { optional: true },
+      ),
     ]);
     return catalogOf(raw);
   }
-  const prop_ = (name: string) => entryFor(withReferences(), 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === name);
+  const prop_ = (name: string) =>
+    entryFor(withReferences(), 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === name);
 
   it('marks a prop typed as an interface, or a construct class, with what it accepts', () => {
     expect(prop_('vpc')?.accepts).toEqual({ fqn: 'aws-cdk-lib.aws_ec2.IVpc' });
@@ -599,7 +790,14 @@ describe('props that take constructs', () => {
 
   it('lists everything a construct is assignable to, through its base classes and interfaces', () => {
     const vpc = entryFor(withReferences(), 'aws-cdk-lib.aws_ec2.Vpc')!;
-    expect(vpc.assignableTo).toEqual(expect.arrayContaining(['aws-cdk-lib.aws_ec2.Vpc', 'aws-cdk-lib.aws_ec2.IVpc', 'aws-cdk-lib.IResource', 'aws-cdk-lib.Resource']));
+    expect(vpc.assignableTo).toEqual(
+      expect.arrayContaining([
+        'aws-cdk-lib.aws_ec2.Vpc',
+        'aws-cdk-lib.aws_ec2.IVpc',
+        'aws-cdk-lib.IResource',
+        'aws-cdk-lib.Resource',
+      ]),
+    );
   });
 
   it('keeps that list out of a search hit', () => {
@@ -608,7 +806,11 @@ describe('props that take constructs', () => {
 });
 
 describe('grant methods', () => {
-  const method = (name: string, param: string, returns: string) => ({ name, parameters: [{ name: 'identity', type: { fqn: param } }], returns: { type: { fqn: returns } } });
+  const method = (name: string, param: string, returns: string) => ({
+    name,
+    parameters: [{ name: 'identity', type: { fqn: param } }],
+    returns: { type: { fqn: returns } },
+  });
   const raw = {
     name: 'x',
     version: '1.0.0',
@@ -618,7 +820,11 @@ describe('grant methods', () => {
         fqn: 'x.Thing',
         name: 'Thing',
         base: 'constructs.Construct',
-        methods: [method('grantRead', 'aws-cdk-lib.aws_iam.IGrantable', 'aws-cdk-lib.aws_iam.Grant'), method('grantNothing', 'x.Other', 'aws-cdk-lib.aws_iam.Grant'), method('poke', 'aws-cdk-lib.aws_iam.IGrantable', 'x.Other')],
+        methods: [
+          method('grantRead', 'aws-cdk-lib.aws_iam.IGrantable', 'aws-cdk-lib.aws_iam.Grant'),
+          method('grantNothing', 'x.Other', 'aws-cdk-lib.aws_iam.Grant'),
+          method('poke', 'aws-cdk-lib.aws_iam.IGrantable', 'x.Other'),
+        ],
       },
     },
   };

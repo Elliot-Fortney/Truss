@@ -17,21 +17,48 @@ const bucket: CatalogEntry = {
   assignableTo: ['aws-cdk-lib.aws_s3.Bucket'],
   grantMethods: [],
   props: [
-    { name: 'bucketName', type: 'string', required: false, summary: 'Physical name of this bucket.', default: '- Assigned by CloudFormation.' },
+    {
+      name: 'bucketName',
+      type: 'string',
+      required: false,
+      summary: 'Physical name of this bucket.',
+      default: '- Assigned by CloudFormation.',
+    },
     { name: 'versioned', type: 'boolean', required: false, summary: 'Whether versioning is on.', default: 'false' },
     { name: 'removalPolicy', type: 'RemovalPolicy', required: false },
     { name: 'encryption', type: 'BucketEncryption', required: false },
     { name: 'accessControl', type: 'BucketAccessControl', required: true, summary: 'Who may read it.' },
   ],
-  overlay: { displayName: 'S3 Bucket', featuredProps: ['versioned', 'removalPolicy'], defaults: {}, fixtures: {}, connections: [], accessors: [], referenceFlows: {} },
+  overlay: {
+    displayName: 'S3 Bucket',
+    featuredProps: ['versioned', 'removalPolicy'],
+    defaults: {},
+    fixtures: {},
+    connections: [],
+    accessors: [],
+    referenceFlows: {},
+  },
 };
 const catalog: Catalog = { entries: [bucket], dropped: [] };
 
-const node = (id: string, fqn: string, extra: Partial<NodeView> = {}): NodeView => ({ id, stackId: 'App', label: id, subtitle: '', fqn, icon: '', ...extra });
+const node = (id: string, fqn: string, extra: Partial<NodeView> = {}): NodeView => ({
+  id,
+  stackId: 'App',
+  label: id,
+  subtitle: '',
+  fqn,
+  icon: '',
+  ...extra,
+});
 const stack: StackBoxView = { id: 'App', label: 'App', env: 'env-agnostic' };
 const body = (...nodes: NodeView[]): ViewBody => ({ stages: [], stacks: [stack], nodes, edges: [] });
 const facts = (nodes: Record<string, Partial<NodeFacts>>): Facts => ({
-  nodes: Object.fromEntries(Object.entries(nodes).map(([path, f]) => [path, { span, className: 'x', pathsOnSpan: 1, binding: 'none' as const, ...f }])),
+  nodes: Object.fromEntries(
+    Object.entries(nodes).map(([path, f]) => [
+      path,
+      { span, className: 'x', pathsOnSpan: 1, binding: 'none' as const, ...f },
+    ]),
+  ),
 });
 const object = (...props: Extract<PropsFacts, { form: 'object' }>['props']): PropsFacts => ({ form: 'object', props });
 
@@ -39,24 +66,54 @@ describe('buildPanel for a construct in the Catalog', () => {
   const panel = buildPanel(
     'App/Logs',
     body(node('App/Logs', bucket.fqn)),
-    facts({ 'App/Logs': { className: 's3.Bucket', props: object({ name: 'bucketName', kind: 'literal', text: "'logs'", value: 'logs' }, { name: 'encryption', kind: 'expression', text: 'BucketEncryption.KMS' }) } }),
+    facts({
+      'App/Logs': {
+        className: 's3.Bucket',
+        props: object(
+          { name: 'bucketName', kind: 'literal', text: "'logs'", value: 'logs' },
+          { name: 'encryption', kind: 'expression', text: 'BucketEncryption.KMS' },
+        ),
+      },
+    }),
     catalog,
   )!;
 
   it('puts required props first, then featured ones in the Overlay order, then any other prop the code sets', () => {
-    expect(panel.rows.map((r) => r.name)).toEqual(['accessControl', 'versioned', 'removalPolicy', 'bucketName', 'encryption']);
+    expect(panel.rows.map((r) => r.name)).toEqual([
+      'accessControl',
+      'versioned',
+      'removalPolicy',
+      'bucketName',
+      'encryption',
+    ]);
   });
 
   it('leaves the props nothing sets for on demand', () => {
     expect(panel.more).toEqual([]);
-    const unset = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), facts({ 'App/Logs': { className: 's3.Bucket' } }), catalog)!;
+    const unset = buildPanel(
+      'App/Logs',
+      body(node('App/Logs', bucket.fqn)),
+      facts({ 'App/Logs': { className: 's3.Bucket' } }),
+      catalog,
+    )!;
     expect(unset.rows.map((r) => r.name)).toEqual(['accessControl', 'versioned', 'removalPolicy']);
     expect(unset.more.map((r) => r.name)).toEqual(['bucketName', 'encryption']);
   });
 
   it('gives each row its type, docs summary and CDK default as text, and flags required and featured', () => {
-    expect(panel.rows[0]).toEqual({ name: 'accessControl', type: 'BucketAccessControl', summary: 'Who may read it.', required: true });
-    expect(panel.rows[1]).toEqual({ name: 'versioned', type: 'boolean', summary: 'Whether versioning is on.', default: 'false', featured: true });
+    expect(panel.rows[0]).toEqual({
+      name: 'accessControl',
+      type: 'BucketAccessControl',
+      summary: 'Who may read it.',
+      required: true,
+    });
+    expect(panel.rows[1]).toEqual({
+      name: 'versioned',
+      type: 'boolean',
+      summary: 'Whether versioning is on.',
+      default: 'false',
+      featured: true,
+    });
   });
 
   it('shows a literal as its value and anything else as its source text', () => {
@@ -67,7 +124,13 @@ describe('buildPanel for a construct in the Catalog', () => {
   });
 
   it('names the class and carries the construct summary and where it is written', () => {
-    expect(panel).toMatchObject({ id: 'App/Logs', kind: 'node', className: 's3.Bucket', summary: 'An S3 bucket.', source: { file: 'lib/a.ts', line: 3, col: 5 } });
+    expect(panel).toMatchObject({
+      id: 'App/Logs',
+      kind: 'node',
+      className: 's3.Bucket',
+      summary: 'An S3 bucket.',
+      source: { file: 'lib/a.ts', line: 3, col: 5 },
+    });
   });
 });
 
@@ -87,11 +150,19 @@ describe('buildPanel when props are passed as a variable', () => {
 });
 
 describe('buildPanel for a construct the Catalog does not have', () => {
-  it('shows a class of the app\'s own with the props as written', () => {
+  it("shows a class of the app's own with the props as written", () => {
     const panel = buildPanel(
       'App/Docs',
       body(node('App/Docs', 'constructs.Construct')),
-      facts({ 'App/Docs': { className: 'DocsSite', props: object({ name: 'domain', kind: 'literal', text: "'a.dev'", value: 'a.dev' }, { name: '...defaults', kind: 'expression', text: '...defaults' }) } }),
+      facts({
+        'App/Docs': {
+          className: 'DocsSite',
+          props: object(
+            { name: 'domain', kind: 'literal', text: "'a.dev'", value: 'a.dev' },
+            { name: '...defaults', kind: 'expression', text: '...defaults' },
+          ),
+        },
+      }),
       catalog,
     )!;
     expect(panel.rows).toEqual([
@@ -102,24 +173,46 @@ describe('buildPanel for a construct the Catalog does not have', () => {
     expect(panel.className).toBe('DocsSite');
   });
 
-  it('does not describe a subclass of a CDK construct by its parent\'s props', () => {
+  it("does not describe a subclass of a CDK construct by its parent's props", () => {
     const panel = buildPanel(
       'App/Topic',
       body(node('App/Topic', bucket.fqn)),
-      facts({ 'App/Topic': { className: 'AuditedBucket', props: object({ name: 'owner', kind: 'literal', text: "'me'", value: 'me' }) } }),
+      facts({
+        'App/Topic': {
+          className: 'AuditedBucket',
+          props: object({ name: 'owner', kind: 'literal', text: "'me'", value: 'me' }),
+        },
+      }),
       catalog,
     )!;
     expect(panel.rows.map((r) => r.name)).toEqual(['owner']);
   });
 
   it('has no rows for a Node with nothing written, such as an external or hoisted one', () => {
-    const panel = buildPanel('App/Existing', body(node('App/Existing', bucket.fqn, { external: true })), facts({ 'App/Existing': { className: 's3.Bucket.fromBucketName' } }), catalog)!;
+    const panel = buildPanel(
+      'App/Existing',
+      body(node('App/Existing', bucket.fqn, { external: true })),
+      facts({ 'App/Existing': { className: 's3.Bucket.fromBucketName' } }),
+      catalog,
+    )!;
     expect(panel).toMatchObject({ rows: [], more: [] });
-    expect(buildPanel('App/Default', body(node('App/Default', bucket.fqn, { hoisted: true })), facts({}), catalog)).toMatchObject({ rows: [], more: [] });
+    expect(
+      buildPanel('App/Default', body(node('App/Default', bucket.fqn, { hoisted: true })), facts({}), catalog),
+    ).toMatchObject({ rows: [], more: [] });
   });
 
   it('works without a Catalog', () => {
-    const panel = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), facts({ 'App/Logs': { className: 's3.Bucket', props: object({ name: 'versioned', kind: 'literal', text: 'true', value: true }) } }), undefined)!;
+    const panel = buildPanel(
+      'App/Logs',
+      body(node('App/Logs', bucket.fqn)),
+      facts({
+        'App/Logs': {
+          className: 's3.Bucket',
+          props: object({ name: 'versioned', kind: 'literal', text: 'true', value: true }),
+        },
+      }),
+      undefined,
+    )!;
     expect(panel.rows.map((r) => r.name)).toEqual(['versioned']);
   });
 
@@ -132,7 +225,16 @@ describe('buildPanel for a Stack', () => {
   const panel = buildPanel(
     'App',
     body(),
-    facts({ App: { className: 'ShopStack', props: object({ name: 'env', kind: 'expression', text: 'env' }, { name: 'terminationProtection', kind: 'literal', text: 'true', value: true }, { name: 'tags', kind: 'expression', text: '{ a: "b" }' }) } }),
+    facts({
+      App: {
+        className: 'ShopStack',
+        props: object(
+          { name: 'env', kind: 'expression', text: 'env' },
+          { name: 'terminationProtection', kind: 'literal', text: 'true', value: true },
+          { name: 'tags', kind: 'expression', text: '{ a: "b" }' },
+        ),
+      },
+    }),
     catalog,
   )!;
 
@@ -140,7 +242,11 @@ describe('buildPanel for a Stack', () => {
     expect(panel).toMatchObject({ id: 'App', kind: 'stack', className: 'ShopStack', source: { file: 'lib/a.ts' } });
     expect(panel.rows.map((r) => r.name)).toEqual(['env', 'terminationProtection', 'description', 'tags']);
     expect(panel.rows[0]).toMatchObject({ type: 'Environment', written: { kind: 'expression', text: 'env' } });
-    expect(panel.rows[1]).toMatchObject({ type: 'boolean', default: 'false', written: { kind: 'literal', value: true } });
+    expect(panel.rows[1]).toMatchObject({
+      type: 'boolean',
+      default: 'false',
+      written: { kind: 'literal', value: true },
+    });
     expect(panel.rows[2]!.written).toBeUndefined();
     expect(panel.more).toEqual([]);
   });
@@ -155,16 +261,41 @@ describe('buildPanel for editing', () => {
       { name: 'versioned', type: 'boolean', required: false, input: { kind: 'boolean' } },
       { name: 'removalPolicy', type: 'RemovalPolicy', required: false, input: enumInput },
       { name: 'timeout', type: 'Duration', required: false, input: { kind: 'duration' } },
-      { name: 'partitionKey', type: 'Attribute', required: false, input: { kind: 'struct', fields: [{ name: 'name', type: 'string', required: true, input: { kind: 'string' } }] } },
+      {
+        name: 'partitionKey',
+        type: 'Attribute',
+        required: false,
+        input: {
+          kind: 'struct',
+          fields: [{ name: 'name', type: 'string', required: true, input: { kind: 'string' } }],
+        },
+      },
       { name: 'lifecycleRules', type: 'LifecycleRule[]', required: false },
     ],
     overlay: { ...bucket.overlay!, featuredProps: ['versioned', 'removalPolicy', 'timeout', 'partitionKey'] },
   };
   const cat: Catalog = { entries: [editable], dropped: [] };
-  const intent = (prop: string[], value: PropValue, path = 'App/Logs'): Intent => ({ type: 'setProp', path, expect: { className: 's3.Bucket', literalId: 'Logs' }, prop, value });
-  const panelOf = (props: PropsFacts | undefined, editing?: Parameters<typeof buildPanel>[4], over: Partial<NodeView> = {}) =>
-    buildPanel('App/Logs', body(node('App/Logs', bucket.fqn, over)), facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', ...(props ? { props } : {}) } }), cat, editing)!;
-  const input = (panel: ReturnType<typeof panelOf>, name: string) => [...panel.rows, ...panel.more].find((r) => r.name === name)?.input;
+  const intent = (prop: string[], value: PropValue, path = 'App/Logs'): Intent => ({
+    type: 'setProp',
+    path,
+    expect: { className: 's3.Bucket', literalId: 'Logs' },
+    prop,
+    value,
+  });
+  const panelOf = (
+    props: PropsFacts | undefined,
+    editing?: Parameters<typeof buildPanel>[4],
+    over: Partial<NodeView> = {},
+  ) =>
+    buildPanel(
+      'App/Logs',
+      body(node('App/Logs', bucket.fqn, over)),
+      facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', ...(props ? { props } : {}) } }),
+      cat,
+      editing,
+    )!;
+  const input = (panel: ReturnType<typeof panelOf>, name: string) =>
+    [...panel.rows, ...panel.more].find((r) => r.name === name)?.input;
 
   it('gives a row its input when editing is on, and none when it is not asked for', () => {
     expect(input(panelOf(undefined, { intents: [] }), 'versioned')).toEqual({ kind: 'boolean' });
@@ -186,15 +317,39 @@ describe('buildPanel for editing', () => {
   it('keeps an input for a prop the code writes as a literal, a member, a quantity or an object, and drops it for any other expression', () => {
     const props = object(
       { name: 'versioned', kind: 'literal', text: 'true', value: true },
-      { name: 'removalPolicy', kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } },
-      { name: 'timeout', kind: 'expression', text: 'cdk.Duration.seconds(5)', quantity: { type: 'Duration', unit: 'seconds', amount: 5 } },
-      { name: 'partitionKey', kind: 'object', text: '{ name: "a" }', fields: [{ name: 'name', kind: 'literal', text: '"a"', value: 'a' }] },
+      {
+        name: 'removalPolicy',
+        kind: 'expression',
+        text: 'RemovalPolicy.DESTROY',
+        member: { type: 'RemovalPolicy', name: 'DESTROY' },
+      },
+      {
+        name: 'timeout',
+        kind: 'expression',
+        text: 'cdk.Duration.seconds(5)',
+        quantity: { type: 'Duration', unit: 'seconds', amount: 5 },
+      },
+      {
+        name: 'partitionKey',
+        kind: 'object',
+        text: '{ name: "a" }',
+        fields: [{ name: 'name', kind: 'literal', text: '"a"', value: 'a' }],
+      },
       { name: 'bucketName', kind: 'expression', text: 'nameOf()' },
     );
     const panel = panelOf(props, { intents: [] });
-    expect(['versioned', 'removalPolicy', 'timeout', 'partitionKey'].map((n) => input(panel, n)?.kind)).toEqual(['boolean', 'enum', 'duration', 'struct']);
+    expect(['versioned', 'removalPolicy', 'timeout', 'partitionKey'].map((n) => input(panel, n)?.kind)).toEqual([
+      'boolean',
+      'enum',
+      'duration',
+      'struct',
+    ]);
     expect(input(panel, 'bucketName')).toBeUndefined();
-    expect(panel.rows.find((r) => r.name === 'partitionKey')?.written).toEqual({ kind: 'object', text: '{ name: "a" }', fields: [{ name: 'name', written: { kind: 'literal', value: 'a', text: '"a"' } }] });
+    expect(panel.rows.find((r) => r.name === 'partitionKey')?.written).toEqual({
+      kind: 'object',
+      text: '{ name: "a" }',
+      fields: [{ name: 'name', written: { kind: 'literal', value: 'a', text: '"a"' } }],
+    });
   });
 
   it('is read-only, with the reason and no inputs, for a locked Node, props passed as a variable, or a blocked Draft', () => {
@@ -211,27 +366,57 @@ describe('buildPanel for editing', () => {
 
   it('shows the Draft’s values as the code would have them, before synth has caught up', () => {
     const props = object({ name: 'versioned', kind: 'literal', text: 'true', value: true });
-    const panel = panelOf(props, { intents: [intent(['versioned'], { kind: 'boolean', value: false }), intent(['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'RETAIN' })] });
+    const panel = panelOf(props, {
+      intents: [
+        intent(['versioned'], { kind: 'boolean', value: false }),
+        intent(['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'RETAIN' }),
+      ],
+    });
     const written = (n: string) => [...panel.rows, ...panel.more].find((r) => r.name === n)?.written;
     expect(written('versioned')).toMatchObject({ kind: 'literal', value: false });
-    expect(written('removalPolicy')).toMatchObject({ kind: 'expression', member: { type: 'RemovalPolicy', name: 'RETAIN' } });
+    expect(written('removalPolicy')).toMatchObject({
+      kind: 'expression',
+      member: { type: 'RemovalPolicy', name: 'RETAIN' },
+    });
     expect(input(panel, 'removalPolicy')?.kind).toBe('enum');
   });
 
   it('shows an edit made to another instance of the same `new` as made here (ADR 0008)', () => {
-    const shared = facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs' }, 'Other/Logs': { className: 's3.Bucket', literalId: 'Logs' } });
-    const panel = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), shared, cat, { intents: [intent(['versioned'], { kind: 'boolean', value: true }, 'Other/Logs')] })!;
+    const shared = facts({
+      'App/Logs': { className: 's3.Bucket', literalId: 'Logs' },
+      'Other/Logs': { className: 's3.Bucket', literalId: 'Logs' },
+    });
+    const panel = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), shared, cat, {
+      intents: [intent(['versioned'], { kind: 'boolean', value: true }, 'Other/Logs')],
+    })!;
     expect(panel.rows.find((r) => r.name === 'versioned')?.written).toMatchObject({ value: true });
   });
 
   it('offers a Stack’s own props as inputs, and is read-only when the Stack has no code', () => {
-    const stackPanel = buildPanel('App', body(), facts({ App: { className: 'ShopStack', literalId: 'App' } }), cat, { intents: [] })!;
-    expect(stackPanel.rows.map((r) => [r.name, r.input?.kind])).toEqual([['env', 'struct'], ['terminationProtection', 'boolean'], ['description', 'string']]);
+    const stackPanel = buildPanel('App', body(), facts({ App: { className: 'ShopStack', literalId: 'App' } }), cat, {
+      intents: [],
+    })!;
+    expect(stackPanel.rows.map((r) => [r.name, r.input?.kind])).toEqual([
+      ['env', 'struct'],
+      ['terminationProtection', 'boolean'],
+      ['description', 'string'],
+    ]);
     expect(buildPanel('App', body(), facts({}), cat, { intents: [] })!.readOnly).toMatch(/no code/);
   });
 
   describe('inputFor', () => {
-    const panel = panelOf(object({ name: 'partitionKey', kind: 'object', text: '', fields: [{ name: 'name', kind: 'literal', text: '"a"', value: 'a' }, { name: 'sort', kind: 'expression', text: 'x' }] }), { intents: [] });
+    const panel = panelOf(
+      object({
+        name: 'partitionKey',
+        kind: 'object',
+        text: '',
+        fields: [
+          { name: 'name', kind: 'literal', text: '"a"', value: 'a' },
+          { name: 'sort', kind: 'expression', text: 'x' },
+        ],
+      }),
+      { intents: [] },
+    );
     it('finds the input of a prop and of a field inside a struct prop', () => {
       expect(inputFor(panel, ['versioned'])).toEqual({ kind: 'boolean' });
       expect(inputFor(panel, ['partitionKey', 'name'])).toEqual({ kind: 'string' });
@@ -240,7 +425,15 @@ describe('buildPanel for editing', () => {
       expect(inputFor(panel, ['nope'])).toBeUndefined();
       expect(inputFor(panel, ['partitionKey', 'nope'])).toBeUndefined();
       expect(inputFor(panel, ['versioned', 'x'])).toBeUndefined();
-      const odd = panelOf(object({ name: 'partitionKey', kind: 'object', text: '', fields: [{ name: 'name', kind: 'expression', text: 'id()' }] }), { intents: [] });
+      const odd = panelOf(
+        object({
+          name: 'partitionKey',
+          kind: 'object',
+          text: '',
+          fields: [{ name: 'name', kind: 'expression', text: 'id()' }],
+        }),
+        { intents: [] },
+      );
       expect(inputFor(odd, ['partitionKey', 'name'])).toBeUndefined();
     });
   });
@@ -250,7 +443,14 @@ describe('buildPanel for editing', () => {
       id: '',
       path: '',
       fqn: 'App',
-      children: [{ id: 'App', path: 'App', fqn: 'Stack', children: ['Logs', 'Other', 'Default'].map((id) => ({ id, path: `App/${id}`, fqn: 'x', children: [] })) }],
+      children: [
+        {
+          id: 'App',
+          path: 'App',
+          fqn: 'Stack',
+          children: ['Logs', 'Other', 'Default'].map((id) => ({ id, path: `App/${id}`, fqn: 'x', children: [] })),
+        },
+      ],
     };
     const open = () => panelOf(undefined, { intents: [], tree });
     const refusal = (r: ReturnType<typeof intentForRename>) => (r.ok ? undefined : r.reason);
@@ -266,19 +466,35 @@ describe('buildPanel for editing', () => {
     });
 
     it('is not offered for a `new` that makes several constructs', () => {
-      const several = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', pathsOnSpan: 2 } }), cat, { intents: [], tree })!;
+      const several = buildPanel(
+        'App/Logs',
+        body(node('App/Logs', bucket.fqn)),
+        facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs', pathsOnSpan: 2 } }),
+        cat,
+        { intents: [], tree },
+      )!;
       expect(several.idEdit).toBeUndefined();
     });
 
     it('returns the rename to stage for an ID the siblings allow', () => {
-      expect(intentForRename(open(), 'App/Logs', 'Files')).toEqual({ ok: true, intent: { type: 'renameId', path: 'App/Logs', expect: { className: 's3.Bucket', literalId: 'Logs' }, newId: 'Files' } });
+      expect(intentForRename(open(), 'App/Logs', 'Files')).toEqual({
+        ok: true,
+        intent: {
+          type: 'renameId',
+          path: 'App/Logs',
+          expect: { className: 's3.Bucket', literalId: 'Logs' },
+          newId: 'Files',
+        },
+      });
     });
 
     it('refuses with the reason an ID breaks, a panel that is read-only, and no panel', () => {
       expect(refusal(intentForRename(open(), 'App/Logs', 'Other'))).toMatch(/sibling already has/);
       expect(refusal(intentForRename(open(), 'App/Logs', 'Resource'))).toMatch(/"Default"/);
       expect(refusal(intentForRename(open(), 'App/Logs', ''))).toMatch(/empty/);
-      expect(refusal(intentForRename(panelOf(undefined, { intents: [], tree, blocked: 'paused' }), 'App/Logs', 'Files'))).toBe('paused');
+      expect(
+        refusal(intentForRename(panelOf(undefined, { intents: [], tree, blocked: 'paused' }), 'App/Logs', 'Files')),
+      ).toBe('paused');
       expect(refusal(intentForRename(undefined, 'App/Nope', 'Files'))).toBe('No Node or Stack at App/Nope');
     });
   });
@@ -289,9 +505,15 @@ describe('buildPanel for editing', () => {
     const refusal = (r: ReturnType<typeof intentForEdit>) => (r.ok ? undefined : r.reason);
 
     it('returns the intent to stage for a value the input takes', () => {
-      expect(intentForEdit(open(), 'App/Logs', ['versioned'], flag)).toEqual({ ok: true, intent: intent(['versioned'], flag) });
+      expect(intentForEdit(open(), 'App/Logs', ['versioned'], flag)).toEqual({
+        ok: true,
+        intent: intent(['versioned'], flag),
+      });
       const retain = { kind: 'enum' as const, type: 'aws-cdk-lib.RemovalPolicy', member: 'RETAIN' };
-      expect(intentForEdit(open(), 'App/Logs', ['removalPolicy'], retain)).toEqual({ ok: true, intent: intent(['removalPolicy'], retain) });
+      expect(intentForEdit(open(), 'App/Logs', ['removalPolicy'], retain)).toEqual({
+        ok: true,
+        intent: intent(['removalPolicy'], retain),
+      });
     });
 
     it('refuses when there is no panel', () => {
@@ -299,23 +521,62 @@ describe('buildPanel for editing', () => {
     });
 
     it('refuses with the reason when the panel is read-only', () => {
-      expect(refusal(intentForEdit(panelOf(undefined, { intents: [], blocked: 'no build script' }), 'App/Logs', ['versioned'], flag))).toBe('no build script');
+      expect(
+        refusal(
+          intentForEdit(
+            panelOf(undefined, { intents: [], blocked: 'no build script' }),
+            'App/Logs',
+            ['versioned'],
+            flag,
+          ),
+        ),
+      ).toBe('no build script');
     });
 
     it('refuses a prop the panel has no input for', () => {
-      expect(refusal(intentForEdit(open(), 'App/Logs', ['lifecycleRules'], flag))).toBe("lifecycleRules can't be edited here");
-      expect(refusal(intentForEdit(open(), 'App/Logs', ['partitionKey', 'nope'], flag))).toBe("partitionKey.nope can't be edited here");
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['lifecycleRules'], flag))).toBe(
+        "lifecycleRules can't be edited here",
+      );
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['partitionKey', 'nope'], flag))).toBe(
+        "partitionKey.nope can't be edited here",
+      );
     });
 
     it('refuses a value of the wrong kind, and an enum of another type or member', () => {
-      expect(refusal(intentForEdit(open(), 'App/Logs', ['versioned'], { kind: 'string', value: 'yes' }))).toBe('versioned takes a boolean, not a string');
-      expect(refusal(intentForEdit(open(), 'App/Logs', ['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.Other', member: 'RETAIN' }))).toBe('removalPolicy takes a enum, not a enum');
-      expect(refusal(intentForEdit(open(), 'App/Logs', ['removalPolicy'], { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'NOPE' }))).toBe('removalPolicy takes a enum, not a enum');
+      expect(refusal(intentForEdit(open(), 'App/Logs', ['versioned'], { kind: 'string', value: 'yes' }))).toBe(
+        'versioned takes a boolean, not a string',
+      );
+      expect(
+        refusal(
+          intentForEdit(open(), 'App/Logs', ['removalPolicy'], {
+            kind: 'enum',
+            type: 'aws-cdk-lib.Other',
+            member: 'RETAIN',
+          }),
+        ),
+      ).toBe('removalPolicy takes a enum, not a enum');
+      expect(
+        refusal(
+          intentForEdit(open(), 'App/Logs', ['removalPolicy'], {
+            kind: 'enum',
+            type: 'aws-cdk-lib.RemovalPolicy',
+            member: 'NOPE',
+          }),
+        ),
+      ).toBe('removalPolicy takes a enum, not a enum');
     });
 
     it('refuses when the code gives the Node no Construct ID to edit by', () => {
-      const noId = buildPanel('App/Logs', body(node('App/Logs', bucket.fqn)), facts({ 'App/Logs': { className: 's3.Bucket' } }), cat, { intents: [] })!;
-      expect(refusal(intentForEdit(noId, 'App/Logs', ['versioned'], flag))).toBe('App/Logs has no Construct ID in the code to edit by');
+      const noId = buildPanel(
+        'App/Logs',
+        body(node('App/Logs', bucket.fqn)),
+        facts({ 'App/Logs': { className: 's3.Bucket' } }),
+        cat,
+        { intents: [] },
+      )!;
+      expect(refusal(intentForEdit(noId, 'App/Logs', ['versioned'], flag))).toBe(
+        'App/Logs has no Construct ID in the code to edit by',
+      );
     });
   });
 });
@@ -327,15 +588,38 @@ describe('editableAs', () => {
     expect(editableAs({ kind: 'string' }, { kind: 'literal', value: 1, text: '1' })).toBe(false);
     expect(editableAs({ kind: 'number' }, { kind: 'literal', value: 1, text: '1' })).toBe(true);
     expect(editableAs({ kind: 'boolean' }, { kind: 'expression', text: 'flag' })).toBe(false);
-    expect(editableAs({ kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] }, { kind: 'expression', text: 's3.BucketEncryption.KMS', member: { type: 'BucketEncryption', name: 'KMS' } })).toBe(true);
-    expect(editableAs({ kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] }, { kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } })).toBe(false);
-    expect(editableAs({ kind: 'size' }, { kind: 'expression', text: 'Duration.days(1)', quantity: { type: 'Duration', unit: 'days', amount: 1 } })).toBe(false);
+    expect(
+      editableAs(
+        { kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] },
+        { kind: 'expression', text: 's3.BucketEncryption.KMS', member: { type: 'BucketEncryption', name: 'KMS' } },
+      ),
+    ).toBe(true);
+    expect(
+      editableAs(
+        { kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] },
+        { kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } },
+      ),
+    ).toBe(false);
+    expect(
+      editableAs(
+        { kind: 'size' },
+        { kind: 'expression', text: 'Duration.days(1)', quantity: { type: 'Duration', unit: 'days', amount: 1 } },
+      ),
+    ).toBe(false);
     expect(editableAs({ kind: 'struct', fields: [] }, { kind: 'expression', text: 'attr' })).toBe(false);
   });
 });
 
 describe('buildPanel Node picker', () => {
-  const key: CatalogEntry = { fqn: 'aws-cdk-lib.aws_kms.Key', name: 'Key', library: 'aws-cdk-lib', tier: 'L2', props: [], assignableTo: ['aws-cdk-lib.aws_kms.Key', 'aws-cdk-lib.aws_kms.IKey'], grantMethods: [] };
+  const key: CatalogEntry = {
+    fqn: 'aws-cdk-lib.aws_kms.Key',
+    name: 'Key',
+    library: 'aws-cdk-lib',
+    tier: 'L2',
+    props: [],
+    assignableTo: ['aws-cdk-lib.aws_kms.Key', 'aws-cdk-lib.aws_kms.IKey'],
+    grantMethods: [],
+  };
   const logs: CatalogEntry = {
     ...bucket,
     props: [
@@ -344,7 +628,13 @@ describe('buildPanel Node picker', () => {
     ],
   };
   const withKeys: Catalog = { entries: [logs, key], dropped: [] };
-  const nodes = () => body(node('App/Logs', bucket.fqn), node('App/Key', key.fqn, { label: 'Key' }), node('App/Spare', key.fqn, { label: 'Spare' }), node('App/Other', bucket.fqn, { label: 'Other' }));
+  const nodes = () =>
+    body(
+      node('App/Logs', bucket.fqn),
+      node('App/Key', key.fqn, { label: 'Key' }),
+      node('App/Spare', key.fqn, { label: 'Spare' }),
+      node('App/Other', bucket.fqn, { label: 'Other' }),
+    );
   const world = (extra: Partial<NodeFacts> = {}, references: Facts['references'] = []): Facts => ({
     ...facts({
       'App/Logs': { className: 's3.Bucket', literalId: 'Logs', ...extra },
@@ -354,7 +644,16 @@ describe('buildPanel Node picker', () => {
     }),
     references,
   });
-  const ref = (to: string, prop: string, extra: Partial<NonNullable<Facts['references']>[number]> = {}) => ({ from: 'App/Logs', to: `App/${to}`, prop, form: 'identifier' as const, editable: true, text: to.toLowerCase(), span, ...extra });
+  const ref = (to: string, prop: string, extra: Partial<NonNullable<Facts['references']>[number]> = {}) => ({
+    from: 'App/Logs',
+    to: `App/${to}`,
+    prop,
+    form: 'identifier' as const,
+    editable: true,
+    text: to.toLowerCase(),
+    span,
+    ...extra,
+  });
   const rowsOf = (f: Facts, editing: Parameters<typeof buildPanel>[4] = { intents: [] }) => {
     const p = buildPanel('App/Logs', nodes(), f, withKeys, editing)!;
     return Object.fromEntries([...p.rows, ...p.more].map((r) => [r.name, r.nodes]));
@@ -372,26 +671,48 @@ describe('buildPanel Node picker', () => {
   });
 
   it('shows what the prop points at now, and does not offer it again', () => {
-    const picker = rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'key' }) }, [ref('Key', 'encryptionKey')]))['encryptionKey'];
-    expect(picker).toMatchObject({ current: [{ id: 'App/Key', label: 'Key' }], choices: [{ id: 'App/Spare', label: 'Spare' }] });
+    const picker = rowsOf(
+      world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'key' }) }, [
+        ref('Key', 'encryptionKey'),
+      ]),
+    )['encryptionKey'];
+    expect(picker).toMatchObject({
+      current: [{ id: 'App/Key', label: 'Key' }],
+      choices: [{ id: 'App/Spare', label: 'Spare' }],
+    });
   });
 
   it('takes several Nodes for an array prop, in order', () => {
-    const picker = rowsOf(world({ props: object({ name: 'replicas', kind: 'expression', text: '[spare, key]' }) }, [ref('Spare', 'replicas', { index: 0 }), ref('Key', 'replicas', { index: 1 })]))['replicas'];
+    const picker = rowsOf(
+      world({ props: object({ name: 'replicas', kind: 'expression', text: '[spare, key]' }) }, [
+        ref('Spare', 'replicas', { index: 0 }),
+        ref('Key', 'replicas', { index: 1 }),
+      ]),
+    )['replicas'];
     expect(picker).toMatchObject({ many: true, current: [{ id: 'App/Spare' }, { id: 'App/Key' }], choices: [] });
   });
 
   it('marks a Reference the code writes as a call as one it only shows', () => {
-    const picker = rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'pick(key)' }) }, [ref('Key', 'encryptionKey', { form: 'call', editable: false, reason: 'Passed through a call' })]))['encryptionKey'];
+    const picker = rowsOf(
+      world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'pick(key)' }) }, [
+        ref('Key', 'encryptionKey', { form: 'call', editable: false, reason: 'Passed through a call' }),
+      ]),
+    )['encryptionKey'];
     expect(picker?.current).toEqual([{ id: 'App/Key', label: 'Key', readOnly: 'Passed through a call' }]);
   });
 
   it('has no picker for a prop written as an expression that is no Node', () => {
-    expect(rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'props.key' }) }))['encryptionKey']).toBeUndefined();
+    expect(
+      rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'props.key' }) }))[
+        'encryptionKey'
+      ],
+    ).toBeUndefined();
   });
 
   it('has none while the panel is read-only', () => {
-    expect(rowsOf(world({ props: object() }), { intents: [], blocked: 'Editing is paused' })['encryptionKey']).toBeUndefined();
+    expect(
+      rowsOf(world({ props: object() }), { intents: [], blocked: 'Editing is paused' })['encryptionKey'],
+    ).toBeUndefined();
     const readOnly = buildPanel('App/Logs', nodes(), world({ props: object() }), withKeys)!;
     expect([...readOnly.rows, ...readOnly.more].every((r) => r.nodes === undefined)).toBe(true);
   });

@@ -47,7 +47,8 @@ describe('TsSource.analyse on a stack with a single construct', () => {
     const assembly = readFixtureAssembly('straight-line');
     const only = assembly.tree.children[0]!;
     only.children = only.children.filter((c) => c.id === 'Uploads');
-    for (const path of ['ShopStack', 'ShopStack/Orders/Resource', 'ShopStack/Catalog/Resource']) delete assembly.creation[path];
+    for (const path of ['ShopStack', 'ShopStack/Orders/Resource', 'ShopStack/Catalog/Resource'])
+      delete assembly.creation[path];
     const facts = new TsSource().analyse(readFixtureFiles('straight-line'), assembly);
     expect(Object.keys(facts.nodes)).toEqual(['ShopStack/Uploads']);
   });
@@ -125,7 +126,14 @@ describe('TsSource.analyse on the shapes fixture', () => {
     });
     expect(at('Shapes/Bound').props).toEqual({
       form: 'object',
-      props: [{ name: 'retentionPeriod', kind: 'expression', text: 'cdk.Duration.days(1)', quantity: { type: 'Duration', unit: 'days', amount: 1 } }],
+      props: [
+        {
+          name: 'retentionPeriod',
+          kind: 'expression',
+          text: 'cdk.Duration.days(1)',
+          quantity: { type: 'Duration', unit: 'days', amount: 1 },
+        },
+      ],
     });
     expect(at('Shapes/Audit').props).toBeUndefined();
   });
@@ -161,11 +169,26 @@ describe('TsSource.analyse on the shapes fixture', () => {
           text: "{ name: 'sku', type: dynamodb.AttributeType.STRING }",
           fields: [
             { name: 'name', kind: 'literal', text: "'sku'", value: 'sku' },
-            { name: 'type', kind: 'expression', text: 'dynamodb.AttributeType.STRING', member: { type: 'AttributeType', name: 'STRING' } },
+            {
+              name: 'type',
+              kind: 'expression',
+              text: 'dynamodb.AttributeType.STRING',
+              member: { type: 'AttributeType', name: 'STRING' },
+            },
           ],
         },
-        { name: 'removalPolicy', kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } },
-        { name: 'size', kind: 'expression', text: 'Size.mebibytes(512)', quantity: { type: 'Size', unit: 'mebibytes', amount: 512 } },
+        {
+          name: 'removalPolicy',
+          kind: 'expression',
+          text: 'RemovalPolicy.DESTROY',
+          member: { type: 'RemovalPolicy', name: 'DESTROY' },
+        },
+        {
+          name: 'size',
+          kind: 'expression',
+          text: 'Size.mebibytes(512)',
+          quantity: { type: 'Size', unit: 'mebibytes', amount: 512 },
+        },
         { name: 'timeout', kind: 'expression', text: 'cdk.Duration.seconds(someVar)' },
         { name: 'other', kind: 'expression', text: 'lower.case' },
       ],
@@ -183,14 +206,17 @@ describe('TsSource.analyse on the shapes fixture', () => {
     expect([a.literalId, b.literalId]).toEqual(['SameLineA', 'SameLineB']);
   });
 
-  it('gives a construct nested in another\'s props its own span, inside the outer one', () => {
+  it("gives a construct nested in another's props its own span, inside the outer one", () => {
     const [outer, inner] = [at('Shapes/Outer'), at('Shapes/Inner')];
     expect(inner.literalId).toBe('Inner');
     expect(inner.span.start.col).toBeGreaterThan(outer.span.start.col);
     expect(inner.span.end.col).toBeLessThan(outer.span.end.col);
     expect(outer.props).toMatchObject({
       form: 'object',
-      props: [{ name: 'eventBridgeEnabled' }, { name: 'serverAccessLogsBucket', kind: 'expression', text: "new s3.Bucket(this, 'Inner')" }],
+      props: [
+        { name: 'eventBridgeEnabled' },
+        { name: 'serverAccessLogsBucket', kind: 'expression', text: "new s3.Bucket(this, 'Inner')" },
+      ],
     });
   });
 
@@ -204,7 +230,7 @@ describe('TsSource.analyse on the shapes fixture: classes, nested stacks, Stages
   const facts = new TsSource().analyse(readFixtureFiles('shapes'), readFixtureAssembly('shapes'));
   const at = (path: string) => facts.nodes[path]!;
 
-  it('finds the `new` of a class of the app\'s own that extends a CDK construct, not the constructor it runs', () => {
+  it("finds the `new` of a class of the app's own that extends a CDK construct, not the constructor it runs", () => {
     expect(at('Shapes/Docs')).toMatchObject({
       span: { file: 'lib/shapes-stack.ts', start: { line: 60, col: 5 } },
       className: 'MyBucket',
@@ -215,7 +241,11 @@ describe('TsSource.analyse on the shapes fixture: classes, nested stacks, Stages
   });
 
   it('does the same when that class calls `super` itself', () => {
-    expect(at('Shapes/Audit2')).toMatchObject({ className: 'AuditedTopic', literalId: 'Audit2', span: { start: { line: 61 } } });
+    expect(at('Shapes/Audit2')).toMatchObject({
+      className: 'AuditedTopic',
+      literalId: 'Audit2',
+      span: { start: { line: 61 } },
+    });
   });
 
   it('gives a nested stack its own facts at its `new`, without the construct that wraps its resource in the parent', () => {
@@ -223,7 +253,7 @@ describe('TsSource.analyse on the shapes fixture: classes, nested stacks, Stages
     expect(facts.nodes['Shapes/Nested.NestedStack']).toBeUndefined();
   });
 
-  it('puts what a nested stack creates inside the nested stack\'s class', () => {
+  it("puts what a nested stack creates inside the nested stack's class", () => {
     expect(at('Shapes/Nested/InnerQueue')).toMatchObject({
       span: { file: 'lib/inner-stack.ts', start: { line: 9, col: 5 } },
       className: 'sqs.Queue',
@@ -268,18 +298,30 @@ describe('TsSource.analyse finds a `fromXxx` call in the constructor of a base c
       ].join('\n'),
     ],
   ]);
-  const tree = (id: string, path: string, fqn: string, children: Assembly['tree'][] = []) => ({ id, path, fqn, children });
+  const tree = (id: string, path: string, fqn: string, children: Assembly['tree'][] = []) => ({
+    id,
+    path,
+    fqn,
+    children,
+  });
   const assembly: Assembly = {
     schemaVersion: '55.0.0',
     stacks: [{ path: 'S' }],
     creation: { S: [{ file: 'bin/app.ts', line: 2, col: 1 }] },
     resourceRefs: [],
-    tree: tree('App', '', 'aws-cdk-lib.App', [tree('S', 'S', 'aws-cdk-lib.Stack', [tree('Imp', 'S/Imp', 'aws-cdk-lib.aws_s3.BucketBase')])]),
+    tree: tree('App', '', 'aws-cdk-lib.App', [
+      tree('S', 'S', 'aws-cdk-lib.Stack', [tree('Imp', 'S/Imp', 'aws-cdk-lib.aws_s3.BucketBase')]),
+    ]),
   };
 
-  it('gives the subclass\'s instance the external, though the call is written in the base class', () => {
+  it("gives the subclass's instance the external, though the call is written in the base class", () => {
     const facts = new TsSource().analyse(files, assembly);
-    expect(facts.nodes['S/Imp']).toMatchObject({ external: true, literalId: 'Imp', className: 's3.Bucket.fromBucketName', pathsOnSpan: 1 });
+    expect(facts.nodes['S/Imp']).toMatchObject({
+      external: true,
+      literalId: 'Imp',
+      className: 's3.Bucket.fromBucketName',
+      pathsOnSpan: 1,
+    });
   });
 });
 
@@ -287,7 +329,11 @@ describe('the view of the shapes fixture', () => {
   const assembly = readFixtureAssembly('shapes');
   const facts = new TsSource().analyse(readFixtureFiles('shapes'), assembly);
   // A hoisted Node is no shape of the app's code; the view's own tests cover it.
-  const locks = Object.fromEntries(buildView(facts, assembly, emptySidecar()).nodes.filter((n) => !n.hoisted).map((n) => [n.id, n.lock ?? 'editable']));
+  const locks = Object.fromEntries(
+    buildView(facts, assembly, emptySidecar())
+      .nodes.filter((n) => !n.hoisted)
+      .map((n) => [n.id, n.lock ?? 'editable']),
+  );
 
   it('locks each shape Truss cannot rewrite, with the reason, and leaves the rest editable', () => {
     expect(locks).toEqual({
@@ -338,7 +384,11 @@ describe('the view of the shapes fixture', () => {
 
   it('marks the `fromXxx` Node as external and names the user classes by class and base type', () => {
     const nodes = Object.fromEntries(buildView(facts, assembly, emptySidecar()).nodes.map((n) => [n.id, n]));
-    expect(nodes['Shapes/Existing']).toMatchObject({ external: true, label: 'Existing', subtitle: 'Bucket.fromBucketName' });
+    expect(nodes['Shapes/Existing']).toMatchObject({
+      external: true,
+      label: 'Existing',
+      subtitle: 'Bucket.fromBucketName',
+    });
     expect(nodes['Shapes/Docs']?.subtitle).toBe('MyBucket · S3 Bucket');
     expect(nodes['Shapes/Audit2']?.subtitle).toBe('AuditedTopic · SNS Topic');
     expect(nodes['Shapes/Api']?.subtitle).toBe('ApiService');
@@ -394,13 +444,37 @@ export class AppStack extends Stack {
   };
   const assembly: Assembly = {
     schemaVersion: '1',
-    tree: { id: 'App', path: '', fqn: 'aws-cdk-lib.App', children: [{ id: 'S', path: 'S', fqn: 'aws-cdk-lib.Stack', children: Object.keys(needles).map((p) => ({ id: p.slice(2), path: p, fqn: 'x', children: [] })) }] },
+    tree: {
+      id: 'App',
+      path: '',
+      fqn: 'aws-cdk-lib.App',
+      children: [
+        {
+          id: 'S',
+          path: 'S',
+          fqn: 'aws-cdk-lib.Stack',
+          children: Object.keys(needles).map((p) => ({ id: p.slice(2), path: p, fqn: 'x', children: [] })),
+        },
+      ],
+    },
     stacks: [{ path: 'S' }],
-    creation: { S: [{ file: 'bin/app.ts', line: 1, col: 1 }], ...Object.fromEntries(Object.entries(needles).map(([path, needle]) => [path, [frame(needle)]])) },
+    creation: {
+      S: [{ file: 'bin/app.ts', line: 1, col: 1 }],
+      ...Object.fromEntries(Object.entries(needles).map(([path, needle]) => [path, [frame(needle)]])),
+    },
     resourceRefs: [],
   };
   const facts = new TsSource().analyse(new Map([['lib/app.ts', STACK]]), assembly);
-  const refs = (from: string) => (facts.references ?? []).filter((r) => r.from === from).map(({ to, prop, form, editable, index }) => ({ to, prop, form, editable, ...(index !== undefined ? { index } : {}) }));
+  const refs = (from: string) =>
+    (facts.references ?? [])
+      .filter((r) => r.from === from)
+      .map(({ to, prop, form, editable, index }) => ({
+        to,
+        prop,
+        form,
+        editable,
+        ...(index !== undefined ? { index } : {}),
+      }));
 
   it('reads an identifier bound to a const, as an editable Reference, in a prop or in an element of an array prop', () => {
     expect(refs('S/ByName')).toEqual([
@@ -416,7 +490,12 @@ export class AppStack extends Stack {
   });
 
   it('reads this.field, bound by an assignment or a class property initializer, as editable', () => {
-    expect(refs('S/ByField')).toContainEqual({ to: 'S/Shared', prop: 'serverAccessLogsBucket', form: 'field', editable: true });
+    expect(refs('S/ByField')).toContainEqual({
+      to: 'S/Shared',
+      prop: 'serverAccessLogsBucket',
+      form: 'field',
+      editable: true,
+    });
   });
 
   it('draws an accessor chain to the Node that owns it, and leaves it read-only', () => {
@@ -447,6 +526,8 @@ export class AppStack extends Stack {
   });
 
   it('has no references for an app without any', () => {
-    expect(new TsSource().analyse(readFixtureFiles('straight-line'), readFixtureAssembly('straight-line')).references).toBeUndefined();
+    expect(
+      new TsSource().analyse(readFixtureFiles('straight-line'), readFixtureAssembly('straight-line')).references,
+    ).toBeUndefined();
   });
 });

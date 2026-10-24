@@ -172,7 +172,12 @@ export function badgesFor(problems: readonly Problem[], visible: ReadonlySet<str
 }
 
 /** The position in the original text that a position in the changed text came from; inside new text, where the replacement began. */
-export function sourcePosition(original: string, changes: readonly TextChange[], changed: string, at: { line: number; col: number }): { line: number; col: number } {
+export function sourcePosition(
+  original: string,
+  changes: readonly TextChange[],
+  changed: string,
+  at: { line: number; col: number },
+): { line: number; col: number } {
   let offset = offsetOf(changed, at.line, at.col);
   let shift = 0;
   for (const c of [...changes].sort((a, b) => a.start - b.start || a.end - b.end)) {
@@ -191,8 +196,12 @@ export function sourcePosition(original: string, changes: readonly TextChange[],
   return { line: before.length, col: before.at(-1)!.length + 1 };
 }
 
-const within = (s: { start: { line: number; col: number }; end: { line: number; col: number } }, p: { line: number; col: number }) =>
-  (p.line > s.start.line || (p.line === s.start.line && p.col >= s.start.col)) && (p.line < s.end.line || (p.line === s.end.line && p.col <= s.end.col));
+const within = (
+  s: { start: { line: number; col: number }; end: { line: number; col: number } },
+  p: { line: number; col: number },
+) =>
+  (p.line > s.start.line || (p.line === s.start.line && p.col >= s.start.col)) &&
+  (p.line < s.end.line || (p.line === s.end.line && p.col <= s.end.col));
 
 const size = (s: { start: { line: number }; end: { line: number } }) => s.end.line - s.start.line;
 
@@ -208,7 +217,11 @@ export function nodeAt(facts: Facts, location: SourceLocation): string | undefin
 }
 
 /** What a user files when Truss plans an edit wrongly: the intents, the diff Truss planned and how the assembly differed from what they mean. No line of the user's code outside the lines the edit changes. */
-export function buildReport(intents: readonly Intent[], diffs: readonly FileDiff[], failures: readonly string[]): string {
+export function buildReport(
+  intents: readonly Intent[],
+  diffs: readonly FileDiff[],
+  failures: readonly string[],
+): string {
   const changed = (d: FileDiff) =>
     d.diff
       .split('\n')
@@ -216,7 +229,10 @@ export function buildReport(intents: readonly Intent[], diffs: readonly FileDiff
       .join('\n');
   return [
     '## Intents',
-    ...intents.map((i) => `- ${i.type} ${i.path} (${i.expect.className} ${JSON.stringify(i.expect.literalId)}): ${describeIntent(i)}`),
+    ...intents.map(
+      (i) =>
+        `- ${i.type} ${i.path} (${i.expect.className} ${JSON.stringify(i.expect.literalId)}): ${describeIntent(i)}`,
+    ),
     '',
     '## Planned diff (changed lines only)',
     ...diffs.map((d) => `${d.file}\n${changed(d)}`),

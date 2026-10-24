@@ -102,5 +102,5 @@ Retired by ADR 0005 (the app's code is the source of truth). Don't use these for
 
 - **Export**, **Construct-only Export**: there's no separate step; every canvas edit is a code edit, and opening an existing app replaces Construct-only Export.
 - **Generated File**, **Extension File**: the generation gap (ADR 0002) is gone; Truss edits the user's own files.
-- **Import**: opening an app *is* reading its code.
+- **Import**: opening an app _is_ reading its code.
 - **Design file** (`*.truss.json`): replaced by the Sidecar.

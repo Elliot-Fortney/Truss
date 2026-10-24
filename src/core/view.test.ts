@@ -25,7 +25,9 @@ const assembly: Assembly = {
             id: 'Jobs',
             path: 'Api/Jobs',
             fqn: 'aws-cdk-lib.aws_sqs.Queue',
-            children: [{ id: 'Resource', path: 'Api/Jobs/Resource', fqn: 'aws-cdk-lib.aws_sqs.CfnQueue', children: [] }],
+            children: [
+              { id: 'Resource', path: 'Api/Jobs/Resource', fqn: 'aws-cdk-lib.aws_sqs.CfnQueue', children: [] },
+            ],
           },
           { id: 'CheckBootstrapVersion', path: 'Api/CheckBootstrapVersion', fqn: 'aws-cdk-lib.CfnRule', children: [] },
         ],
@@ -44,7 +46,14 @@ const facts: Facts = {
   nodes: {
     Api: { span: span(1), className: 'ApiStack', literalId: 'Api', pathsOnSpan: 1, binding: 'none' },
     'Api/Jobs': { span: span(10), className: 'sqs.Queue', literalId: 'Jobs', pathsOnSpan: 1, binding: 'none' },
-    'Web/Site': { span: span(20), className: 's3.Bucket', literalId: 'Site', pathsOnSpan: 2, binding: 'none', surround: { kind: 'loop' } },
+    'Web/Site': {
+      span: span(20),
+      className: 's3.Bucket',
+      literalId: 'Site',
+      pathsOnSpan: 2,
+      binding: 'none',
+      surround: { kind: 'loop' },
+    },
   },
 };
 
@@ -83,13 +92,22 @@ describe('buildView', () => {
   });
 });
 
-const leaf = (path: string, fqn: string, children: TreeNode[] = []): TreeNode => ({ id: path.split('/').at(-1)!, path, fqn, children });
+const leaf = (path: string, fqn: string, children: TreeNode[] = []): TreeNode => ({
+  id: path.split('/').at(-1)!,
+  path,
+  fqn,
+  children,
+});
 const here = (line: number) => ({ file: 'lib/a.ts', start: { line, col: 5 }, end: { line, col: 30 } });
 
 describe('buildView with nested stacks and Stages', () => {
   const assembly: Assembly = {
     schemaVersion: '55.0.0',
-    stacks: [{ path: 'Pipeline' }, { path: 'Dev/Core', env: 'aws://111111111111/eu-west-1' }, { path: 'Prod/Core', env: 'aws://111111111111/eu-west-1' }],
+    stacks: [
+      { path: 'Pipeline' },
+      { path: 'Dev/Core', env: 'aws://111111111111/eu-west-1' },
+      { path: 'Prod/Core', env: 'aws://111111111111/eu-west-1' },
+    ],
     creation: {},
     resourceRefs: [],
     tree: leaf('', 'aws-cdk-lib.App', [
@@ -97,11 +115,17 @@ describe('buildView with nested stacks and Stages', () => {
       leaf('Dev', 'aws-cdk-lib.Stage', [
         leaf('Dev/Core', 'aws-cdk-lib.Stack', [
           leaf('Dev/Core/Jobs', 'aws-cdk-lib.aws_sqs.Queue'),
-          leaf('Dev/Core/Worker', 'aws-cdk-lib.NestedStack', [leaf('Dev/Core/Worker/Inbox', 'aws-cdk-lib.aws_sqs.Queue')]),
-          leaf('Dev/Core/Worker.NestedStack', 'constructs.Construct', [leaf('Dev/Core/Worker.NestedStack/Worker.NestedStackResource', 'aws-cdk-lib.CfnStack')]),
+          leaf('Dev/Core/Worker', 'aws-cdk-lib.NestedStack', [
+            leaf('Dev/Core/Worker/Inbox', 'aws-cdk-lib.aws_sqs.Queue'),
+          ]),
+          leaf('Dev/Core/Worker.NestedStack', 'constructs.Construct', [
+            leaf('Dev/Core/Worker.NestedStack/Worker.NestedStackResource', 'aws-cdk-lib.CfnStack'),
+          ]),
         ]),
       ]),
-      leaf('Prod', 'aws-cdk-lib.Stage', [leaf('Prod/Core', 'aws-cdk-lib.Stack', [leaf('Prod/Core/Jobs', 'aws-cdk-lib.aws_sqs.Queue')])]),
+      leaf('Prod', 'aws-cdk-lib.Stage', [
+        leaf('Prod/Core', 'aws-cdk-lib.Stack', [leaf('Prod/Core/Jobs', 'aws-cdk-lib.aws_sqs.Queue')]),
+      ]),
     ]),
   };
   const node = (className: string, id: string, extra: Partial<NodeFacts> = {}): NodeFacts => ({
@@ -139,7 +163,7 @@ describe('buildView with nested stacks and Stages', () => {
     ]);
   });
 
-  it('draws a nested stack as a box inside its parent, with the parent\'s environment, listed after the parent', () => {
+  it("draws a nested stack as a box inside its parent, with the parent's environment, listed after the parent", () => {
     expect(view.stacks.find((s) => s.id === 'Dev/Core/Worker')).toEqual({
       id: 'Dev/Core/Worker',
       label: 'Worker',
@@ -150,7 +174,7 @@ describe('buildView with nested stacks and Stages', () => {
     expect(view.stacks.find((s) => s.id === 'Dev/Core')).not.toHaveProperty('parentId');
   });
 
-  it('puts what a nested stack creates in the nested stack\'s box, and makes neither it nor its plumbing a Node', () => {
+  it("puts what a nested stack creates in the nested stack's box, and makes neither it nor its plumbing a Node", () => {
     expect(view.nodes.map((n) => [n.id, n.stackId])).toEqual([
       ['Pipeline/Repo', 'Pipeline'],
       ['Dev/Core/Jobs', 'Dev/Core'],
@@ -160,7 +184,13 @@ describe('buildView with nested stacks and Stages', () => {
   });
 
   it('has no Stages for an app without any', () => {
-    expect(buildView({ nodes: {} }, { ...assembly, tree: leaf('', 'aws-cdk-lib.App', [leaf('Pipeline', 'aws-cdk-lib.Stack')]) }, emptySidecar()).stages).toEqual([]);
+    expect(
+      buildView(
+        { nodes: {} },
+        { ...assembly, tree: leaf('', 'aws-cdk-lib.App', [leaf('Pipeline', 'aws-cdk-lib.Stack')]) },
+        emptySidecar(),
+      ).stages,
+    ).toEqual([]);
   });
 });
 
@@ -182,7 +212,14 @@ describe('buildView naming', () => {
       ]),
     ]),
   };
-  const node = (className: string, id: string, extra: Partial<NodeFacts> = {}): NodeFacts => ({ span: here(1), className, literalId: id, pathsOnSpan: 1, binding: 'none', ...extra });
+  const node = (className: string, id: string, extra: Partial<NodeFacts> = {}): NodeFacts => ({
+    span: here(1),
+    className,
+    literalId: id,
+    pathsOnSpan: 1,
+    binding: 'none',
+    ...extra,
+  });
   const view = buildView(
     {
       nodes: {
@@ -243,16 +280,25 @@ describe('buildView Layers', () => {
       leaf('S', 'aws-cdk-lib.Stack', [
         leaf('S/Site', 'aws-cdk-lib.aws_s3.Bucket', [
           { ...leaf('S/Site/Resource', 'aws-cdk-lib.aws_s3.CfnBucket'), cfnType: 'AWS::S3::Bucket' },
-          leaf('S/Site/Notifications', 'constructs.Construct', [leaf('S/Site/Notifications/Resource', 'aws-cdk-lib.CfnResource')]),
+          leaf('S/Site/Notifications', 'constructs.Construct', [
+            leaf('S/Site/Notifications/Resource', 'aws-cdk-lib.CfnResource'),
+          ]),
         ]),
         leaf('S/Service', 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService', [
           { ...leaf('S/Service/Resource', 'aws-cdk-lib.aws_ecs.CfnService'), cfnType: 'AWS::ECS::Service' },
         ]),
         leaf('S/NotificationsHandler', 'constructs.Construct', [
-          leaf('S/NotificationsHandler/Role', 'aws-cdk-lib.aws_iam.Role', [{ ...leaf('S/NotificationsHandler/Role/Resource', 'aws-cdk-lib.aws_iam.CfnRole'), cfnType: 'AWS::IAM::Role' }]),
+          leaf('S/NotificationsHandler/Role', 'aws-cdk-lib.aws_iam.Role', [
+            {
+              ...leaf('S/NotificationsHandler/Role/Resource', 'aws-cdk-lib.aws_iam.CfnRole'),
+              cfnType: 'AWS::IAM::Role',
+            },
+          ]),
           leaf('S/NotificationsHandler/Resource', 'aws-cdk-lib.CfnResource'),
         ]),
-        leaf('S/DefaultCluster', 'aws-cdk-lib.aws_ecs.Cluster', [leaf('S/DefaultCluster/Resource', 'aws-cdk-lib.aws_ecs.CfnCluster')]),
+        leaf('S/DefaultCluster', 'aws-cdk-lib.aws_ecs.Cluster', [
+          leaf('S/DefaultCluster/Resource', 'aws-cdk-lib.aws_ecs.CfnCluster'),
+        ]),
         leaf('S/DefaultVpc', 'aws-cdk-lib.aws_ec2.Vpc', [leaf('S/DefaultVpc/Resource', 'aws-cdk-lib.aws_ec2.CfnVPC')]),
         leaf('S/CDKMetadata', 'constructs.Construct', [leaf('S/CDKMetadata/Default', 'aws-cdk-lib.CfnResource')]),
         leaf('S/BootstrapVersion', 'aws-cdk-lib.CfnParameter'),
@@ -260,7 +306,13 @@ describe('buildView Layers', () => {
       ]),
     ]),
   };
-  const node = (className: string, id: string, line: number): NodeFacts => ({ span: here(line), className, literalId: id, pathsOnSpan: 1, binding: 'none' });
+  const node = (className: string, id: string, line: number): NodeFacts => ({
+    span: here(line),
+    className,
+    literalId: id,
+    pathsOnSpan: 1,
+    binding: 'none',
+  });
   const facts: Facts = {
     nodes: {
       'S/Site': node('s3.Bucket', 'Site', 10),
@@ -272,16 +324,40 @@ describe('buildView Layers', () => {
 
   it('gives a Node every construct beneath it as read-only children, in tree order, with the type and path of each', () => {
     expect(byId('S/Site').children).toEqual([
-      { id: 'S/Site/Resource', parentId: 'S/Site', label: 'Resource', fqn: 'aws-cdk-lib.aws_s3.CfnBucket', cfnType: 'AWS::S3::Bucket', icon: expect.any(String) },
-      { id: 'S/Site/Notifications', parentId: 'S/Site', label: 'Notifications', fqn: 'constructs.Construct', icon: expect.any(String) },
-      { id: 'S/Site/Notifications/Resource', parentId: 'S/Site/Notifications', label: 'Resource', fqn: 'aws-cdk-lib.CfnResource', icon: expect.any(String) },
+      {
+        id: 'S/Site/Resource',
+        parentId: 'S/Site',
+        label: 'Resource',
+        fqn: 'aws-cdk-lib.aws_s3.CfnBucket',
+        cfnType: 'AWS::S3::Bucket',
+        icon: expect.any(String),
+      },
+      {
+        id: 'S/Site/Notifications',
+        parentId: 'S/Site',
+        label: 'Notifications',
+        fqn: 'constructs.Construct',
+        icon: expect.any(String),
+      },
+      {
+        id: 'S/Site/Notifications/Resource',
+        parentId: 'S/Site/Notifications',
+        label: 'Resource',
+        fqn: 'aws-cdk-lib.CfnResource',
+        icon: expect.any(String),
+      },
     ]);
   });
 
   it('gives a Node with nothing beneath it no children', () => {
     const bare = buildView(
       { nodes: { 'S/Site': node('s3.CfnBucket', 'Site', 10) } },
-      { ...assembly, tree: leaf('', 'aws-cdk-lib.App', [leaf('S', 'aws-cdk-lib.Stack', [leaf('S/Site', 'aws-cdk-lib.aws_s3.CfnBucket')])]) },
+      {
+        ...assembly,
+        tree: leaf('', 'aws-cdk-lib.App', [
+          leaf('S', 'aws-cdk-lib.Stack', [leaf('S/Site', 'aws-cdk-lib.aws_s3.CfnBucket')]),
+        ]),
+      },
       emptySidecar(),
     );
     expect(bare.nodes[0]).not.toHaveProperty('children');
@@ -291,7 +367,11 @@ describe('buildView Layers', () => {
     const handler = byId('S/NotificationsHandler');
     expect(handler).toMatchObject({ stackId: 'S', label: 'NotificationsHandler', hoisted: true });
     expect(handler.lock).toEqual(expect.stringContaining('Site'));
-    expect(handler.children?.map((c) => c.id)).toEqual(['S/NotificationsHandler/Role', 'S/NotificationsHandler/Role/Resource', 'S/NotificationsHandler/Resource']);
+    expect(handler.children?.map((c) => c.id)).toEqual([
+      'S/NotificationsHandler/Role',
+      'S/NotificationsHandler/Role/Resource',
+      'S/NotificationsHandler/Resource',
+    ]);
   });
 
   it('links a hoisted Node to the Node whose resources point at it', () => {
@@ -307,7 +387,7 @@ describe('buildView Layers', () => {
     expect(byId('S/NotificationsHandler').source).toEqual({ file: 'lib/a.ts', line: 10, col: 5 });
   });
 
-  it('does not link two Nodes, and marks no Node of the app\'s own as hoisted', () => {
+  it("does not link two Nodes, and marks no Node of the app's own as hoisted", () => {
     expect(byId('S/Site')).not.toHaveProperty('hoisted');
     expect(byId('S/Site')).not.toHaveProperty('causedBy');
     expect(byId('S/Service')).not.toHaveProperty('causedBy');
@@ -326,7 +406,17 @@ describe('buildView Layers', () => {
       resourceRefs: [...assembly.resourceRefs, { from: 'S/Policy/Resource', to: 'S/Site/Resource' }],
       tree: {
         ...assembly.tree,
-        children: [{ ...assembly.tree.children[0]!, children: [...assembly.tree.children[0]!.children, leaf('S/Policy', 'aws-cdk-lib.aws_iam.Policy', [leaf('S/Policy/Resource', 'aws-cdk-lib.aws_iam.CfnPolicy')])] }],
+        children: [
+          {
+            ...assembly.tree.children[0]!,
+            children: [
+              ...assembly.tree.children[0]!.children,
+              leaf('S/Policy', 'aws-cdk-lib.aws_iam.Policy', [
+                leaf('S/Policy/Resource', 'aws-cdk-lib.aws_iam.CfnPolicy'),
+              ]),
+            ],
+          },
+        ],
       },
     };
     const policy = buildView(facts, withPolicy, emptySidecar()).nodes.find((n) => n.id === 'S/Policy')!;
@@ -334,7 +424,9 @@ describe('buildView Layers', () => {
   });
 
   it('still shows a hoisted Node nothing points at, read-only and without a link', () => {
-    const orphan = buildView(facts, { ...assembly, resourceRefs: [] }, emptySidecar()).nodes.find((n) => n.id === 'S/DefaultVpc')!;
+    const orphan = buildView(facts, { ...assembly, resourceRefs: [] }, emptySidecar()).nodes.find(
+      (n) => n.id === 'S/DefaultVpc',
+    )!;
     expect(orphan).toMatchObject({ hoisted: true, lock: expect.any(String) });
     expect(orphan).not.toHaveProperty('causedBy');
   });
@@ -342,7 +434,16 @@ describe('buildView Layers', () => {
 
 describe('buildView edges', () => {
   const refSpan = { file: 'lib/a.ts', start: { line: 12, col: 30 }, end: { line: 12, col: 34 } };
-  const reference = (extra: Partial<NonNullable<Facts['references']>[number]> = {}) => ({ from: 'Api/Jobs', to: 'Api/Site', prop: 'bucket', form: 'identifier' as const, editable: true, text: 'site', span: refSpan, ...extra });
+  const reference = (extra: Partial<NonNullable<Facts['references']>[number]> = {}) => ({
+    from: 'Api/Jobs',
+    to: 'Api/Site',
+    prop: 'bucket',
+    form: 'identifier' as const,
+    editable: true,
+    text: 'site',
+    span: refSpan,
+    ...extra,
+  });
   const tree: TreeNode = {
     id: 'App',
     path: '',
@@ -354,7 +455,14 @@ describe('buildView edges', () => {
         fqn: 'aws-cdk-lib.Stack',
         children: [
           { id: 'Jobs', path: 'Api/Jobs', fqn: 'aws-cdk-lib.aws_sqs.Queue', children: [] },
-          { id: 'Site', path: 'Api/Site', fqn: 'aws-cdk-lib.aws_s3.Bucket', children: [{ id: 'Resource', path: 'Api/Site/Resource', fqn: 'aws-cdk-lib.aws_s3.CfnBucket', children: [] }] },
+          {
+            id: 'Site',
+            path: 'Api/Site',
+            fqn: 'aws-cdk-lib.aws_s3.Bucket',
+            children: [
+              { id: 'Resource', path: 'Api/Site/Resource', fqn: 'aws-cdk-lib.aws_s3.CfnBucket', children: [] },
+            ],
+          },
         ],
       },
     ],
@@ -371,11 +479,24 @@ describe('buildView edges', () => {
     buildView(edgeFacts(references), { ...assembly, tree, stacks: [{ path: 'Api' }] }, emptySidecar(), changed).edges;
 
   it('draws a Reference as an edge from the Node that holds it to the Node it points at, with where the code writes it', () => {
-    expect(edges([reference()])).toEqual([{ id: 'Api/Jobs->Api/Site:bucket', kind: 'reference', from: 'Api/Jobs', to: 'Api/Site', prop: 'bucket', text: 'site', source: { file: 'lib/a.ts', line: 12, col: 30 } }]);
+    expect(edges([reference()])).toEqual([
+      {
+        id: 'Api/Jobs->Api/Site:bucket',
+        kind: 'reference',
+        from: 'Api/Jobs',
+        to: 'Api/Site',
+        prop: 'bucket',
+        text: 'site',
+        source: { file: 'lib/a.ts', line: 12, col: 30 },
+      },
+    ]);
   });
 
   it('numbers the edges of an array prop, and says why a read-only one is', () => {
-    const [first, second] = edges([reference({ index: 0 }), reference({ index: 1, form: 'call', editable: false, reason: 'Passed through a call' })]);
+    const [first, second] = edges([
+      reference({ index: 0 }),
+      reference({ index: 1, form: 'call', editable: false, reason: 'Passed through a call' }),
+    ]);
     expect(first).toMatchObject({ id: 'Api/Jobs->Api/Site:bucket[0]', index: 0 });
     expect(first).not.toHaveProperty('readOnly');
     expect(second).toMatchObject({ index: 1, readOnly: 'Passed through a call' });
@@ -395,8 +516,18 @@ describe('buildView edges', () => {
   });
 
   it('says the arrow runs the other way for a prop the Overlay marks as flowing in', () => {
-    const view = buildView(edgeFacts([reference({ prop: 'role' }), reference({ prop: 'vpc' })]), { ...assembly, tree, stacks: [{ path: 'Api' }] }, emptySidecar(), new Set(), new Set(), (fqn, prop) => fqn === 'aws-cdk-lib.aws_sqs.Queue' && prop === 'role');
-    expect(view.edges.map((e) => [e.prop, e.flow])).toEqual([['role', 'in'], ['vpc', undefined]]);
+    const view = buildView(
+      edgeFacts([reference({ prop: 'role' }), reference({ prop: 'vpc' })]),
+      { ...assembly, tree, stacks: [{ path: 'Api' }] },
+      emptySidecar(),
+      new Set(),
+      new Set(),
+      (fqn, prop) => fqn === 'aws-cdk-lib.aws_sqs.Queue' && prop === 'role',
+    );
+    expect(view.edges.map((e) => [e.prop, e.flow])).toEqual([
+      ['role', 'in'],
+      ['vpc', undefined],
+    ]);
   });
 
   it('has none for an app without References', () => {
@@ -409,8 +540,20 @@ describe('buildView with synth effects', () => {
   const withEffects: Assembly = {
     ...assembly,
     effects: [
-      { kind: 'integration', at: 'Api/Jobs/Resource', source: end('Api/Jobs/Resource'), target: end('Web/Site/Resource'), detail: 'subscription (https)' },
-      { kind: 'grant', at: 'Api/Jobs/Policy', source: end('Api/Jobs/Resource'), target: { paths: [], text: '*' }, detail: 'sqs:*' },
+      {
+        kind: 'integration',
+        at: 'Api/Jobs/Resource',
+        source: end('Api/Jobs/Resource'),
+        target: end('Web/Site/Resource'),
+        detail: 'subscription (https)',
+      },
+      {
+        kind: 'grant',
+        at: 'Api/Jobs/Policy',
+        source: end('Api/Jobs/Resource'),
+        target: { paths: [], text: '*' },
+        detail: 'sqs:*',
+      },
     ],
     importRefs: [{ from: 'Web/Site/Resource', to: 'Api/Jobs/Resource', prop: 'Tags' }],
   };
@@ -424,7 +567,9 @@ describe('buildView with synth effects', () => {
   });
 
   it('lists an effect with no Node at its other end on the Node, not as an edge', () => {
-    expect(view.nodes.find((n) => n.id === 'Api/Jobs')!.otherPermissions).toEqual([{ detail: 'sqs:*', summary: 'sqs:* · Jobs → *', at: 'Api/Jobs/Policy' }]);
+    expect(view.nodes.find((n) => n.id === 'Api/Jobs')!.otherPermissions).toEqual([
+      { detail: 'sqs:*', summary: 'sqs:* · Jobs → *', at: 'Api/Jobs/Policy' },
+    ]);
     expect(view.nodes.find((n) => n.id === 'Web/Site')!.otherPermissions).toBeUndefined();
   });
 });

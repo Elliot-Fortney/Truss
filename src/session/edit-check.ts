@@ -14,13 +14,17 @@ export interface Base {
 }
 
 /** Intents turned into text. */
-export type Planned = { ok: true; changes: Record<string, TextChange[]>; overlay: FileSet; merged: FileSet } | { ok: false; intent: number; reason: string; uses?: SourceUse[] };
+export type Planned =
+  | { ok: true; changes: Record<string, TextChange[]>; overlay: FileSet; merged: FileSet }
+  | { ok: false; intent: number; reason: string; uses?: SourceUse[] };
 
 /** Plans `intents` on the base: the changes, the files they make, and the base with those files replaced. */
 export function planEdit(source: Source, base: Base, intents: readonly Intent[]): Planned {
   const plan = source.plan(base.files, base.facts, intents);
   if (!plan.ok) return plan;
-  const overlay: FileSet = new Map(Object.entries(plan.changes).map(([file, changes]) => [file, applyChanges(base.files.get(file)!, changes)]));
+  const overlay: FileSet = new Map(
+    Object.entries(plan.changes).map(([file, changes]) => [file, applyChanges(base.files.get(file)!, changes)]),
+  );
   return { ok: true, changes: plan.changes, overlay, merged: new Map([...base.files, ...overlay]) };
 }
 
@@ -80,24 +84,49 @@ export function checkEditOn(
   const planned = planEdit(app.source, base, intents);
   if (!planned.ok) {
     const at = intents[planned.intent];
-    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? describePlaced(at) : 'the edit'}: ${planned.reason}` }] };
+    return {
+      planned: undefined,
+      diffs: [],
+      failures: [
+        { kind: 'plan', message: `Source can't place ${at ? describePlaced(at) : 'the edit'}: ${planned.reason}` },
+      ],
+    };
   }
   const failures: EditFailure[] = [];
   const touched = Object.keys(planned.changes);
   try {
     const key = touched.join('\0');
     if (!baseDiagnostics.has(key)) baseDiagnostics.set(key, app.source.diagnostics(app.appDir, base.files, touched));
-    for (const d of newDiagnostics(baseDiagnostics.get(key)!, app.source.diagnostics(app.appDir, planned.merged, touched))) failures.push({ kind: 'typescript', message: typeScriptMessage(d), diagnostic: d });
+    for (const d of newDiagnostics(
+      baseDiagnostics.get(key)!,
+      app.source.diagnostics(app.appDir, planned.merged, touched),
+    ))
+      failures.push({ kind: 'typescript', message: typeScriptMessage(d), diagnostic: d });
   } catch (err) {
     // A type-check that can't run fails the edit too, since it can't be vouched for.
-    failures.push({ kind: 'typescript', message: `Couldn't type-check the Draft: ${err instanceof Error ? err.message : String(err)}` });
+    failures.push({
+      kind: 'typescript',
+      message: `Couldn't type-check the Draft: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
-  if (!after.ok) failures.push({ kind: 'synth', message: `The app doesn't synth with the edit: ${after.error.message}` });
+  if (!after.ok)
+    failures.push({ kind: 'synth', message: `The app doesn't synth with the edit: ${after.error.message}` });
   else {
-    const judged = judgeEdit({ files: base.files, changes: planned.changes, facts: base.facts, intents, before: base.assembly, after: after.assembly });
+    const judged = judgeEdit({
+      files: base.files,
+      changes: planned.changes,
+      facts: base.facts,
+      intents,
+      before: base.assembly,
+      after: after.assembly,
+    });
     failures.push(...judged.map((message): EditFailure => ({ kind: 'judge', message })));
   }
-  return { planned, diffs: [...planned.overlay].flatMap(([file, text]) => unifiedDiff(file, base.files.get(file) ?? '', text) ?? []), failures };
+  return {
+    planned,
+    diffs: [...planned.overlay].flatMap(([file, text]) => unifiedDiff(file, base.files.get(file) ?? '', text) ?? []),
+    failures,
+  };
 }
 
 /** The ports and folder an edit is tried on. */
@@ -122,12 +151,17 @@ export async function checkEdit(app: EditApp, intents: readonly Intent[]): Promi
   const files = await app.files.read();
   const before = await app.synth.synth(app.appDir);
   if (!before.ok) return { ok: false, failures: [`The app doesn't synth before the edit: ${before.error.message}`] };
-  const base: Base = { files, facts: app.source.analyse(files, before.assembly, app.catalog), assembly: before.assembly };
+  const base: Base = {
+    files,
+    facts: app.source.analyse(files, before.assembly, app.catalog),
+    assembly: before.assembly,
+  };
 
   const plan = planEdit(app.source, base, intents);
   const after = plan.ok ? await app.synth.synth(app.appDir, { overlay: plan.overlay }) : before;
   const checked = checkEditOn(app, base, intents, after);
-  if (checked.failures.length > 0 || !checked.planned) return { ok: false, failures: checked.failures.map((f) => f.message) };
+  if (checked.failures.length > 0 || !checked.planned)
+    return { ok: false, failures: checked.failures.map((f) => f.message) };
   return { ok: true, files: checked.planned.overlay, diffs: checked.diffs };
 }
 

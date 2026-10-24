@@ -13,13 +13,18 @@ export function literalValue(n: ts.Expression): { value: string | number | boole
   if (n.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
   if (n.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
   if (n.kind === ts.SyntaxKind.NullKeyword) return { value: null };
-  if (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand)) return { value: -Number(n.operand.text) };
+  if (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand))
+    return { value: -Number(n.operand.text) };
   return undefined;
 }
 
 /** The last identifier of `a.b.C`, when the chain is plain names. */
 export function lastName(n: ts.Expression): string | undefined {
-  return ts.isIdentifier(n) ? n.text : ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.name) ? n.name.text : undefined;
+  return ts.isIdentifier(n)
+    ? n.text
+    : ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.name)
+      ? n.name.text
+      : undefined;
 }
 
 /** `s3.BucketEncryption.KMS_MANAGED` or `RemovalPolicy.DESTROY`: a name starting with a capital, then an upper-case member. */
@@ -33,8 +38,11 @@ const QUANTITIES: Record<string, 'Duration' | 'Size'> = { Duration: 'Duration', 
 
 /** `cdk.Duration.seconds(30)` or `Size.mebibytes(512)`, with a plain number for an argument. */
 export function quantityOf(n: ts.Expression): PropFacts['quantity'] {
-  if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression) || n.arguments.length !== 1) return undefined;
+  if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression) || n.arguments.length !== 1)
+    return undefined;
   const type = QUANTITIES[lastName(n.expression.expression) ?? ''];
   const amount = literalValue(n.arguments[0]!);
-  return type && typeof amount?.value === 'number' ? { type, unit: n.expression.name.text, amount: amount.value } : undefined;
+  return type && typeof amount?.value === 'number'
+    ? { type, unit: n.expression.name.text, amount: amount.value }
+    : undefined;
 }

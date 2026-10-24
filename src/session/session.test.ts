@@ -128,7 +128,10 @@ describe('Session', () => {
     });
 
     it('attributes the error to file:line where the trace allows', async () => {
-      const synth = fakeSynth({ ok: false, error: { message: 'x', output: 'at new ShopStack (/app/lib/shop-stack.ts:12:9)' } });
+      const synth = fakeSynth({
+        ok: false,
+        error: { message: 'x', output: 'at new ShopStack (/app/lib/shop-stack.ts:12:9)' },
+      });
       const session = make({ files: new FakeFiles(), synth });
       await session.start();
       expect(session.view().error?.location).toEqual({ file: 'lib/shop-stack.ts', line: 12, col: 9 });
@@ -345,7 +348,13 @@ describe('Session', () => {
 
 const fixtureFiles = (texts: Record<string, string> = {}) => new FakeFiles(readFixtureFiles('straight-line'), texts);
 const started = async (files: Files, migrations?: readonly Migration[]) => {
-  const session = new Session({ appDir: '/app', files, synth: fakeSynth(good()), source: new TsSource(), ...(migrations ? { migrations } : {}) });
+  const session = new Session({
+    appDir: '/app',
+    files,
+    synth: fakeSynth(good()),
+    source: new TsSource(),
+    ...(migrations ? { migrations } : {}),
+  });
   await session.start();
   return session;
 };
@@ -356,17 +365,43 @@ describe('Session Catalog', () => {
       name: 'lib',
       version: '1.0.0',
       types: {
-        'lib.s3.Bucket': { kind: 'class', fqn: 'lib.s3.Bucket', name: 'Bucket', namespace: 's3', base: 'constructs.Construct' },
-        'lib.sqs.Queue': { kind: 'class', fqn: 'lib.sqs.Queue', name: 'Queue', namespace: 'sqs', base: 'constructs.Construct' },
+        'lib.s3.Bucket': {
+          kind: 'class',
+          fqn: 'lib.s3.Bucket',
+          name: 'Bucket',
+          namespace: 's3',
+          base: 'constructs.Construct',
+        },
+        'lib.sqs.Queue': {
+          kind: 'class',
+          fqn: 'lib.sqs.Queue',
+          name: 'Queue',
+          namespace: 'sqs',
+          base: 'constructs.Construct',
+        },
       },
     }),
   ]);
   const session = (c?: Catalog) =>
-    new Session({ appDir: '/work/app', synth: fakeSynth(good()), files: new FakeFiles(readFixtureFiles('straight-line')), source: new TsSource(), ...(c ? { catalog: c } : {}) });
+    new Session({
+      appDir: '/work/app',
+      synth: fakeSynth(good()),
+      files: new FakeFiles(readFixtureFiles('straight-line')),
+      source: new TsSource(),
+      ...(c ? { catalog: c } : {}),
+    });
 
   it('searches the Catalog it was handed', () => {
-    expect(session(catalog).searchCatalog('bucket').map((h) => h.fqn)).toEqual(['lib.s3.Bucket']);
-    expect(session(catalog).searchCatalog('').map((h) => h.name)).toEqual(['Bucket', 'Queue']);
+    expect(
+      session(catalog)
+        .searchCatalog('bucket')
+        .map((h) => h.fqn),
+    ).toEqual(['lib.s3.Bucket']);
+    expect(
+      session(catalog)
+        .searchCatalog('')
+        .map((h) => h.name),
+    ).toEqual(['Bucket', 'Queue']);
     expect(session(catalog).searchCatalog('', 1)).toHaveLength(1);
   });
 
@@ -376,14 +411,27 @@ describe('Session Catalog', () => {
 
   it('answers a search request from the browser with the hits and its request ID', async () => {
     const s = session(catalog);
-    expect(await s.handle({ type: 'search', requestId: 's1', query: 'queue' })).toEqual({ type: 'results', requestId: 's1', hits: s.searchCatalog('queue') });
+    expect(await s.handle({ type: 'search', requestId: 's1', query: 'queue' })).toEqual({
+      type: 'results',
+      requestId: 's1',
+      hits: s.searchCatalog('queue'),
+    });
   });
 
   it('answers a search even before the first synth, and while the app does not synth', async () => {
-    const failing = new Session({ appDir: '/work/app', synth: fakeSynth(bad()), files: new FakeFiles(readFixtureFiles('straight-line')), source: new TsSource(), catalog });
+    const failing = new Session({
+      appDir: '/work/app',
+      synth: fakeSynth(bad()),
+      files: new FakeFiles(readFixtureFiles('straight-line')),
+      source: new TsSource(),
+      catalog,
+    });
     await failing.start();
     expect(failing.view().error).toBeDefined();
-    expect(await failing.handle({ type: 'search', requestId: 's2', query: 'bucket' })).toMatchObject({ type: 'results', hits: [{ name: 'Bucket', tier: 'L2' }] });
+    expect(await failing.handle({ type: 'search', requestId: 's2', query: 'bucket' })).toMatchObject({
+      type: 'results',
+      hits: [{ name: 'Bucket', tier: 'L2' }],
+    });
   });
 });
 
@@ -393,7 +441,12 @@ describe('Session Catalog refresh', () => {
       digestAssembly({
         name: 'lib',
         version: '1.0.0',
-        types: Object.fromEntries(names.map((n) => [`lib.s3.${n}`, { kind: 'class', fqn: `lib.s3.${n}`, name: n, namespace: 's3', base: 'constructs.Construct' }])),
+        types: Object.fromEntries(
+          names.map((n) => [
+            `lib.s3.${n}`,
+            { kind: 'class', fqn: `lib.s3.${n}`, name: n, namespace: 's3', base: 'constructs.Construct' },
+          ]),
+        ),
       }),
     ]);
 
@@ -445,7 +498,11 @@ describe('Session Catalog refresh', () => {
     await flush();
     await flush();
     expect(events).toEqual(['catalog', 'synth', 'catalog']);
-    expect(session.view()).toMatchObject({ synthing: false, hasDesign: true, error: { message: 'aws-cdk-lib 2.100.0 is older than the minimum' } });
+    expect(session.view()).toMatchObject({
+      synthing: false,
+      hasDesign: true,
+      error: { message: 'aws-cdk-lib 2.100.0 is older than the minimum' },
+    });
     expect(session.searchCatalog('').map((h) => h.name)).toEqual(['Bucket']);
 
     next = { ok: true, catalog: catalogOf('Bucket') };
@@ -569,7 +626,10 @@ describe('Session Sidecar', () => {
   ])('refuses a truss.json that %s, and leaves the file alone', async (_why, text) => {
     const files = fixtureFiles({ 'truss.json': text });
     const session = await started(files);
-    expect(session.view()).toMatchObject({ nodes: [], error: { kind: 'sidecar', message: expect.stringContaining('truss.json') } });
+    expect(session.view()).toMatchObject({
+      nodes: [],
+      error: { kind: 'sidecar', message: expect.stringContaining('truss.json') },
+    });
     expect(files.texts.get('truss.json')).toBe(text);
   });
 
@@ -598,7 +658,10 @@ describe('Session Sidecar', () => {
 
   it('refuses, and keeps its state, when the Sidecar cannot be written', async () => {
     const files = fixtureFiles();
-    const session = await started({ ...files, writeText: async () => Promise.reject(new Error('EACCES: permission denied')) });
+    const session = await started({
+      ...files,
+      writeText: async () => Promise.reject(new Error('EACCES: permission denied')),
+    });
     const reply = await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 1 });
     expect(reply).toEqual({ type: 'refused', requestId: 'r', reason: expect.stringContaining('EACCES') });
     expect(session.view().nodes.find((n) => n.id === 'ShopStack/Orders')?.position).toBeUndefined();
@@ -608,7 +671,10 @@ describe('Session Sidecar', () => {
     const files = fixtureFiles({ 'truss.json': saved({ 'ShopStack/Uploads': { note: 'mine' } }) });
     const session = await started(files);
     // A teammate's version arrives on disk (git pull) while Truss is open.
-    files.texts.set('truss.json', saved({ 'ShopStack/Uploads': { note: 'theirs' }, 'ShopStack/Catalog': { position: { x: 7, y: 8 } } }));
+    files.texts.set(
+      'truss.json',
+      saved({ 'ShopStack/Uploads': { note: 'theirs' }, 'ShopStack/Catalog': { position: { x: 7, y: 8 } } }),
+    );
 
     await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 2 });
 
@@ -625,7 +691,9 @@ describe('Session Sidecar', () => {
     const session = await started(files);
     files.texts.delete('truss.json');
     await session.handle({ type: 'move', requestId: 'r', id: 'ShopStack/Orders', x: 1, y: 2 });
-    expect(JSON.parse(files.texts.get('truss.json')!).nodes).toEqual({ 'ShopStack/Orders': { position: { x: 1, y: 2 } } });
+    expect(JSON.parse(files.texts.get('truss.json')!).nodes).toEqual({
+      'ShopStack/Orders': { position: { x: 1, y: 2 } },
+    });
   });
 
   it('refuses, and writes nothing, when truss.json has become unusable since start', async () => {
@@ -655,7 +723,9 @@ describe('Session Sidecar', () => {
 
     files.texts.set('truss.json', saved({}, 9));
     files.change();
-    await vi.waitFor(() => expect(session.view()).toMatchObject({ hasDesign: false, nodes: [], error: { kind: 'sidecar' } }));
+    await vi.waitFor(() =>
+      expect(session.view()).toMatchObject({ hasDesign: false, nodes: [], error: { kind: 'sidecar' } }),
+    );
     expect(files.texts.get('truss.json')).toBe(saved({}, 9));
 
     files.texts.set('truss.json', saved({ 'ShopStack/Uploads': { note: 'back' } }));
@@ -672,7 +742,10 @@ describe('Session Sidecar', () => {
       ({ nodes, ...rest }) => ({
         ...rest,
         nodes: Object.fromEntries(
-          Object.entries(nodes as Record<string, { x: number; y: number }>).map(([path, { x, y }]) => [path, { position: { x, y } }]),
+          Object.entries(nodes as Record<string, { x: number; y: number }>).map(([path, { x, y }]) => [
+            path,
+            { position: { x, y } },
+          ]),
         ),
       }),
     ];
@@ -680,7 +753,7 @@ describe('Session Sidecar', () => {
       return started(files, migrations);
     };
 
-    it('runs every step from the file\'s version to the current one, and writes the current version on the next change', async () => {
+    it("runs every step from the file's version to the current one, and writes the current version on the next change", async () => {
       const files = fixtureFiles({
         'truss.json': JSON.stringify({ formatVersion: 1, layout: { 'ShopStack/Uploads': { x: 3, y: 4 } } }),
       });
@@ -696,7 +769,7 @@ describe('Session Sidecar', () => {
       });
     });
 
-    it('starts at the step after the file\'s version', async () => {
+    it("starts at the step after the file's version", async () => {
       const files = fixtureFiles({
         'truss.json': JSON.stringify({ formatVersion: 2, nodes: { 'ShopStack/Uploads': { x: 3, y: 4 } } }),
       });
@@ -704,7 +777,7 @@ describe('Session Sidecar', () => {
       expect(session.view().nodes.find((n) => n.id === 'ShopStack/Uploads')?.position).toEqual({ x: 3, y: 4 });
     });
 
-    it('refuses a format newer than the chain\'s end', async () => {
+    it("refuses a format newer than the chain's end", async () => {
       const files = fixtureFiles({ 'truss.json': JSON.stringify({ formatVersion: 4, nodes: {} }) });
       const session = await withMigrations(files);
       expect(session.view().error).toMatchObject({ kind: 'sidecar', message: expect.stringContaining('format 4') });
@@ -739,7 +812,12 @@ describe('Session Computed Layers', () => {
   it('draws what a construct created outside its own subtree at Stack scope, read-only and linked to the Node that caused it', async () => {
     const session = await startedShapes();
     const handler = session.view().nodes.find((n) => n.id.startsWith('Shapes/BucketNotificationsHandler'))!;
-    expect(handler).toMatchObject({ stackId: 'Shapes', hoisted: true, causedBy: ['Shapes/Outer'], lock: expect.any(String) });
+    expect(handler).toMatchObject({
+      stackId: 'Shapes',
+      hoisted: true,
+      causedBy: ['Shapes/Outer'],
+      lock: expect.any(String),
+    });
     expect(handler.children?.some((c) => c.cfnType === 'AWS::IAM::Role')).toBe(true);
   });
 
@@ -750,10 +828,13 @@ describe('Session Computed Layers', () => {
     expect(session.view().nodes.map((n) => n.id)).not.toContain('ShopStack/CDKMetadata');
   });
 
-  it('keeps a hoisted Node\'s position in the Sidecar like any other Node\'s', async () => {
+  it("keeps a hoisted Node's position in the Sidecar like any other Node's", async () => {
     const session = await startedShapes();
     const id = session.view().nodes.find((n) => n.hoisted)!.id;
-    expect(await session.handle({ type: 'move', requestId: 'r', id, x: 5, y: 6 })).toEqual({ type: 'ack', requestId: 'r' });
+    expect(await session.handle({ type: 'move', requestId: 'r', id, x: 5, y: 6 })).toEqual({
+      type: 'ack',
+      requestId: 'r',
+    });
     expect(session.view().nodes.find((n) => n.id === id)?.position).toEqual({ x: 5, y: 6 });
   });
 });

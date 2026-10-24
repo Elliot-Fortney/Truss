@@ -7,9 +7,20 @@ import { PropEditor } from './prop-inputs.tsx';
 import { NodePicker, type PickNodes } from './node-picker.tsx';
 
 /** What the panel has for a Node or Stack: still asking, the answer, or why there is none. */
-export type PanelState = { status: 'loading' } | { status: 'ready'; panel: PanelView } | { status: 'refused'; reason: string };
+export type PanelState =
+  { status: 'loading' } | { status: 'ready'; panel: PanelView } | { status: 'refused'; reason: string };
 
-function PropRow({ row, unset, onSet, pick }: { row: PropRowView; unset: string; onSet(prop: string[], value: PropValue): Promise<boolean>; pick?: PickNodes }) {
+function PropRow({
+  row,
+  unset,
+  onSet,
+  pick,
+}: {
+  row: PropRowView;
+  unset: string;
+  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  pick?: PickNodes;
+}) {
   return (
     <li className="prop-row">
       <div className="prop-head">
@@ -37,7 +48,17 @@ function PropRow({ row, unset, onSet, pick }: { row: PropRowView; unset: string;
   );
 }
 
-function PropList({ rows, unset, onSet, pick }: { rows: readonly PropRowView[]; unset: string; onSet(prop: string[], value: PropValue): Promise<boolean>; pick?: PickNodes }) {
+function PropList({
+  rows,
+  unset,
+  onSet,
+  pick,
+}: {
+  rows: readonly PropRowView[];
+  unset: string;
+  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  pick?: PickNodes;
+}) {
   return (
     <ul className="prop-list">
       {rows.map((row) => (
@@ -98,7 +119,17 @@ function OtherEffects({ title, effects }: { title: string; effects: PanelView['o
 }
 
 /** The props of a Node or Stack: required and featured first, the rest one click away. */
-export function PropertyPanel({ state, onSet, onRename, pick }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; pick?: PickNodes }) {
+export function PropertyPanel({
+  state,
+  onSet,
+  onRename,
+  pick,
+}: {
+  state: PanelState;
+  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  onRename(newId: string): Promise<boolean>;
+  pick?: PickNodes;
+}) {
   const [showMore, setShowMore] = useState(false);
   if (state.status === 'loading') return null;
   if (state.status === 'refused') return <p className="lock-reason">{state.reason}</p>;
@@ -121,14 +152,18 @@ export function PropertyPanel({ state, onSet, onRename, pick }: { state: PanelSt
       {notice ? <p className="lock-reason">{notice}</p> : null}
       <OtherEffects title="Other permissions" effects={panel.otherPermissions} />
       <OtherEffects title="Other integrations" effects={panel.otherIntegrations} />
-      {panel.rows.length === 0 && panel.more.length === 0 ? <p className="lock-reason">No props are passed in your code.</p> : null}
+      {panel.rows.length === 0 && panel.more.length === 0 ? (
+        <p className="lock-reason">No props are passed in your code.</p>
+      ) : null}
       <PropList rows={panel.rows} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} />
       {panel.more.length > 0 ? (
         <>
           <button type="button" className="prop-more" aria-expanded={showMore} onClick={() => setShowMore(!showMore)}>
             {moreLabel(panel.more.length, showMore)}
           </button>
-          {showMore ? <PropList rows={panel.more} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} /> : null}
+          {showMore ? (
+            <PropList rows={panel.more} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} />
+          ) : null}
         </>
       ) : null}
     </section>

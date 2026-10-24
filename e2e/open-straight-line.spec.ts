@@ -9,9 +9,16 @@ const cli = resolve(root, 'dist/cli.js');
 const app = resolve(root, 'test/fixtures/straight-line');
 
 /** Starts `truss --no-open` in an app folder and resolves with its URL once it prints one. */
-function startTruss(cwd = app, env: NodeJS.ProcessEnv = {}): Promise<{ child: ChildProcess; url: string; exited: Promise<number | null> }> {
+function startTruss(
+  cwd = app,
+  env: NodeJS.ProcessEnv = {},
+): Promise<{ child: ChildProcess; url: string; exited: Promise<number | null> }> {
   return new Promise((resolveStart, reject) => {
-    const child = spawn('node', [cli, '--no-open'], { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('node', [cli, '--no-open'], {
+      cwd,
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
     let out = '';
     child.stdout!.on('data', (d) => {
@@ -31,14 +38,22 @@ test('npx truss opens a straight-line CDK app and shows its Nodes in the Stack b
 
     await expect(page.getByText('ShopStack', { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText('us-east-1 · 123456789012')).toBeVisible();
-    for (const [label, cls] of [['Uploads', 'Bucket'], ['Orders', 'Queue'], ['Catalog', 'Table']]) {
+    for (const [label, cls] of [
+      ['Uploads', 'Bucket'],
+      ['Orders', 'Queue'],
+      ['Catalog', 'Table'],
+    ]) {
       const node = page.locator('.truss-node', { hasText: label });
       await expect(node).toBeVisible();
       await expect(node).toContainText(cls!);
     }
     await expect(page.locator('.truss-node')).toHaveCount(3);
     // Each Node shows the official icon for its type, and it really loaded.
-    for (const [label, icon] of [['Uploads', 'Res_Amazon-Simple-Storage-Service_Bucket_48'], ['Orders', 'Res_Amazon-Simple-Queue-Service_Queue_48'], ['Catalog', 'Res_Amazon-DynamoDB_Table_48']]) {
+    for (const [label, icon] of [
+      ['Uploads', 'Res_Amazon-Simple-Storage-Service_Bucket_48'],
+      ['Orders', 'Res_Amazon-Simple-Queue-Service_Queue_48'],
+      ['Catalog', 'Res_Amazon-DynamoDB_Table_48'],
+    ]) {
       const img = page.locator('.truss-node', { hasText: label }).locator('img.node-icon');
       await expect(img).toHaveAttribute('src', new RegExp(icon!));
       expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
@@ -112,7 +127,9 @@ function copyApp(from = app): string {
   return dir;
 }
 
-test('breaking the app from outside dims the last good Design under a banner, and fixing it recovers', async ({ page }) => {
+test('breaking the app from outside dims the last good Design under a banner, and fixing it recovers', async ({
+  page,
+}) => {
   const dir = copyApp();
   const stackFile = join(dir, 'lib/shop-stack.ts');
   const original = readFileSync(stackFile, 'utf8');
@@ -121,7 +138,13 @@ test('breaking the app from outside dims the last good Design under a banner, an
     await page.goto(truss.url);
     await expect(page.locator('.truss-node')).toHaveCount(3, { timeout: 60_000 });
 
-    writeFileSync(stackFile, original.replace("super(scope, id, props);", "super(scope, id, props);\n    throw new Error('outside change broke it');"));
+    writeFileSync(
+      stackFile,
+      original.replace(
+        'super(scope, id, props);',
+        "super(scope, id, props);\n    throw new Error('outside change broke it');",
+      ),
+    );
     const banner = page.locator('.error-banner');
     await expect(banner).toContainText('outside change broke it', { timeout: 60_000 });
     await expect(banner.getByRole('button', { name: 'Open in editor' })).toBeVisible();
@@ -144,7 +167,13 @@ test('a failed first open shows the error full page, then loads the Design once 
   const dir = copyApp();
   const stackFile = join(dir, 'lib/shop-stack.ts');
   const original = readFileSync(stackFile, 'utf8');
-  writeFileSync(stackFile, original.replace("super(scope, id, props);", "super(scope, id, props);\n    throw new Error('broken from the start');"));
+  writeFileSync(
+    stackFile,
+    original.replace(
+      'super(scope, id, props);',
+      "super(scope, id, props);\n    throw new Error('broken from the start');",
+    ),
+  );
   const truss = await startTruss(dir);
   try {
     await page.goto(truss.url);
@@ -180,10 +209,12 @@ test('a dragged Node and its note are saved in truss.json and survive a reload',
     await page.mouse.move(from.x + from.width / 2 + 150, from.y + from.height / 2 + 120, { steps: 10 });
     await page.mouse.up();
 
-    await expect.poll(() => (existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) : undefined)).toMatchObject({
-      formatVersion: 1,
-      nodes: { 'ShopStack/Orders': { position: { x: expect.any(Number), y: expect.any(Number) } } },
-    });
+    await expect
+      .poll(() => (existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) : undefined))
+      .toMatchObject({
+        formatVersion: 1,
+        nodes: { 'ShopStack/Orders': { position: { x: expect.any(Number), y: expect.any(Number) } } },
+      });
 
     // Delete is a code edit, not a canvas gesture: the selected Node must stay.
     await orders.click();
@@ -193,7 +224,9 @@ test('a dragged Node and its note are saved in truss.json and survive a reload',
     // Add a note to it.
     await page.getByLabel('Note').fill('Retries 3x, then DLQ');
     await page.getByLabel('Note').blur();
-    await expect.poll(() => JSON.parse(readFileSync(sidecar, 'utf8')).nodes['ShopStack/Orders'].note).toBe('Retries 3x, then DLQ');
+    await expect
+      .poll(() => JSON.parse(readFileSync(sidecar, 'utf8')).nodes['ShopStack/Orders'].note)
+      .toBe('Retries 3x, then DLQ');
 
     const offset = async () => {
       const [o, u] = [(await orders.boundingBox())!, (await uploads.boundingBox())!];
@@ -246,7 +279,10 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     // 4 loop Nodes, 2 helper Nodes, 1 whose ID is a variable, 1 import and the hoisted handler.
     await expect(page.locator('.node-lock')).toHaveCount(9);
     await expect(loop.locator('.node-lock')).toHaveAttribute('title', 'Created in a loop');
-    await expect(page.locator('.truss-node', { hasText: 'HelperA' }).locator('.node-lock')).toHaveAttribute('title', 'Created by the helper makeQueue');
+    await expect(page.locator('.truss-node', { hasText: 'HelperA' }).locator('.node-lock')).toHaveAttribute(
+      'title',
+      'Created by the helper makeQueue',
+    );
     await expect(page.locator('.truss-node', { hasText: 'Plain' }).locator('.node-lock')).toHaveCount(0);
     // A locked Node stays fully opaque.
     await expect(loop).toHaveCSS('opacity', '1');
@@ -254,7 +290,9 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await loop.click();
     await expect(page.getByText('Read-only: Created in a loop')).toBeVisible();
     await page.getByRole('button', { name: 'Open in editor' }).click();
-    await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/^--goto .*\/lib\/shapes-stack\.ts:41:7$/);
+    await expect
+      .poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : ''))
+      .toMatch(/^--goto .*\/lib\/shapes-stack\.ts:41:7$/);
 
     // An editable Node opens in the editor too, and says nothing about a lock.
     await page.locator('.truss-node', { hasText: 'Plain' }).click();
@@ -266,7 +304,9 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
   }
 });
 
-test('Stages show one at a time, nested stacks sit in their parent, imports are dashed and user classes name their base type', async ({ page }) => {
+test('Stages show one at a time, nested stacks sit in their parent, imports are dashed and user classes name their base type', async ({
+  page,
+}) => {
   const dir = copyApp(resolve(root, 'test/fixtures/shapes'));
   const truss = await startTruss(dir);
   try {
@@ -283,8 +323,12 @@ test('Stages show one at a time, nested stacks sit in their parent, imports are 
     await expect(page.locator('.stack-header strong', { hasText: /^Dev$/ })).toBeVisible();
 
     // A nested stack is a box inside its parent's, with the parent's environment.
-    const parent = page.locator('.stack-box', { has: page.locator('.stack-header strong', { hasText: /^Shapes$/ }) }).first();
-    const nested = page.locator('.stack-box', { has: page.locator('.stack-header strong', { hasText: /^Nested$/ }) }).first();
+    const parent = page
+      .locator('.stack-box', { has: page.locator('.stack-header strong', { hasText: /^Shapes$/ }) })
+      .first();
+    const nested = page
+      .locator('.stack-box', { has: page.locator('.stack-header strong', { hasText: /^Nested$/ }) })
+      .first();
     const [outer, inner] = [(await parent.boundingBox())!, (await nested.boundingBox())!];
     expect(inner.x).toBeGreaterThanOrEqual(outer.x);
     expect(inner.y).toBeGreaterThanOrEqual(outer.y);
@@ -314,7 +358,9 @@ test('Stages show one at a time, nested stacks sit in their parent, imports are 
   }
 });
 
-test('the palette searches the app\'s own Catalog by name, service or CloudFormation type and shows each tier', async ({ page }) => {
+test("the palette searches the app's own Catalog by name, service or CloudFormation type and shows each tier", async ({
+  page,
+}) => {
   const truss = await startTruss();
   try {
     await page.goto(truss.url);
@@ -336,7 +382,9 @@ test('the palette searches the app\'s own Catalog by name, service or CloudForma
 
     // An L3 pattern is told from the rest by its tier.
     await search.fill('ApplicationLoadBalancedFargateService');
-    await expect(palette.locator('[title="aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService"] .tier')).toHaveText('L3');
+    await expect(
+      palette.locator('[title="aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService"] .tier'),
+    ).toHaveText('L3');
 
     await search.fill('zzzzzz-nothing');
     await expect(palette.getByText('No constructs match.')).toBeVisible();
@@ -346,7 +394,9 @@ test('the palette searches the app\'s own Catalog by name, service or CloudForma
   }
 });
 
-test('expanding a Node shows its read-only children down to the L1 with their CloudFormation type, and collapsing hides them', async ({ page }) => {
+test('expanding a Node shows its read-only children down to the L1 with their CloudFormation type, and collapsing hides them', async ({
+  page,
+}) => {
   const dir = copyApp();
   const truss = await startTruss(dir);
   try {
@@ -383,7 +433,9 @@ test('expanding a Node shows its read-only children down to the L1 with their Cl
   }
 });
 
-test('a resource a construct creates outside its own subtree is drawn at Stack scope, read-only and linked to the Node that caused it', async ({ page }) => {
+test('a resource a construct creates outside its own subtree is drawn at Stack scope, read-only and linked to the Node that caused it', async ({
+  page,
+}) => {
   const dir = copyApp(resolve(root, 'test/fixtures/shapes'));
   const truss = await startTruss(dir);
   try {
@@ -403,7 +455,9 @@ test('a resource a construct creates outside its own subtree is drawn at Stack s
   }
 });
 
-test('selecting a Node lists its props with an input for each literal, and a Stack header opens the Stack\'s props', async ({ page }) => {
+test("selecting a Node lists its props with an input for each literal, and a Stack header opens the Stack's props", async ({
+  page,
+}) => {
   const truss = await startTruss();
   try {
     await page.goto(truss.url);
@@ -416,9 +470,13 @@ test('selecting a Node lists its props with an input for each literal, and a Sta
     await expect(versioned).toContainText('boolean');
 
     // Props the code doesn't set are one click away, with their CDK default as text.
-    await expect(props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) })).toHaveCount(0);
+    await expect(
+      props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) }),
+    ).toHaveCount(0);
     await props.getByRole('button', { name: /more props?$/ }).click();
-    await expect(props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) })).toContainText('Default:');
+    await expect(
+      props.locator('.prop-row', { has: page.getByText('transferAcceleration', { exact: true }) }),
+    ).toContainText('Default:');
 
     // A Duration is an amount and a unit.
     await page.locator('.truss-node', { hasText: 'Orders' }).click();
@@ -443,7 +501,9 @@ test('selecting a Node lists its props with an input for each literal, and a Sta
   }
 });
 
-test('an edit is staged in the Draft, shown with its diff, undone, redone and saved into the user\'s own file', async ({ page }) => {
+test("an edit is staged in the Draft, shown with its diff, undone, redone and saved into the user's own file", async ({
+  page,
+}) => {
   const dir = copyApp();
   const stackFile = join(dir, 'lib/shop-stack.ts');
   const original = readFileSync(stackFile, 'utf8');
@@ -485,7 +545,9 @@ test('an edit is staged in the Draft, shown with its diff, undone, redone and sa
     await expect(page.getByText('synthing…')).toHaveCount(0, { timeout: 60_000 });
     await draft.getByRole('button', { name: 'Save', exact: true }).click();
     await expect.poll(() => readFileSync(stackFile, 'utf8')).toContain("bucketName: 'uploads-bucket'");
-    expect(readFileSync(stackFile, 'utf8')).toBe(original.replace('versioned: true,', "versioned: false,\n      bucketName: 'uploads-bucket',"));
+    expect(readFileSync(stackFile, 'utf8')).toBe(
+      original.replace('versioned: true,', "versioned: false,\n      bucketName: 'uploads-bucket',"),
+    );
     await expect(draft).toHaveCount(0);
     await expect(uploads).not.toHaveClass(/changed/);
     // What was saved is what the Design shows, from a fresh synth of the user's files.
@@ -498,7 +560,7 @@ test('an edit is staged in the Draft, shown with its diff, undone, redone and sa
   }
 });
 
-test('Discard drops the whole Draft, and the user\'s files are never touched', async ({ page }) => {
+test("Discard drops the whole Draft, and the user's files are never touched", async ({ page }) => {
   const dir = copyApp();
   const stackFile = join(dir, 'lib/shop-stack.ts');
   const original = readFileSync(stackFile, 'utf8');

@@ -48,10 +48,16 @@ export function ProblemsPanel({
           ×
         </button>
       </div>
-      {listed.length === 0 ? <p className="lock-reason">{filter === 'draft' ? 'The Draft introduces no Problems.' : 'No Problems.'}</p> : null}
+      {listed.length === 0 ? (
+        <p className="lock-reason">{filter === 'draft' ? 'The Draft introduces no Problems.' : 'No Problems.'}</p>
+      ) : null}
       <ul className="problems-list">
         {listed.map((p) => (
-          <li key={p.id} id={`problem-${p.id}`} className={`problem ${p.severity}${highlighted === p.id ? ' highlighted' : ''}`}>
+          <li
+            key={p.id}
+            id={`problem-${p.id}`}
+            className={`problem ${p.severity}${highlighted === p.id ? ' highlighted' : ''}`}
+          >
             <span className="problem-mark" aria-label={p.severity}>
               {MARK[p.severity]}
             </span>

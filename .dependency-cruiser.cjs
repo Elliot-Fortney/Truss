@@ -22,7 +22,7 @@ module.exports = {
       comment: 'An adapter implements a port from the core; adapters do not reach the session, the ui or each other.',
       severity: 'error',
       from: { path: '^src/adapters/([^/]+)/', pathNot: test },
-      to: { path: '^src/(session|ui|cli)', },
+      to: { path: '^src/(session|ui|cli)' },
     },
     {
       name: 'adapters-do-not-import-each-other',

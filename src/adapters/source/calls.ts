@@ -17,15 +17,24 @@ const templates = new Map<string, ts.Expression>();
 function template(code: string): ts.Expression {
   let parsed = templates.get(code);
   if (!parsed) {
-    const sf = ts.createSourceFile('template.ts', `(${code.split('{self}').join(SELF).split('{peer}').join(PEER)})`, ts.ScriptTarget.Latest, true);
+    const sf = ts.createSourceFile(
+      'template.ts',
+      `(${code.split('{self}').join(SELF).split('{peer}').join(PEER)})`,
+      ts.ScriptTarget.Latest,
+      true,
+    );
     const statement = sf.statements[0];
-    parsed = statement && ts.isExpressionStatement(statement) && ts.isParenthesizedExpression(statement.expression) ? statement.expression.expression : ts.factory.createNull();
+    parsed =
+      statement && ts.isExpressionStatement(statement) && ts.isParenthesizedExpression(statement.expression)
+        ? statement.expression.expression
+        : ts.factory.createNull();
     templates.set(code, parsed);
   }
   return parsed;
 }
 
-const mentionsPlaceholder = (n: ts.Node): boolean => (ts.isIdentifier(n) && (n.text === SELF || n.text === PEER)) || ts.forEachChild(n, mentionsPlaceholder) === true;
+const mentionsPlaceholder = (n: ts.Node): boolean =>
+  (ts.isIdentifier(n) && (n.text === SELF || n.text === PEER)) || ts.forEachChild(n, mentionsPlaceholder) === true;
 
 /** The last two names of a call's callee, which is as much of `ns.Class.method` as the code has to agree on. */
 function calleeName(e: ts.Expression): string | undefined {
@@ -59,20 +68,39 @@ function matches(pattern: ts.Expression, actual: ts.Expression, bound: Bound, re
     bound[role] = key;
     return true;
   }
-  if (ts.isPropertyAccessExpression(pattern)) return ts.isPropertyAccessExpression(actual) && actual.name.text === pattern.name.text && matches(pattern.expression, actual.expression, bound, reading);
+  if (ts.isPropertyAccessExpression(pattern))
+    return (
+      ts.isPropertyAccessExpression(actual) &&
+      actual.name.text === pattern.name.text &&
+      matches(pattern.expression, actual.expression, bound, reading)
+    );
   if (ts.isNewExpression(pattern)) {
     if (!ts.isNewExpression(actual) || lastName(actual.expression) !== lastName(pattern.expression)) return false;
-    return (pattern.arguments ?? []).every((a, i) => !mentionsPlaceholder(a) || (actual.arguments?.[i] !== undefined && matches(a, actual.arguments[i]!, bound, reading)));
+    return (pattern.arguments ?? []).every(
+      (a, i) =>
+        !mentionsPlaceholder(a) ||
+        (actual.arguments?.[i] !== undefined && matches(a, actual.arguments[i]!, bound, reading)),
+    );
   }
   if (ts.isCallExpression(pattern)) {
     if (!ts.isCallExpression(actual) || calleeName(actual.expression) !== calleeName(pattern.expression)) return false;
-    return pattern.arguments.every((a, i) => !mentionsPlaceholder(a) || (actual.arguments[i] !== undefined && matches(a, actual.arguments[i]!, bound, reading)));
+    return pattern.arguments.every(
+      (a, i) =>
+        !mentionsPlaceholder(a) ||
+        (actual.arguments[i] !== undefined && matches(a, actual.arguments[i]!, bound, reading)),
+    );
   }
   return false;
 }
 
 /** Whether the call's arguments are what the hint's say. A secondary call that sets an environment variable names it with a string. */
-function argsMatch(call: Pick<HintCall, 'args'>, actual: readonly ts.Expression[], bound: Bound, reading: Reading, env: boolean): boolean {
+function argsMatch(
+  call: Pick<HintCall, 'args'>,
+  actual: readonly ts.Expression[],
+  bound: Bound,
+  reading: Reading,
+  env: boolean,
+): boolean {
   if (actual.length < call.args.length) return false;
   if (env) {
     const name = actual[0] && bare(actual[0]);
@@ -86,13 +114,31 @@ function argsMatch(call: Pick<HintCall, 'args'>, actual: readonly ts.Expression[
 function surroundOf(st: ts.Statement): string | undefined {
   for (let p: ts.Node | undefined = st.parent; p; p = p.parent) {
     if (ts.isSourceFile(p) || ts.isModuleBlock(p)) return undefined;
-    if (ts.isForStatement(p) || ts.isForInStatement(p) || ts.isForOfStatement(p) || ts.isWhileStatement(p) || ts.isDoStatement(p)) return 'Made in a loop';
-    if (ts.isIfStatement(p) || ts.isSwitchStatement(p) || ts.isTryStatement(p) || ts.isConditionalExpression(p)) return 'Made only under a condition';
+    if (
+      ts.isForStatement(p) ||
+      ts.isForInStatement(p) ||
+      ts.isForOfStatement(p) ||
+      ts.isWhileStatement(p) ||
+      ts.isDoStatement(p)
+    )
+      return 'Made in a loop';
+    if (ts.isIfStatement(p) || ts.isSwitchStatement(p) || ts.isTryStatement(p) || ts.isConditionalExpression(p))
+      return 'Made only under a condition';
     if (ts.isConstructorDeclaration(p)) return undefined;
     if (ts.isFunctionLike(p)) {
       const call = p.parent;
-      if (ts.isCallExpression(call) && ts.isPropertyAccessExpression(call.expression) && ['forEach', 'map', 'flatMap', 'filter', 'reduce', 'some', 'every'].includes(call.expression.name.text)) return 'Made in a loop';
-      const name = (ts.isFunctionDeclaration(p) || ts.isMethodDeclaration(p)) && p.name && ts.isIdentifier(p.name) ? p.name.text : ts.isVariableDeclaration(call) && ts.isIdentifier(call.name) ? call.name.text : '(anonymous function)';
+      if (
+        ts.isCallExpression(call) &&
+        ts.isPropertyAccessExpression(call.expression) &&
+        ['forEach', 'map', 'flatMap', 'filter', 'reduce', 'some', 'every'].includes(call.expression.name.text)
+      )
+        return 'Made in a loop';
+      const name =
+        (ts.isFunctionDeclaration(p) || ts.isMethodDeclaration(p)) && p.name && ts.isIdentifier(p.name)
+          ? p.name.text
+          : ts.isVariableDeclaration(call) && ts.isIdentifier(call.name)
+            ? call.name.text
+            : '(anonymous function)';
       return `Made in the helper ${name}`;
     }
     if (ts.isClassLike(p)) return 'Made outside a constructor';
@@ -101,7 +147,8 @@ function surroundOf(st: ts.Statement): string | undefined {
 }
 
 const enclosingClassName = (st: ts.Node): string | undefined => {
-  for (let p: ts.Node | undefined = st.parent; p; p = p.parent) if (ts.isClassDeclaration(p) && p.name) return p.name.text;
+  for (let p: ts.Node | undefined = st.parent; p; p = p.parent)
+    if (ts.isClassDeclaration(p) && p.name) return p.name.text;
   return undefined;
 };
 
@@ -210,9 +257,20 @@ export class CallReader {
     hints.forEach((hint, index) => {
       if (!hint.primary.forms.some((f) => f.join('.') === method.join('.'))) return;
       const bound: Bound = { self: key };
-      if (!argsMatch(hint.primary, call.arguments, bound, this.reading(hint.kind), false) || bound.peer === undefined) return;
+      if (!argsMatch(hint.primary, call.arguments, bound, this.reading(hint.kind), false) || bound.peer === undefined)
+        return;
       if (!this.fits(bound.peer, hint)) return;
-      found.push({ statement: st, kind: hint.kind, role: 'primary', method, self: key, peer: bound.peer, on: key, hint: { fqn: entry!.fqn, index, flow: hint.flow }, ambiguous: false });
+      found.push({
+        statement: st,
+        kind: hint.kind,
+        role: 'primary',
+        method,
+        self: key,
+        peer: bound.peer,
+        on: key,
+        hint: { fqn: entry!.fqn, index, flow: hint.flow },
+        ambiguous: false,
+      });
     });
     const out: Found[] = found.map((f) => ({ ...f, ambiguous: found.length > 1 }));
     // What completes each one, in the statements next to it.
@@ -234,19 +292,33 @@ export class CallReader {
 
   /** Statements beside `primary` that make the call a hint's secondary call describes between the same two Nodes. */
   private secondaries(primary: ts.ExpressionStatement, hint: ConnectionHint, spec: HintCall, f: Found): Found[] {
-    const siblings = ts.isBlock(primary.parent) || ts.isSourceFile(primary.parent) || ts.isModuleBlock(primary.parent) ? primary.parent.statements : [];
+    const siblings =
+      ts.isBlock(primary.parent) || ts.isSourceFile(primary.parent) || ts.isModuleBlock(primary.parent)
+        ? primary.parent.statements
+        : [];
     const out: Found[] = [];
     for (const st of siblings) {
       if (!ts.isExpressionStatement(st) || st === primary) continue;
       const call = bare(st.expression);
       if (!ts.isCallExpression(call)) continue;
       const wanted = spec.on === 'self' ? f.self : f.peer;
-      const read = splits(call).find((x) => this.resolver.valueOf(x.receiver, 0) === wanted && spec.forms.some((form) => form.join('.') === x.method.join('.')));
+      const read = splits(call).find(
+        (x) =>
+          this.resolver.valueOf(x.receiver, 0) === wanted &&
+          spec.forms.some((form) => form.join('.') === x.method.join('.')),
+      );
       if (!read) continue;
       const bound: Bound = { self: f.self, peer: f.peer };
       const quoted = /^['"]/.test(spec.args[0]?.trim() ?? '');
       if (!argsMatch(spec, call.arguments, bound, this.reading(hint.kind), quoted)) continue;
-      out.push({ ...f, statement: st, role: 'secondary', method: read.method, on: wanted, ...(bound.env !== undefined ? { env: bound.env } : {}) });
+      out.push({
+        ...f,
+        statement: st,
+        role: 'secondary',
+        method: read.method,
+        on: wanted,
+        ...(bound.env !== undefined ? { env: bound.env } : {}),
+      });
     }
     return out;
   }
@@ -258,7 +330,9 @@ export class CallReader {
     const first = call.arguments[0];
     if (!entry || method.length !== 1 || !entry.grantMethods.includes(method[0]!) || !first) return [];
     const peer = this.keyOf(first, 'grant');
-    return peer === undefined ? [] : [{ statement: st, kind: 'grant', role: 'primary', method, self: key, peer, on: key, ambiguous: false }];
+    return peer === undefined
+      ? []
+      : [{ statement: st, kind: 'grant', role: 'primary', method, self: key, peer, on: key, ambiguous: false }];
   }
 
   /** Pairs the Nodes the span keys stand for, one pair for each instance of the class around the call, and says what keeps it from being edited. */
@@ -270,7 +344,9 @@ export class CallReader {
     let ambiguous = f.ambiguous;
     if (selfs.length === 1 && peers.length === 1) pairs = [[selfs[0]!, peers[0]!]];
     else {
-      pairs = selfs.flatMap((s) => peers.filter((p) => parentPath(p) === parentPath(s)).map((p): [string, string] => [s, p]));
+      pairs = selfs.flatMap((s) =>
+        peers.filter((p) => parentPath(p) === parentPath(s)).map((p): [string, string] => [s, p]),
+      );
       if (pairs.length === 0) {
         pairs = selfs.flatMap((s) => peers.map((p): [string, string] => [s, p]));
         ambiguous = true;
@@ -278,11 +354,17 @@ export class CallReader {
     }
     const start = sf.getLineAndCharacterOfPosition(f.statement.getStart(sf));
     const end = sf.getLineAndCharacterOfPosition(f.statement.getEnd());
-    const span = { file, start: { line: start.line + 1, col: start.character + 1 }, end: { line: end.line + 1, col: end.character + 1 } };
+    const span = {
+      file,
+      start: { line: start.line + 1, col: start.character + 1 },
+      end: { line: end.line + 1, col: end.character + 1 },
+    };
     for (const [s, p] of pairs) {
       const [on, peer] = f.on === f.self ? [s, p] : [p, s];
       const [from, to] = f.kind === 'grant' ? [p, s] : f.hint?.flow === 'in' ? [p, s] : [s, p];
-      const reason = ambiguous ? 'More than one reading of this call fits, so Truss shows it and leaves it alone' : this.why(f.statement, file, [s, p]);
+      const reason = ambiguous
+        ? 'More than one reading of this call fits, so Truss shows it and leaves it alone'
+        : this.why(f.statement, file, [s, p]);
       this.out.push({
         id: `${file}:${span.start.line}:${span.start.col}`,
         kind: f.kind,
@@ -316,7 +398,8 @@ export class CallReader {
     }
     const scope = enclosingClassName(st);
     const [self, peer] = nodes as [NodeFacts, NodeFacts];
-    if (self.enclosingClass?.name !== scope || peer.enclosingClass?.name !== scope) return 'The Nodes and the call are not in the same scope';
+    if (self.enclosingClass?.name !== scope || peer.enclosingClass?.name !== scope)
+      return 'The Nodes and the call are not in the same scope';
     if (self.pathsOnSpan !== peer.pathsOnSpan) return 'The Nodes are not made the same number of times';
     return undefined;
   }

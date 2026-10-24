@@ -181,7 +181,14 @@ export interface ReplaceConnectionIntent {
 
 export type ConnectionIntent = AddConnectionIntent | RemoveConnectionIntent | ReplaceConnectionIntent;
 
-export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent | RemoveNodeIntent | ReferenceIntent | ConnectionIntent;
+export type Intent =
+  | SetPropIntent
+  | RenameIdIntent
+  | AddNodeIntent
+  | DuplicateIntent
+  | RemoveNodeIntent
+  | ReferenceIntent
+  | ConnectionIntent;
 
 /** Whether an intent changes the calls that make a Connection. */
 export const isConnectionIntent = (intent: Intent): intent is ConnectionIntent =>
@@ -190,26 +197,45 @@ export const isConnectionIntent = (intent: Intent): intent is ConnectionIntent =
 /** What a call the Draft writes will be, in the terms the code has calls in. */
 export function refOfPlan(plan: CallPlan, self: string, peer: string): CallRef {
   const env = envOf(plan);
-  return { role: plan.role, on: plan.on === 'self' ? self : peer, peer: plan.on === 'self' ? peer : self, method: plan.method, ...(env !== undefined ? { env } : {}) };
+  return {
+    role: plan.role,
+    on: plan.on === 'self' ? self : peer,
+    peer: plan.on === 'self' ? peer : self,
+    method: plan.method,
+    ...(env !== undefined ? { env } : {}),
+  };
 }
 
 /** The environment variable a call sets: the first argument of an `addEnvironment`, when it is a string. */
 export function envOf(plan: Pick<CallPlan, 'method' | 'args'>): string | undefined {
   const first = plan.args[0]?.trim();
-  return plan.method.at(-1) === 'addEnvironment' && first !== undefined && /^(['"]).*\1$/.test(first) ? first.slice(1, -1) : undefined;
+  return plan.method.at(-1) === 'addEnvironment' && first !== undefined && /^(['"]).*\1$/.test(first)
+    ? first.slice(1, -1)
+    : undefined;
 }
 
 export const sameCall = (a: CallRef, b: CallRef): boolean =>
-  a.role === b.role && a.on === b.on && a.peer === b.peer && a.method.join('.') === b.method.join('.') && (a.env ?? '') === (b.env ?? '');
+  a.role === b.role &&
+  a.on === b.on &&
+  a.peer === b.peer &&
+  a.method.join('.') === b.method.join('.') &&
+  (a.env ?? '') === (b.env ?? '');
 
 /** Whether an intent changes a Reference. */
-export const isReferenceIntent = (intent: Intent): intent is ReferenceIntent => intent.type === 'addReference' || intent.type === 'removeReference' || intent.type === 'repointReference';
+export const isReferenceIntent = (intent: Intent): intent is ReferenceIntent =>
+  intent.type === 'addReference' || intent.type === 'removeReference' || intent.type === 'repointReference';
 
 /** The path a construct made by `intent` has, in the paths as they are once the intents before it have been made. Undefined for an intent that makes none. */
-export const createdPath = (intent: Intent): string | undefined => (intent.type === 'addNode' ? `${intent.path}/${intent.id}` : intent.type === 'duplicate' ? withId(intent.path, intent.newId) : undefined);
+export const createdPath = (intent: Intent): string | undefined =>
+  intent.type === 'addNode'
+    ? `${intent.path}/${intent.id}`
+    : intent.type === 'duplicate'
+      ? withId(intent.path, intent.newId)
+      : undefined;
 
 /** The Construct ID of the construct an intent is about: the one it makes, or the one it edits. */
-export const idOf = (intent: Intent): string => (intent.type === 'addNode' ? intent.id : intent.type === 'duplicate' ? intent.newId : intent.expect.literalId);
+export const idOf = (intent: Intent): string =>
+  intent.type === 'addNode' ? intent.id : intent.type === 'duplicate' ? intent.newId : intent.expect.literalId;
 
 /** Where a rename moves a construct: its path before and after, and so everything beneath it. */
 export interface Move {
@@ -224,10 +250,12 @@ export const movesOf = (intents: readonly Intent[]): Move[] =>
 const under = (path: string, from: string) => path === from || path.startsWith(`${from}/`);
 
 /** `path` once `moves` are made, in order. */
-export const afterMoves = (moves: readonly Move[], path: string): string => moves.reduce((p, m) => (under(p, m.from) ? m.to + p.slice(m.from.length) : p), path);
+export const afterMoves = (moves: readonly Move[], path: string): string =>
+  moves.reduce((p, m) => (under(p, m.from) ? m.to + p.slice(m.from.length) : p), path);
 
 /** `path`, as `moves` leave it, as it was before any of them. */
-export const beforeMoves = (moves: readonly Move[], path: string): string => moves.reduceRight((p, m) => (under(p, m.to) ? m.from + p.slice(m.to.length) : p), path);
+export const beforeMoves = (moves: readonly Move[], path: string): string =>
+  moves.reduceRight((p, m) => (under(p, m.to) ? m.from + p.slice(m.to.length) : p), path);
 
 /**
  * The intents named by the paths and IDs the Base has. A rename changes a construct's path in the Draft, so
@@ -237,17 +265,30 @@ export function onBase(intents: readonly Intent[]): Intent[] {
   return intents.map((intent, i) => {
     const moves = movesOf(intents.slice(0, i));
     const path = beforeMoves(moves, intent.path);
-    const onDisk = isReferenceIntent(intent) ? referencesOnBase(intent, moves) : isConnectionIntent(intent) ? connectionOnBase(intent, moves) : intent;
+    const onDisk = isReferenceIntent(intent)
+      ? referencesOnBase(intent, moves)
+      : isConnectionIntent(intent)
+        ? connectionOnBase(intent, moves)
+        : intent;
     if (path === intent.path) return onDisk;
     const literalId = path.split('/').at(-1)!;
-    return { ...onDisk, path, expect: { ...intent.expect, literalId: intent.path.split('/').at(-1) === intent.expect.literalId ? literalId : intent.expect.literalId } };
+    return {
+      ...onDisk,
+      path,
+      expect: {
+        ...intent.expect,
+        literalId: intent.path.split('/').at(-1) === intent.expect.literalId ? literalId : intent.expect.literalId,
+      },
+    };
   });
 }
 
 /** A Node as the Base has it. */
 function nodeOnBase(n: NodeRef, moves: readonly Move[]): NodeRef {
   const path = beforeMoves(moves, n.path);
-  return path === n.path ? n : { ...n, path, literalId: n.path.split('/').at(-1) === n.literalId ? path.split('/').at(-1)! : n.literalId };
+  return path === n.path
+    ? n
+    : { ...n, path, literalId: n.path.split('/').at(-1) === n.literalId ? path.split('/').at(-1)! : n.literalId };
 }
 
 /** A Connection intent with the Nodes it names, and the calls it removes, given the paths the Base has. */
@@ -262,7 +303,9 @@ function connectionOnBase<T extends ConnectionIntent>(intent: T, moves: readonly
 /** A Reference intent with the Nodes it names given the paths and IDs the Base has. */
 function referencesOnBase(intent: ReferenceIntent, moves: readonly Move[]): ReferenceIntent {
   const base = (n: NodeRef): NodeRef => nodeOnBase(n, moves);
-  return intent.type === 'repointReference' ? { ...intent, was: base(intent.was), to: base(intent.to) } : { ...intent, to: base(intent.to) };
+  return intent.type === 'repointReference'
+    ? { ...intent, was: base(intent.was), to: base(intent.to) }
+    : { ...intent, to: base(intent.to) };
 }
 
 /** The history of the Draft (CONTEXT.md): intents in the order they were made, and the undone ones that redo can bring back. */
@@ -273,7 +316,8 @@ export interface DraftHistory {
 
 export const emptyDraftHistory: DraftHistory = { intents: [], redo: [] };
 
-const sameTarget = (a: SetPropIntent, b: SetPropIntent) => a.path === b.path && a.prop.length === b.prop.length && a.prop.every((p, i) => p === b.prop[i]);
+const sameTarget = (a: SetPropIntent, b: SetPropIntent) =>
+  a.path === b.path && a.prop.length === b.prop.length && a.prop.every((p, i) => p === b.prop[i]);
 
 /**
  * Adds an intent. Setting the same prop again replaces the last intent, so one run of edits to a field is one undo step,
@@ -282,15 +326,36 @@ const sameTarget = (a: SetPropIntent, b: SetPropIntent) => a.path === b.path && 
 export function stage(draft: DraftHistory, intent: Intent): DraftHistory {
   const last = draft.intents.at(-1);
   const rest = draft.intents.slice(0, -1);
-  if (last?.type === 'setProp' && intent.type === 'setProp' && sameTarget(last, intent)) return { intents: [...rest, intent], redo: [] };
-  if (last?.type === 'renameId' && intent.type === 'renameId' && afterMoves(movesOf([last]), last.path) === intent.path) {
-    return { intents: intent.newId === last.expect.literalId ? rest : [...rest, { ...intent, path: last.path, expect: last.expect }], redo: [] };
+  if (last?.type === 'setProp' && intent.type === 'setProp' && sameTarget(last, intent))
+    return { intents: [...rest, intent], redo: [] };
+  if (
+    last?.type === 'renameId' &&
+    intent.type === 'renameId' &&
+    afterMoves(movesOf([last]), last.path) === intent.path
+  ) {
+    return {
+      intents:
+        intent.newId === last.expect.literalId ? rest : [...rest, { ...intent, path: last.path, expect: last.expect }],
+      redo: [],
+    };
   }
-  if (last && isReferenceIntent(last) && isReferenceIntent(intent) && last.path === intent.path && last.prop === intent.prop) {
+  if (
+    last &&
+    isReferenceIntent(last) &&
+    isReferenceIntent(intent) &&
+    last.path === intent.path &&
+    last.prop === intent.prop
+  ) {
     const merged = mergeReferences(last, intent);
     if (merged !== undefined) return { intents: merged ? [...rest, merged] : rest, redo: [] };
   }
-  if (last && isConnectionIntent(last) && isConnectionIntent(intent) && last.path === intent.path && last.peer.path === intent.peer.path) {
+  if (
+    last &&
+    isConnectionIntent(last) &&
+    isConnectionIntent(intent) &&
+    last.path === intent.path &&
+    last.peer.path === intent.peer.path
+  ) {
     const merged = mergeConnections(last, intent);
     if (merged !== undefined) return { intents: merged ? [...rest, merged] : rest, redo: [] };
   }
@@ -298,9 +363,11 @@ export function stage(draft: DraftHistory, intent: Intent): DraftHistory {
 }
 
 /** The calls an intent leaves in the code that it wrote itself, as refs. */
-const writtenBy = (i: AddConnectionIntent | ReplaceConnectionIntent): CallRef[] => i.calls.map((c) => refOfPlan(c, i.path, i.peer.path));
+const writtenBy = (i: AddConnectionIntent | ReplaceConnectionIntent): CallRef[] =>
+  i.calls.map((c) => refOfPlan(c, i.path, i.peer.path));
 
-const sameCalls = (a: readonly CallRef[], b: readonly CallRef[]) => a.length === b.length && a.every((x) => b.some((y) => sameCall(x, y)));
+const sameCalls = (a: readonly CallRef[], b: readonly CallRef[]) =>
+  a.length === b.length && a.every((x) => b.some((y) => sameCall(x, y)));
 
 /**
  * Two Connection edits in a row to one pair as the one edit they come to: undefined when they are separate edits, null when
@@ -309,9 +376,19 @@ const sameCalls = (a: readonly CallRef[], b: readonly CallRef[]) => a.length ===
 function mergeConnections(last: ConnectionIntent, next: ConnectionIntent): ConnectionIntent | null | undefined {
   if (last.type === 'removeConnection') return undefined;
   if (next.type === 'removeConnection' && sameCalls(writtenBy(last), next.calls)) {
-    return last.type === 'addConnection' ? null : { type: 'removeConnection', path: last.path, expect: last.expect, peer: last.peer, kind: last.kind, calls: last.was };
+    return last.type === 'addConnection'
+      ? null
+      : {
+          type: 'removeConnection',
+          path: last.path,
+          expect: last.expect,
+          peer: last.peer,
+          kind: last.kind,
+          calls: last.was,
+        };
   }
-  if (next.type === 'replaceConnection' && sameCalls(writtenBy(last), next.was)) return { ...last, kind: next.kind, calls: next.calls };
+  if (next.type === 'replaceConnection' && sameCalls(writtenBy(last), next.was))
+    return { ...last, kind: next.kind, calls: next.calls };
   return undefined;
 }
 
@@ -321,11 +398,13 @@ function mergeConnections(last: ConnectionIntent, next: ConnectionIntent): Conne
  */
 function mergeReferences(last: ReferenceIntent, next: ReferenceIntent): ReferenceIntent | null | undefined {
   if (last.type === 'addReference' && next.type === 'removeReference' && next.to.path === last.to.path) return null;
-  if (last.type === 'addReference' && next.type === 'repointReference' && next.was.path === last.to.path) return { ...last, to: next.to };
+  if (last.type === 'addReference' && next.type === 'repointReference' && next.was.path === last.to.path)
+    return { ...last, to: next.to };
   if (last.type === 'repointReference' && next.type === 'repointReference' && next.was.path === last.to.path) {
     return next.to.path === last.was.path ? null : { ...last, to: next.to };
   }
-  if (last.type === 'repointReference' && next.type === 'removeReference' && next.to.path === last.to.path) return { type: 'removeReference', path: last.path, expect: last.expect, prop: last.prop, to: last.was };
+  if (last.type === 'repointReference' && next.type === 'removeReference' && next.to.path === last.to.path)
+    return { type: 'removeReference', path: last.path, expect: last.expect, prop: last.prop, to: last.was };
   return undefined;
 }
 
@@ -355,7 +434,8 @@ export function valueText(value: PropValue): string {
   }
 }
 
-const callsText = (calls: readonly CallPlan[]) => calls.map((c) => `${c.on === 'self' ? '' : '…'}${c.method.join('.')}`).join(' + ');
+const callsText = (calls: readonly CallPlan[]) =>
+  calls.map((c) => `${c.on === 'self' ? '' : '…'}${c.method.join('.')}`).join(' + ');
 
 /** An intent as the Draft list words it, e.g. `versioned → true`. */
 export function describeIntent(intent: Intent): string {
@@ -403,7 +483,12 @@ function factOf(name: string, value: PropValue): PropFacts {
     case 'duration':
     case 'size': {
       const type = QUANTITY_TYPES[value.kind];
-      return { name, kind: 'expression', text: `${type}.${value.unit}(${value.amount})`, quantity: { type, unit: value.unit, amount: value.amount } };
+      return {
+        name,
+        kind: 'expression',
+        text: `${type}.${value.unit}(${value.amount})`,
+        quantity: { type, unit: value.unit, amount: value.amount },
+      };
     }
   }
 }
@@ -425,5 +510,8 @@ function setIn(props: readonly PropFacts[], path: readonly string[], value: Prop
 /** The props of a construct as the code would have them with these intents applied, for showing a value before synth has caught up. */
 export function withIntents(props: PropsFacts | undefined, intents: readonly Intent[]): PropsFacts | undefined {
   if (!intents.some((i) => i.type === 'setProp') || props?.form === 'other') return props;
-  return { form: 'object', props: intents.reduce((all, i) => (i.type === 'setProp' ? setIn(all, i.prop, i.value) : all), props?.props ?? []) };
+  return {
+    form: 'object',
+    props: intents.reduce((all, i) => (i.type === 'setProp' ? setIn(all, i.prop, i.value) : all), props?.props ?? []),
+  };
 }

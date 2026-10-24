@@ -13,7 +13,13 @@ const baseOf = (files: FileSet): Base => {
   const assembly = readFixtureAssembly('straight-line');
   return { files, facts: source.analyse(files, assembly), assembly };
 };
-const setProp = (id: string, className: string, prop: string, value: boolean): Intent => ({ type: 'setProp', path: `ShopStack/${id}`, expect: { className, literalId: id }, prop: [prop], value: { kind: 'boolean', value } });
+const setProp = (id: string, className: string, prop: string, value: boolean): Intent => ({
+  type: 'setProp',
+  path: `ShopStack/${id}`,
+  expect: { className, literalId: id },
+  prop: [prop],
+  value: { kind: 'boolean', value },
+});
 const versioned = (value = false) => setProp('Uploads', 's3.Bucket', 'versioned', value);
 const fifo = () => setProp('Orders', 'sqs.Queue', 'fifo', true);
 
@@ -24,7 +30,8 @@ function draft(): { draft: Draft; files: FileSet } {
   d.rebase(baseOf(files));
   return { draft: d, files };
 }
-const renamed = (files: FileSet, from: string, to: string): FileSet => new Map(files).set(SHOP, files.get(SHOP)!.replace(`'${from}'`, `'${to}'`));
+const renamed = (files: FileSet, from: string, to: string): FileSet =>
+  new Map(files).set(SHOP, files.get(SHOP)!.replace(`'${from}'`, `'${to}'`));
 
 describe('the Draft module', () => {
   it('stages an edit and shows it with its diff', () => {
@@ -36,7 +43,8 @@ describe('the Draft module', () => {
 
   it('refuses everything until it has a Base', () => {
     const d = new Draft(source);
-    for (const outcome of [d.stage(versioned()), d.undo(), d.redo(), d.discard()]) expect(outcome).toEqual({ ok: false, reason: 'There is no Design to edit yet.' });
+    for (const outcome of [d.stage(versioned()), d.undo(), d.redo(), d.discard()])
+      expect(outcome).toEqual({ ok: false, reason: 'There is no Design to edit yet.' });
   });
 
   it('rolls back a staged edit that cannot be planned', () => {
@@ -73,7 +81,12 @@ describe('the Draft module', () => {
   });
 
   it('keeps notices across rebases, and clears them on undo, redo, discard and save', () => {
-    const clearing: Array<(d: Draft) => void> = [(d) => d.undo(), (d) => (d.undo(), d.redo()), (d) => d.discard(), (d) => d.saved()];
+    const clearing: Array<(d: Draft) => void> = [
+      (d) => d.undo(),
+      (d) => (d.undo(), d.redo()),
+      (d) => d.discard(),
+      (d) => d.saved(),
+    ];
     for (const clear of clearing) {
       const { draft: d, files } = draft();
       d.stage(versioned());
@@ -133,7 +146,9 @@ describe('the Draft module', () => {
   it('shows the Problems of the check, and clears them when saved', () => {
     const { draft: d } = draft();
     d.stage(versioned());
-    d.checked(d.intents, [{ id: 'x', severity: 'error', source: 'synth', message: 'boom', draft: true, blocking: true }]);
+    d.checked(d.intents, [
+      { id: 'x', severity: 'error', source: 'synth', message: 'boom', draft: true, blocking: true },
+    ]);
     expect(d.view()?.problems).toEqual(['boom']);
     d.saved();
     expect(d.problems()).toEqual([]);

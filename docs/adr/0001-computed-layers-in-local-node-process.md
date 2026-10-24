@@ -1,6 +1,6 @@
 # Computed Layers run in a local Node process
 
-A Layer must show the child constructs that *this* Node's props actually create. A plain `Bucket` has 2 nodes; with `autoDeleteObjects` + `enforceSSL` it has 6. So Truss computes Layers by instantiating the whole Design with the real, pinned `aws-cdk-lib`, rather than showing static example trees. To run CDK where it's officially supported, Truss is a local web app served by a Node process (`npx truss`), not a static browser-only page. Nothing touches AWS: this is a local dry run used only to draw Layers.
+A Layer must show the child constructs that _this_ Node's props actually create. A plain `Bucket` has 2 nodes; with `autoDeleteObjects` + `enforceSSL` it has 6. So Truss computes Layers by instantiating the whole Design with the real, pinned `aws-cdk-lib`, rather than showing static example trees. To run CDK where it's officially supported, Truss is a local web app served by a Node process (`npx truss`), not a static browser-only page. Nothing touches AWS: this is a local dry run used only to draw Layers.
 
 ## Considered Options
 

@@ -2,7 +2,16 @@
 import { join } from 'node:path';
 import ts from '@typescript/typescript6';
 import type { Assembly, Frame, TreeNode } from '../../core/assembly.ts';
-import type { Binding, EnclosingClass, Facts, NodeFacts, PropFacts, PropsFacts, Span, Surround } from '../../core/facts.ts';
+import type {
+  Binding,
+  EnclosingClass,
+  Facts,
+  NodeFacts,
+  PropFacts,
+  PropsFacts,
+  Span,
+  Surround,
+} from '../../core/facts.ts';
 import type { Intent } from '../../core/intents.ts';
 import type { Diagnostic, FileSet, PlanResult, Source } from '../../core/ports.ts';
 import type { Catalog } from '../../core/catalog.ts';
@@ -32,7 +41,8 @@ interface FromCall {
 }
 
 /** The string literals among a call's arguments. */
-const identifiersOf = (args: readonly ts.Expression[]): string[] => args.flatMap((a) => (isStringLike(a) ? [a.text] : []));
+const identifiersOf = (args: readonly ts.Expression[]): string[] =>
+  args.flatMap((a) => (isStringLike(a) ? [a.text] : []));
 
 export class TsSource implements Source {
   /** Parsed files, reused while a file's text is unchanged. */
@@ -45,7 +55,11 @@ export class TsSource implements Source {
       if (frame) sites.set(path, frame);
     }
     const frames = new Map<string, Frame>();
-    this.collectFrames(assembly.tree, { assembly, sites, stacks: new Set(assembly.stacks.map((s) => s.path)), out: frames }, undefined);
+    this.collectFrames(
+      assembly.tree,
+      { assembly, sites, stacks: new Set(assembly.stacks.map((s) => s.path)), out: frames },
+      undefined,
+    );
 
     const nodes: Record<string, NodeFacts> = {};
     const perSpan = new Map<string, number>();
@@ -60,7 +74,11 @@ export class TsSource implements Source {
       if (facts) facts.pathsOnSpan = perSpan.get(frameKey(frame)) ?? 1;
     }
     this.addExternals(files, assembly.tree, nodes);
-    const reader = new ReferenceReader(nodes, (file) => this.parse(files, file), new Set(assembly.stacks.map((s) => s.path)));
+    const reader = new ReferenceReader(
+      nodes,
+      (file) => this.parse(files, file),
+      new Set(assembly.stacks.map((s) => s.path)),
+    );
     const references = reader.read();
     const fqns = new Map<string, string>();
     const index = (n: TreeNode) => {
@@ -68,7 +86,9 @@ export class TsSource implements Source {
       n.children.forEach(index);
     };
     index(assembly.tree);
-    const calls = catalog ? new CallReader(nodes, fqns, files.keys(), (file) => this.parse(files, file), reader, catalog).read() : [];
+    const calls = catalog
+      ? new CallReader(nodes, fqns, files.keys(), (file) => this.parse(files, file), reader, catalog).read()
+      : [];
     return { nodes, ...(references.length > 0 ? { references } : {}), ...(calls.length > 0 ? { calls } : {}) };
   }
 
@@ -82,9 +102,22 @@ export class TsSource implements Source {
   diagnostics(appDir: string, files: FileSet, touched: readonly string[]): Diagnostic[] {
     const configPath = ts.findConfigFile(appDir, ts.sys.fileExists, 'tsconfig.json');
     const config = configPath
-      ? ts.getParsedCommandLineOfConfigFile(configPath, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined })
+      ? ts.getParsedCommandLineOfConfigFile(
+          configPath,
+          {},
+          { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined },
+        )
       : undefined;
-    const options: ts.CompilerOptions = { ...(config?.options ?? { strict: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true, skipLibCheck: true }), noEmit: true };
+    const options: ts.CompilerOptions = {
+      ...(config?.options ?? {
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.CommonJS,
+        esModuleInterop: true,
+        skipLibCheck: true,
+      }),
+      noEmit: true,
+    };
     const absolute = (file: string) => join(appDir, file);
     const overlay = new Map([...files].map(([file, text]) => [absolute(file), text]));
     const host = ts.createCompilerHost(options);
@@ -124,7 +157,8 @@ export class TsSource implements Source {
    */
   private creationSite(files: FileSet, frames: Frame[]): Frame | undefined {
     let i = 0;
-    while (i < frames.length - 1 && frames[i]!.fn?.startsWith('new ') && this.isConstructorEntry(files, frames[i]!)) i++;
+    while (i < frames.length - 1 && frames[i]!.fn?.startsWith('new ') && this.isConstructorEntry(files, frames[i]!))
+      i++;
     return frames[i];
   }
 
@@ -155,7 +189,9 @@ export class TsSource implements Source {
    * (or of a class of the app's own that extends it) gives each instance's child of that ID.
    */
   private addExternals(files: FileSet, tree: TreeNode, nodes: Record<string, NodeFacts>): void {
-    const calls = [...files.keys()].flatMap((file) => (files.get(file)?.includes('.from') ? this.fromCalls(files, file) : []));
+    const calls = [...files.keys()].flatMap((file) =>
+      files.get(file)?.includes('.from') ? this.fromCalls(files, file) : [],
+    );
     if (calls.length === 0) return;
     const children = new Map<string, TreeNode[]>();
     const index = (n: TreeNode) => {
@@ -164,10 +200,17 @@ export class TsSource implements Source {
     };
     index(tree);
     // The constructs the app creates, before any external is added: an external is never another's parent.
-    const parents = Object.entries(nodes).map(([path, facts]) => ({ path, chain: this.classChain(files, facts.className.split('.').at(-1)!) }));
+    const parents = Object.entries(nodes).map(([path, facts]) => ({
+      path,
+      chain: this.classChain(files, facts.className.split('.').at(-1)!),
+    }));
     for (const call of calls) {
       const paths = parents
-        .filter((p) => p.chain.has(call.enclosingClass.name) && children.get(p.path)?.some((c) => c.path === `${p.path}/${call.literalId}`))
+        .filter(
+          (p) =>
+            p.chain.has(call.enclosingClass.name) &&
+            children.get(p.path)?.some((c) => c.path === `${p.path}/${call.literalId}`),
+        )
         .map((p) => `${p.path}/${call.literalId}`)
         .filter((path) => !nodes[path]);
       for (const path of paths) nodes[path] = { ...call.facts, pathsOnSpan: paths.length };
@@ -177,10 +220,11 @@ export class TsSource implements Source {
   /** The class named `name` and the classes of the app's own it extends, by name. */
   private classChain(files: FileSet, name: string): Set<string> {
     const chain = new Set<string>();
-    for (let decl = this.findClass(files, name); decl && !chain.has(decl.name!.text); ) {
+    for (let decl = this.findClass(files, name); decl && !chain.has(decl.name!.text);) {
       chain.add(decl.name!.text);
       const base = decl.heritageClauses?.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
-      const baseName = base && (ts.isPropertyAccessExpression(base) ? base.name.text : ts.isIdentifier(base) ? base.text : undefined);
+      const baseName =
+        base && (ts.isPropertyAccessExpression(base) ? base.name.text : ts.isIdentifier(base) ? base.text : undefined);
       decl = baseName ? this.findClass(files, baseName) : undefined;
     }
     if (chain.size === 0) chain.add(name);
@@ -193,7 +237,11 @@ export class TsSource implements Source {
     if (!sf) return [];
     const found: FromCall[] = [];
     const visit = (n: ts.Node) => {
-      if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && /^from[A-Z]/.test(n.expression.name.text)) {
+      if (
+        ts.isCallExpression(n) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        /^from[A-Z]/.test(n.expression.name.text)
+      ) {
         const [scope, id] = n.arguments;
         const enclosingClass = this.enclosingClassOf(files, n);
         const identifiers = identifiersOf(n.arguments.slice(2));
@@ -225,7 +273,13 @@ export class TsSource implements Source {
    * construct class takes the call site of its constructor. Only the shallowest path on a frame is
    * kept, because the paths beneath it are that construct's own children.
    */
-  private collectFrames(node: TreeNode, ctx: FrameContext, parentFrame: Frame | undefined, stackPath?: string, userDepth = 0): void {
+  private collectFrames(
+    node: TreeNode,
+    ctx: FrameContext,
+    parentFrame: Frame | undefined,
+    stackPath?: string,
+    userDepth = 0,
+  ): void {
     const isStack = ctx.stacks.has(node.path) || node.fqn === NESTED_STACK_FQN;
     if (isStack) stackPath = node.path;
     const isUserClass = stackPath !== undefined && !isStack && node.fqn === USER_CONSTRUCT_FQN;
@@ -241,7 +295,8 @@ export class TsSource implements Source {
     if (node.path !== '' && frame && (!parentFrame || frameKey(parentFrame) !== frameKey(frame))) {
       ctx.out.set(node.path, frame);
     }
-    for (const child of withoutNestedStackPlumbing(node.children)) this.collectFrames(child, ctx, frame, stackPath, userDepth);
+    for (const child of withoutNestedStackPlumbing(node.children))
+      this.collectFrames(child, ctx, frame, stackPath, userDepth);
   }
 
   private locateNew(files: FileSet, frame: Frame): Omit<NodeFacts, 'pathsOnSpan'> | undefined {
@@ -288,7 +343,8 @@ export class TsSource implements Source {
    */
   private classKind(files: FileSet, decl: ts.ClassDeclaration, seen: Set<string>): EnclosingClass['kind'] {
     const base = decl.heritageClauses?.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
-    const baseName = base && (ts.isPropertyAccessExpression(base) ? base.name.text : ts.isIdentifier(base) ? base.text : undefined);
+    const baseName =
+      base && (ts.isPropertyAccessExpression(base) ? base.name.text : ts.isIdentifier(base) ? base.text : undefined);
     if (baseName === 'Stack' || baseName === 'NestedStack') return 'stack';
     if (baseName === 'Stage') return 'stage';
     if (!baseName || seen.has(baseName)) return 'construct';
@@ -302,7 +358,9 @@ export class TsSource implements Source {
   private findClass(files: FileSet, name: string): ts.ClassDeclaration | undefined {
     for (const file of files.keys()) {
       const sf = this.parse(files, file);
-      const hit = sf?.statements.find((s): s is ts.ClassDeclaration => ts.isClassDeclaration(s) && s.name?.text === name);
+      const hit = sf?.statements.find(
+        (s): s is ts.ClassDeclaration => ts.isClassDeclaration(s) && s.name?.text === name,
+      );
       if (hit) return hit;
     }
     return undefined;
@@ -382,7 +440,8 @@ function fieldsOf(sf: ts.SourceFile, obj: ts.ObjectLiteralExpression): PropFacts
     // A spread has no name of its own, so its source text stands in for one.
     const name = ts.isSpreadAssignment(p) ? p.getText(sf) : p.name ? p.name.getText(sf) : p.getText(sf);
     const value = ts.isPropertyAssignment(p) ? p.initializer : undefined;
-    if (value && ts.isObjectLiteralExpression(value)) return { name, kind: 'object', text: value.getText(sf), fields: fieldsOf(sf, value) };
+    if (value && ts.isObjectLiteralExpression(value))
+      return { name, kind: 'object', text: value.getText(sf), fields: fieldsOf(sf, value) };
     const literal = value ? literalValue(value) : undefined;
     const member = value ? memberOf(value) : undefined;
     const quantity = value ? quantityOf(value) : undefined;
@@ -400,7 +459,12 @@ function fieldsOf(sf: ts.SourceFile, obj: ts.ObjectLiteralExpression): PropFacts
 /** `const q = new Queue(...)`, `this.q = new Queue(...)` or a class property initializer, through any parentheses or `as`. */
 function bindingOf(n: ts.Expression): Binding {
   let parent = n.parent;
-  while (ts.isParenthesizedExpression(parent) || ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent) || ts.isNonNullExpression(parent)) {
+  while (
+    ts.isParenthesizedExpression(parent) ||
+    ts.isAsExpression(parent) ||
+    ts.isSatisfiesExpression(parent) ||
+    ts.isNonNullExpression(parent)
+  ) {
     parent = parent.parent;
   }
   if (ts.isVariableDeclaration(parent)) return 'const';
@@ -419,13 +483,23 @@ const ITERATING_METHODS = new Set(['forEach', 'map', 'flatMap', 'filter', 'reduc
 /** The nearest loop or function around `n`; a class constructor, or the top of the file, ends the walk. */
 function surroundOf(n: ts.Node): Surround | undefined {
   for (let p: ts.Node | undefined = n.parent; p; p = p.parent) {
-    if (ts.isForStatement(p) || ts.isForInStatement(p) || ts.isForOfStatement(p) || ts.isWhileStatement(p) || ts.isDoStatement(p)) {
+    if (
+      ts.isForStatement(p) ||
+      ts.isForInStatement(p) ||
+      ts.isForOfStatement(p) ||
+      ts.isWhileStatement(p) ||
+      ts.isDoStatement(p)
+    ) {
       return { kind: 'loop' };
     }
     if (ts.isConstructorDeclaration(p) || ts.isClassLike(p)) return undefined;
     if (ts.isFunctionLike(p)) {
       const call = p.parent;
-      if (ts.isCallExpression(call) && ts.isPropertyAccessExpression(call.expression) && ITERATING_METHODS.has(call.expression.name.text)) {
+      if (
+        ts.isCallExpression(call) &&
+        ts.isPropertyAccessExpression(call.expression) &&
+        ITERATING_METHODS.has(call.expression.name.text)
+      ) {
         return { kind: 'loop' };
       }
       return { kind: 'helper', name: functionName(p) };

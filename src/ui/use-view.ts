@@ -91,7 +91,14 @@ export function useView(): {
   const send = useCallback(
     async (request: ClientRequest): Promise<Outcome> => {
       const reply = await ask(request);
-      return reply.type === 'refused' ? { ok: false, reason: reply.reason, ...(reply.uses ? { uses: reply.uses } : {}), ...(reply.at ? { at: reply.at } : {}) } : { ok: true };
+      return reply.type === 'refused'
+        ? {
+            ok: false,
+            reason: reply.reason,
+            ...(reply.uses ? { uses: reply.uses } : {}),
+            ...(reply.at ? { at: reply.at } : {}),
+          }
+        : { ok: true };
     },
     [ask],
   );
@@ -134,7 +141,8 @@ export function useView(): {
 
   /** Asks Truss to show a place in the app's code in the user's editor. */
   const openInEditor = useCallback((at: SourceLocation) => {
-    if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
+    if (socket.current?.readyState === WebSocket.OPEN)
+      socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
   }, []);
 
   return { view, connection, send, search, panel, connectable, addNode, openInEditor };

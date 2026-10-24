@@ -39,7 +39,8 @@ export interface HintOption {
 const ADDED = 'Added in the Draft: save it to connect it.';
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const label = (ctx: Pick<HintContext, 'view'>, path: string) => ctx.view.nodes.find((n) => n.id === path)?.label ?? path.split('/').at(-1)!;
+const label = (ctx: Pick<HintContext, 'view'>, path: string) =>
+  ctx.view.nodes.find((n) => n.id === path)?.label ?? path.split('/').at(-1)!;
 
 /** Why the code can't be given a call between these two Nodes, or undefined when it can. */
 function whyUnwritable(ctx: HintContext, a: NodeView, b: NodeView): string | undefined {
@@ -48,12 +49,14 @@ function whyUnwritable(ctx: HintContext, a: NodeView, b: NodeView): string | und
   for (const node of [a, b]) {
     if (node.removed) return `${node.label} is deleted in the Draft`;
     if (ctx.added?.has(node.id)) return ADDED;
-    if (node.lock !== undefined || node.hoisted) return node.lock || `${node.label} is created by the library, not by a statement of your code`;
+    if (node.lock !== undefined || node.hoisted)
+      return node.lock || `${node.label} is created by the library, not by a statement of your code`;
     const f = ctx.facts.nodes[node.id];
     if (!f) return `Truss found no code for ${node.label}`;
     const lock = nodeEditability(node.id, f);
     if (!lock.editable) return lock.reason;
-    if (f.binding === 'none') return `${node.label} isn't kept in a variable or a field, so there is nothing to call it by`;
+    if (f.binding === 'none')
+      return `${node.label} isn't kept in a variable or a field, so there is nothing to call it by`;
     facts.push(f);
   }
   const [x, y] = facts as [NodeFacts, NodeFacts];
@@ -65,12 +68,25 @@ function whyUnwritable(ctx: HintContext, a: NodeView, b: NodeView): string | und
 }
 
 /** A hint's call once the environment variable is the user's: its name, or none. */
-function planOf(call: HintCall | Omit<HintCall, 'on'>, role: 'primary' | 'secondary', on: 'self' | 'peer', form: string[], env: string | null | undefined, accessor: string[] | undefined): CallPlan | undefined {
+function planOf(
+  call: HintCall | Omit<HintCall, 'on'>,
+  role: 'primary' | 'secondary',
+  on: 'self' | 'peer',
+  form: string[],
+  env: string | null | undefined,
+  accessor: string[] | undefined,
+): CallPlan | undefined {
   const named = role === 'secondary' && /^['"]/.test(call.args[0] ?? '');
   if (named && env === null) return undefined;
   const args = call.args.map((a, i) => (named && i === 0 && env !== undefined ? `'${env}'` : a));
   const through = (a: string) => (accessor ? a.split('{peer}').join(`{peer}.${accessor.join('.')}`) : a);
-  return { on, method: form, args: role === 'primary' ? args.map(through) : args, ...(call.uses ? { uses: call.uses } : {}), role };
+  return {
+    on,
+    method: form,
+    args: role === 'primary' ? args.map(through) : args,
+    ...(call.uses ? { uses: call.uses } : {}),
+    role,
+  };
 }
 
 /** The literal name a hint's environment variable gets, when it has one. */
@@ -83,7 +99,10 @@ export function envOfHint(hint: ConnectionHint): string | undefined {
 }
 
 /** The hint behind an id, and the Overlay it is in. */
-function hintBehind(catalog: Catalog | undefined, id: string): { hint: ConnectionHint; overlay: ResolvedOverlay; fqn: string; index: number } | undefined {
+function hintBehind(
+  catalog: Catalog | undefined,
+  id: string,
+): { hint: ConnectionHint; overlay: ResolvedOverlay; fqn: string; index: number } | undefined {
   const at = id.lastIndexOf('#');
   const fqn = id.slice(0, at);
   const index = Number(id.slice(at + 1));
@@ -100,12 +119,16 @@ function accessorFor(catalog: Catalog, node: NodeView, kind: ConnectionKind): st
 
 /** The primary calls of the code between two Nodes, in either direction. */
 function primariesBetween(facts: Facts, a: string, b: string): CallFacts[] {
-  return (facts.calls ?? []).filter((c) => c.role === 'primary' && ((c.on === a && c.peer === b) || (c.on === b && c.peer === a)));
+  return (facts.calls ?? []).filter(
+    (c) => c.role === 'primary' && ((c.on === a && c.peer === b) || (c.on === b && c.peer === a)),
+  );
 }
 
 /** The calls that go with a primary one: the secondary calls between the same two Nodes. */
 function secondariesBetween(facts: Facts, a: string, b: string): CallFacts[] {
-  return (facts.calls ?? []).filter((c) => c.role === 'secondary' && ((c.on === a && c.peer === b) || (c.on === b && c.peer === a)));
+  return (facts.calls ?? []).filter(
+    (c) => c.role === 'secondary' && ((c.on === a && c.peer === b) || (c.on === b && c.peer === a)),
+  );
 }
 
 const unique = <T>(items: readonly T[]) => [...new Set(items)];
@@ -114,11 +137,18 @@ const unique = <T>(items: readonly T[]) => [...new Set(items)];
  * Every hint of either Node's Overlay that connects it to the other, whether or not the code could be given it. A hint
  * belongs to the Overlay of the construct its primary call is made on, so both directions are looked at.
  */
-function fitting(ctx: HintContext, a: NodeView, b: NodeView): Array<{ hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }> {
+function fitting(
+  ctx: HintContext,
+  a: NodeView,
+  b: NodeView,
+): Array<{ hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }> {
   const catalog = ctx.catalog;
   if (!catalog) return [];
   const out: Array<{ hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }> = [];
-  for (const [self, peer] of [[a, b], [b, a]] as const) {
+  for (const [self, peer] of [
+    [a, b],
+    [b, a],
+  ] as const) {
     const entry = entryFor(catalog, self.fqn);
     const written = ctx.facts.nodes[self.id]?.className.split('.').at(-1);
     if (!entry?.overlay || written !== entry.name) continue;
@@ -134,12 +164,17 @@ function fitting(ctx: HintContext, a: NodeView, b: NodeView): Array<{ hint: Conn
  * The hints the Overlays offer for connecting `a` and `b`, once the code can take a call between them. A Grant that
  * completes one the pair already has is offered as the combined Grant where an Overlay has one, in place of the half it would add.
  */
-export function hintsFor(ctx: HintContext, a: string, b: string): { ok: true; options: HintOption[] } | { ok: false; reason: string; nothing?: true } {
+export function hintsFor(
+  ctx: HintContext,
+  a: string,
+  b: string,
+): { ok: true; options: HintOption[] } | { ok: false; reason: string; nothing?: true } {
   const nodeA = ctx.view.nodes.find((n) => n.id === a);
   const nodeB = ctx.view.nodes.find((n) => n.id === b);
   if (!nodeA || !nodeB || a === b) return { ok: false, reason: 'Nothing to connect' };
   const fits = fitting(ctx, nodeA, nodeB);
-  if (fits.length === 0) return { ok: false, reason: `Truss has no way to connect ${nodeA.label} and ${nodeB.label}`, nothing: true };
+  if (fits.length === 0)
+    return { ok: false, reason: `Truss has no way to connect ${nodeA.label} and ${nodeB.label}`, nothing: true };
   const unwritable = whyUnwritable(ctx, nodeA, nodeB);
   if (unwritable) return { ok: false, reason: unwritable };
   const existing = primariesBetween(ctx.facts, a, b).filter((c) => c.hint !== undefined);
@@ -167,16 +202,30 @@ export function hintsFor(ctx: HintContext, a: string, b: string): { ok: true; op
     // A combined Grant the pair has already covers the halves it is made of.
     if (existing.some((c) => hintBehind(ctx.catalog, c.hint!)?.hint.combines?.includes(f.hint.label))) continue;
     // The label of a hint is what it is called among the others of its Overlay.
-    const others = existing.flatMap((c) => hintBehind(ctx.catalog, c.hint!)?.hint ?? []).filter((h) => h.kind === f.hint.kind);
-    const combined = fits.find((c) => c.self === f.self && c.hint.combines?.includes(f.hint.label) && others.some((h) => c.hint.combines!.includes(h.label)));
+    const others = existing
+      .flatMap((c) => hintBehind(ctx.catalog, c.hint!)?.hint ?? [])
+      .filter((h) => h.kind === f.hint.kind);
+    const combined = fits.find(
+      (c) =>
+        c.self === f.self &&
+        c.hint.combines?.includes(f.hint.label) &&
+        others.some((h) => c.hint.combines!.includes(h.label)),
+    );
     if (combined) {
-      const ids = existing.filter((c) => hintBehind(ctx.catalog, c.hint!)?.hint && combined.hint.combines!.includes(hintBehind(ctx.catalog, c.hint!)!.hint.label)).map((c) => c.id);
+      const ids = existing
+        .filter(
+          (c) =>
+            hintBehind(ctx.catalog, c.hint!)?.hint &&
+            combined.hint.combines!.includes(hintBehind(ctx.catalog, c.hint!)!.hint.label),
+        )
+        .map((c) => c.id);
       add(combined, unique([...ids, ...secondariesBetween(ctx.facts, a, b).map((c) => c.id)]));
     } else add(f);
   }
   // The Overlay's default goes first, then the others in the order the Overlay lists them.
   options.sort((x, y) => Number(y.default === true) - Number(x.default === true));
-  if (options.length === 0) return { ok: false, reason: `${nodeA.label} and ${nodeB.label} are connected that way already` };
+  if (options.length === 0)
+    return { ok: false, reason: `${nodeA.label} and ${nodeB.label} are connected that way already` };
   return { ok: true, options };
 }
 
@@ -193,19 +242,34 @@ const expectOf = (ctx: HintContext, path: string) => {
 };
 
 /** The calls a hint writes between two Nodes, with the environment variable named, or left out with `null`. */
-function plansFor(ctx: HintContext, id: string, self: NodeView, peer: NodeView, env: string | null | undefined): { kind: ConnectionKind; calls: CallPlan[] } | { reason: string } {
+function plansFor(
+  ctx: HintContext,
+  id: string,
+  self: NodeView,
+  peer: NodeView,
+  env: string | null | undefined,
+): { kind: ConnectionKind; calls: CallPlan[] } | { reason: string } {
   const found = hintBehind(ctx.catalog, id);
   if (!found) return { reason: 'That way of connecting them is not offered' };
   const { hint } = found;
-  if (typeof env === 'string' && !IDENTIFIER.test(env)) return { reason: `${env} is not a name an environment variable can have` };
+  if (typeof env === 'string' && !IDENTIFIER.test(env))
+    return { reason: `${env} is not a name an environment variable can have` };
   const accessor = accessorFor(ctx.catalog!, peer, hint.kind);
   const primary = planOf(hint.primary, 'primary', 'self', hint.primary.forms[0]!, undefined, accessor);
-  const secondary = (hint.secondary ?? []).flatMap((c) => planOf(c, 'secondary', c.on, c.forms[0]!, env, undefined) ?? []);
+  const secondary = (hint.secondary ?? []).flatMap(
+    (c) => planOf(c, 'secondary', c.on, c.forms[0]!, env, undefined) ?? [],
+  );
   return { kind: hint.kind, calls: [primary!, ...secondary] };
 }
 
 /** What connecting `a` and `b` in the way a hint says means for the Draft. `env` renames the environment variable the hint sets, or with `null` leaves it out. */
-export function intentForAddConnection(ctx: HintContext, a: string, b: string, hint: string, env?: string | null): Made {
+export function intentForAddConnection(
+  ctx: HintContext,
+  a: string,
+  b: string,
+  hint: string,
+  env?: string | null,
+): Made {
   const offered = hintsFor(ctx, a, b);
   if (!offered.ok) return offered;
   const option = offered.options.find((o) => o.hint === hint);
@@ -215,10 +279,26 @@ export function intentForAddConnection(ctx: HintContext, a: string, b: string, h
   const plans = plansFor(ctx, hint, self, peer, env);
   if ('reason' in plans) return { ok: false, reason: plans.reason };
   if (option.replaces) return changeIntent(ctx, option.replaces, { hint, ...(env !== undefined ? { env } : {}) });
-  return { ok: true, intent: { type: 'addConnection', path: self.id, expect: expectOf(ctx, self.id), peer: nodeRef(ctx, peer.id), kind: plans.kind, calls: plans.calls } };
+  return {
+    ok: true,
+    intent: {
+      type: 'addConnection',
+      path: self.id,
+      expect: expectOf(ctx, self.id),
+      peer: nodeRef(ctx, peer.id),
+      kind: plans.kind,
+      calls: plans.calls,
+    },
+  };
 }
 
-const refOfFact = (c: CallFacts): CallRef => ({ role: c.role, on: c.on, peer: c.peer, method: c.method, ...(c.env !== undefined ? { env: c.env } : {}) });
+const refOfFact = (c: CallFacts): CallRef => ({
+  role: c.role,
+  on: c.on,
+  peer: c.peer,
+  method: c.method,
+  ...(c.env !== undefined ? { env: c.env } : {}),
+});
 
 /** The calls with these ids, each of which has to be one Truss edits. */
 function callsWith(ctx: HintContext, ids: readonly string[]): { calls: CallFacts[] } | { reason: string } {
@@ -241,7 +321,17 @@ export function intentForRemoveConnection(ctx: HintContext, ids: readonly string
   const first = found.calls.find((c) => c.role === 'primary') ?? found.calls[0]!;
   const gone = whyGone(ctx, [first.on, first.peer]);
   if (gone) return { ok: false, reason: gone };
-  return { ok: true, intent: { type: 'removeConnection', path: first.on, expect: expectOf(ctx, first.on), peer: nodeRef(ctx, first.peer), kind: first.kind, calls: found.calls.map(refOfFact) } };
+  return {
+    ok: true,
+    intent: {
+      type: 'removeConnection',
+      path: first.on,
+      expect: expectOf(ctx, first.on),
+      peer: nodeRef(ctx, first.peer),
+      kind: first.kind,
+      calls: found.calls.map(refOfFact),
+    },
+  };
 }
 
 const whyGone = (ctx: HintContext, paths: readonly string[]): string | undefined => {
@@ -259,7 +349,11 @@ const whyGone = (ctx: HintContext, paths: readonly string[]): string | undefined
  * What changing a Connection means for the Draft: its calls (by id) written again for another hint, or with the environment
  * variable renamed (`env` a name) or switched off (`env` null). Left out, either stays as the code has it.
  */
-export function intentForChangeConnection(ctx: HintContext, ids: readonly string[], change: { hint?: string; env?: string | null }): Made {
+export function intentForChangeConnection(
+  ctx: HintContext,
+  ids: readonly string[],
+  change: { hint?: string; env?: string | null },
+): Made {
   if (ctx.blocked) return { ok: false, reason: ctx.blocked };
   return changeIntent(ctx, ids, change);
 }
@@ -271,7 +365,8 @@ function changeIntent(ctx: HintContext, ids: readonly string[], change: { hint?:
   if (!primary) return { ok: false, reason: 'The Connection has no call of its own to change' };
   const current = primary.hint;
   const hint = change.hint ?? current;
-  if (!hint) return { ok: false, reason: 'Truss recognises this call as a Grant but has no hint for writing it another way' };
+  if (!hint)
+    return { ok: false, reason: 'Truss recognises this call as a Grant but has no hint for writing it another way' };
   const behind = hintBehind(ctx.catalog, hint);
   const pair = hintsForPair(ctx, primary.on, primary.peer, hint);
   const self = ctx.view.nodes.find((n) => n.id === pair?.self);
@@ -300,11 +395,25 @@ function changeIntent(ctx: HintContext, ids: readonly string[], change: { hint?:
   const env = change.env !== undefined ? change.env : (sets[0]?.env ?? null);
   const plans = plansFor(ctx, hint, self, peer, hasEnv ? env : undefined);
   if ('reason' in plans) return { ok: false, reason: plans.reason };
-  return { ok: true, intent: { type: 'replaceConnection', ...base, kind: plans.kind, was: found.calls.map(refOfFact), calls: plans.calls } };
+  return {
+    ok: true,
+    intent: {
+      type: 'replaceConnection',
+      ...base,
+      kind: plans.kind,
+      was: found.calls.map(refOfFact),
+      calls: plans.calls,
+    },
+  };
 }
 
 /** Which Node a hint belongs to for a pair, however the pair is connected now. */
-function hintsForPair(ctx: HintContext, a: string, b: string, hint: string): { self: string; peer: string } | undefined {
+function hintsForPair(
+  ctx: HintContext,
+  a: string,
+  b: string,
+  hint: string,
+): { self: string; peer: string } | undefined {
   const nodeA = ctx.view.nodes.find((n) => n.id === a);
   const nodeB = ctx.view.nodes.find((n) => n.id === b);
   const found = nodeA && nodeB ? fitting(ctx, nodeA, nodeB).find((f) => f.id === hint) : undefined;
@@ -312,10 +421,14 @@ function hintsForPair(ctx: HintContext, a: string, b: string, hint: string): { s
 }
 
 /** The props of the Connection an edge is, when its calls can be changed. Absent for an edge Truss can't edit. */
-export function connectionProps(ctx: HintContext, edge: Pick<EdgeView, 'from' | 'to' | 'kind' | 'calls' | 'readOnly'>): ConnectionPropsView | undefined {
+export function connectionProps(
+  ctx: HintContext,
+  edge: Pick<EdgeView, 'from' | 'to' | 'kind' | 'calls' | 'readOnly'>,
+): ConnectionPropsView | undefined {
   if (!edge.calls || edge.readOnly !== undefined || ctx.blocked || edge.kind === 'reference') return undefined;
   const primaries = edge.calls.filter((c) => c.role === 'primary' && c.hint !== undefined);
-  if (primaries.length === 0 || primaries.length !== edge.calls.filter((c) => c.role === 'primary').length) return undefined;
+  if (primaries.length === 0 || primaries.length !== edge.calls.filter((c) => c.role === 'primary').length)
+    return undefined;
   const nodeA = ctx.view.nodes.find((n) => n.id === edge.from);
   const nodeB = ctx.view.nodes.find((n) => n.id === edge.to);
   if (!nodeA || !nodeB) return undefined;
@@ -326,10 +439,17 @@ export function connectionProps(ctx: HintContext, edge: Pick<EdgeView, 'from' | 
     const current = primaries[0]!.hint!;
     const here = all.find((f) => f.id === current);
     // The kind can be changed to any other that fits, and to the one it is.
-    if (here) props.access = { current, options: all.filter((f) => f.self === here.self).map((f) => ({ hint: f.id, text: textOf(f) })) };
+    if (here)
+      props.access = {
+        current,
+        options: all.filter((f) => f.self === here.self).map((f) => ({ hint: f.id, text: textOf(f) })),
+      };
   } else {
     const have = primaries.map((c) => hintBehind(ctx.catalog, c.hint!)).flatMap((h) => h?.hint.label ?? []);
-    const combined = all.find((f) => f.hint.combines && have.every((l) => f.hint.combines!.includes(l)) && f.hint.combines.length === have.length);
+    const combined = all.find(
+      (f) =>
+        f.hint.combines && have.every((l) => f.hint.combines!.includes(l)) && f.hint.combines.length === have.length,
+    );
     if (combined) props.combine = { hint: combined.id, text: textOf(combined) };
   }
   const hint = primaries[0]!.hint ? hintBehind(ctx.catalog, primaries[0]!.hint) : undefined;

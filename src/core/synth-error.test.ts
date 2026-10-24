@@ -36,7 +36,11 @@ describe('locateError', () => {
   });
 
   it('looks in the message when the output has nothing', () => {
-    expect(locateError({ message: 'failed at /work/app/lib/a.ts:8:2' }, APP)).toEqual({ file: 'lib/a.ts', line: 8, col: 2 });
+    expect(locateError({ message: 'failed at /work/app/lib/a.ts:8:2' }, APP)).toEqual({
+      file: 'lib/a.ts',
+      line: 8,
+      col: 2,
+    });
   });
 
   it('ignores frames outside the app and frames inside its dependencies', () => {

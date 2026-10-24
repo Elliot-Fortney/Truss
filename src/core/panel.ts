@@ -13,7 +13,12 @@ import type { EffectView, ViewBody } from './view.ts';
  */
 export type WrittenValue =
   | { kind: 'literal'; value: string | number | boolean | null; text: string }
-  | { kind: 'expression'; text: string; member?: { type: string; name: string }; quantity?: { type: 'Duration' | 'Size'; unit: string; amount: number } }
+  | {
+      kind: 'expression';
+      text: string;
+      member?: { type: string; name: string };
+      quantity?: { type: 'Duration' | 'Size'; unit: string; amount: number };
+    }
   | { kind: 'object'; text: string; fields: Array<{ name: string; written: WrittenValue }> };
 
 /** For a prop that takes Nodes (a Reference), what it points at and what it could. */
@@ -78,8 +83,14 @@ const sourceOf = ({ span }: NodeFacts) => ({ file: span.file, line: span.start.l
 
 function writtenOf(p: PropFacts): WrittenValue {
   if (p.kind === 'literal' && p.value !== undefined) return { kind: 'literal', value: p.value, text: p.text };
-  if (p.kind === 'object' && p.fields) return { kind: 'object', text: p.text, fields: p.fields.map((f) => ({ name: f.name, written: writtenOf(f) })) };
-  return { kind: 'expression', text: p.text, ...(p.member ? { member: p.member } : {}), ...(p.quantity ? { quantity: p.quantity } : {}) };
+  if (p.kind === 'object' && p.fields)
+    return { kind: 'object', text: p.text, fields: p.fields.map((f) => ({ name: f.name, written: writtenOf(f) })) };
+  return {
+    kind: 'expression',
+    text: p.text,
+    ...(p.member ? { member: p.member } : {}),
+    ...(p.quantity ? { quantity: p.quantity } : {}),
+  };
 }
 
 /** Whether what the code gives a prop is something its input can show and replace. */
@@ -91,16 +102,26 @@ export function editableAs(input: PropInput, written: WrittenValue | undefined):
     case 'boolean':
       return written.kind === 'literal' && typeof written.value === input.kind;
     case 'enum':
-      return written.kind === 'expression' && written.member !== undefined && input.fqn.endsWith(`.${written.member.type}`);
+      return (
+        written.kind === 'expression' && written.member !== undefined && input.fqn.endsWith(`.${written.member.type}`)
+      );
     case 'duration':
     case 'size':
-      return written.kind === 'expression' && written.quantity?.type === (input.kind === 'duration' ? 'Duration' : 'Size');
+      return (
+        written.kind === 'expression' && written.quantity?.type === (input.kind === 'duration' ? 'Duration' : 'Size')
+      );
     case 'struct':
       return written.kind === 'object';
   }
 }
 
-function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefined, editing: boolean, nodes?: PropNodesView): PropRowView {
+function rowOf(
+  prop: CatalogProp,
+  featured: boolean,
+  written: PropFacts | undefined,
+  editing: boolean,
+  nodes?: PropNodesView,
+): PropRowView {
   const value = written && writtenOf(written);
   return {
     name: prop.name,
@@ -124,15 +145,42 @@ const STACK_PROPS: CatalogProp[] = [
     input: {
       kind: 'struct',
       fields: [
-        { name: 'account', type: 'string', required: false, input: { kind: 'string' }, summary: 'The AWS account ID for this environment.' },
-        { name: 'region', type: 'string', required: false, input: { kind: 'string' }, summary: 'The AWS region for this environment.' },
+        {
+          name: 'account',
+          type: 'string',
+          required: false,
+          input: { kind: 'string' },
+          summary: 'The AWS account ID for this environment.',
+        },
+        {
+          name: 'region',
+          type: 'string',
+          required: false,
+          input: { kind: 'string' },
+          summary: 'The AWS region for this environment.',
+        },
       ],
     },
     summary: 'The AWS environment (account/region) where this stack will be deployed.',
-    default: "- The environment of the containing Stage if available, otherwise create the stack will be environment-agnostic.",
+    default:
+      '- The environment of the containing Stage if available, otherwise create the stack will be environment-agnostic.',
   },
-  { name: 'terminationProtection', type: 'boolean', required: false, input: { kind: 'boolean' }, summary: 'Whether to enable termination protection for this stack.', default: 'false' },
-  { name: 'description', type: 'string', required: false, input: { kind: 'string' }, summary: 'A description of the stack.', default: '- No description.' },
+  {
+    name: 'terminationProtection',
+    type: 'boolean',
+    required: false,
+    input: { kind: 'boolean' },
+    summary: 'Whether to enable termination protection for this stack.',
+    default: 'false',
+  },
+  {
+    name: 'description',
+    type: 'string',
+    required: false,
+    input: { kind: 'string' },
+    summary: 'A description of the stack.',
+    default: '- No description.',
+  },
 ];
 
 /** Which props a construct has, split into those the panel shows first and those it discloses on demand. */
@@ -145,13 +193,21 @@ interface Described {
 function describeEntry(entry: CatalogEntry): Described {
   const byName = new Map(entry.props.map((p) => [p.name, p]));
   const featuredProps = entry.overlay?.featuredProps ?? [];
-  const first = [...entry.props.filter((p) => p.required), ...featuredProps.flatMap((n) => byName.get(n) ?? []).filter((p) => !p.required)];
+  const first = [
+    ...entry.props.filter((p) => p.required),
+    ...featuredProps.flatMap((n) => byName.get(n) ?? []).filter((p) => !p.required),
+  ];
   const shown = new Set(first.map((p) => p.name));
   return { first, rest: entry.props.filter((p) => !shown.has(p.name)), featured: new Set(featuredProps) };
 }
 
 /** The rows for the described props. A prop the code sets is never left on demand, and what is written but not described follows as written. */
-function rowsOf(described: Described | undefined, props: readonly PropFacts[], editing: boolean, nodesFor: (prop: CatalogProp) => PropNodesView | undefined): { rows: PropRowView[]; more: PropRowView[] } {
+function rowsOf(
+  described: Described | undefined,
+  props: readonly PropFacts[],
+  editing: boolean,
+  nodesFor: (prop: CatalogProp) => PropNodesView | undefined,
+): { rows: PropRowView[]; more: PropRowView[] } {
   const written = new Map(props.map((p) => [p.name, p]));
   const rows: PropRowView[] = [];
   const more: PropRowView[] = [];
@@ -181,7 +237,8 @@ export interface PanelEditing {
   added?: ReadonlySet<string>;
 }
 
-const sameSpan = (a: NodeFacts, b: NodeFacts) => a.span.file === b.span.file && a.span.start.line === b.span.start.line && a.span.start.col === b.span.start.col;
+const sameSpan = (a: NodeFacts, b: NodeFacts) =>
+  a.span.file === b.span.file && a.span.start.line === b.span.start.line && a.span.start.col === b.span.start.col;
 
 /**
  * The property panel of the Node or Stack at `id`: its props from the Catalog, with what the app's code
@@ -189,29 +246,70 @@ const sameSpan = (a: NodeFacts, b: NodeFacts) => a.span.file === b.span.file && 
  * the props as written. Undefined when there is no such Node or Stack. Given `editing`, a prop Truss can
  * write comes with its `input`; without it, or when the Node is locked, every prop is read-only.
  */
-export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Catalog | undefined, editing?: PanelEditing): PanelView | undefined {
+export function buildPanel(
+  id: string,
+  view: ViewBody,
+  facts: Facts,
+  catalog: Catalog | undefined,
+  editing?: PanelEditing,
+): PanelView | undefined {
   const node = view.nodes.find((n) => n.id === id);
   const isStack = !node && view.stacks.some((s) => s.id === id);
   if (!node && !isStack) return undefined;
   const nodeFacts = facts.nodes[id];
   // A subclass of a CDK construct takes props of its own, so the parent's are only used when the code names the parent's class.
   const entry = node && nodeFacts && catalog ? entryFor(catalog, node.fqn) : undefined;
-  const described = isStack ? { first: STACK_PROPS, rest: [], featured: new Set<string>() } : entry && nodeFacts && classNamed(nodeFacts.className) === entry.name ? describeEntry(entry) : undefined;
+  const described = isStack
+    ? { first: STACK_PROPS, rest: [], featured: new Set<string>() }
+    : entry && nodeFacts && classNamed(nodeFacts.className) === entry.name
+      ? describeEntry(entry)
+      : undefined;
 
-  const lock = node ? node.lock : nodeFacts ? errorOf(nodeEditability(id, nodeFacts)) : 'Truss found no code for this Stack';
-  const readOnly = !editing ? undefined : editing.added?.has(id) ? ADDED_NOTICE : lock !== undefined ? lock : nodeFacts?.props?.form === 'other' ? propsNotice(nodeFacts.props.text) : editing.blocked;
+  const lock = node
+    ? node.lock
+    : nodeFacts
+      ? errorOf(nodeEditability(id, nodeFacts))
+      : 'Truss found no code for this Stack';
+  const readOnly = !editing
+    ? undefined
+    : editing.added?.has(id)
+      ? ADDED_NOTICE
+      : lock !== undefined
+        ? lock
+        : nodeFacts?.props?.form === 'other'
+          ? propsNotice(nodeFacts.props.text)
+          : editing.blocked;
   // The Draft's edits to this construct, and to any other made by the same `new`: a Stack or Stage class created more than once.
-  const mine = nodeFacts && editing ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts)) : [];
+  const mine =
+    nodeFacts && editing
+      ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts))
+      : [];
   const props = withIntents(nodeFacts?.props, mine);
-  const nodesFor = (prop: CatalogProp) => (node && editing && readOnly === undefined && prop.accepts ? nodesOf(id, prop, { view, facts, catalog, ...(editing.blocked ? { blocked: editing.blocked } : {}), ...(editing.added ? { added: editing.added } : {}) }) : undefined);
-  const { rows, more } = rowsOf(described, props?.form === 'object' ? props.props : [], editing !== undefined && readOnly === undefined, nodesFor);
+  const nodesFor = (prop: CatalogProp) =>
+    node && editing && readOnly === undefined && prop.accepts
+      ? nodesOf(id, prop, {
+          view,
+          facts,
+          catalog,
+          ...(editing.blocked ? { blocked: editing.blocked } : {}),
+          ...(editing.added ? { added: editing.added } : {}),
+        })
+      : undefined;
+  const { rows, more } = rowsOf(
+    described,
+    props?.form === 'object' ? props.props : [],
+    editing !== undefined && readOnly === undefined,
+    nodesFor,
+  );
   return {
     id,
     kind: isStack ? 'stack' : 'node',
     className: nodeFacts?.className ?? node?.subtitle ?? '',
     ...(nodeFacts?.literalId !== undefined ? { literalId: nodeFacts.literalId } : {}),
     ...(readOnly !== undefined ? { readOnly } : {}),
-    ...(editing?.tree && readOnly === undefined && nodeFacts?.literalId !== undefined && nodeFacts.pathsOnSpan === 1 ? { idEdit: { siblings: siblingIds(editing.tree, id) } } : {}),
+    ...(editing?.tree && readOnly === undefined && nodeFacts?.literalId !== undefined && nodeFacts.pathsOnSpan === 1
+      ? { idEdit: { siblings: siblingIds(editing.tree, id) } }
+      : {}),
     ...(described && entry?.summary ? { summary: entry.summary } : {}),
     rows,
     more,
@@ -225,7 +323,9 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
 /** The Node picker of a prop that takes Nodes. Absent when the code gives the prop something the picker can't show and replace. */
 function nodesOf(id: string, prop: CatalogProp, ctx: ConnectContext): PropNodesView | undefined {
   const label = (path: string) => ctx.view.nodes.find((n) => n.id === path)?.label ?? path.split('/').at(-1)!;
-  const refs = (ctx.facts.references ?? []).filter((r) => r.from === id && r.prop === prop.name).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const refs = (ctx.facts.references ?? [])
+    .filter((r) => r.from === id && r.prop === prop.name)
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
   const written = ctx.facts.nodes[id]?.props;
   const writtenAs = written?.form === 'object' ? written.props.find((p) => p.name === prop.name) : undefined;
   // Written as something that isn't a Node (a parameter, a call), or as a list with more in it than Nodes: the picker has nothing to show.
@@ -236,7 +336,15 @@ function nodesOf(id: string, prop: CatalogProp, ctx: ConnectContext): PropNodesV
     const check = canConnect(ctx, id, n.id);
     return check.ok && check.options.some((o) => o.prop === prop.name) ? [{ id: n.id, label: n.label }] : [];
   });
-  return { many, current: refs.map((r) => ({ id: r.to, label: label(r.to), ...(r.editable ? {} : { readOnly: r.reason ?? 'Truss leaves this alone' }) })), choices };
+  return {
+    many,
+    current: refs.map((r) => ({
+      id: r.to,
+      label: label(r.to),
+      ...(r.editable ? {} : { readOnly: r.reason ?? 'Truss leaves this alone' }),
+    })),
+    choices,
+  };
 }
 
 const errorOf = (e: ReturnType<typeof nodeEditability>) => (e.editable ? undefined : e.reason);
@@ -263,7 +371,9 @@ export function inputFor(panel: PanelView, prop: readonly string[]): PropInput |
 
 /** Whether `value` is one the `input` takes. */
 export const valueFits = (input: PropInput, value: PropValue): boolean =>
-  input.kind === value.kind && (input.kind !== 'enum' || (value.kind === 'enum' && value.type === input.fqn && input.members.includes(value.member)));
+  input.kind === value.kind &&
+  (input.kind !== 'enum' ||
+    (value.kind === 'enum' && value.type === input.fqn && input.members.includes(value.member)));
 
 /**
  * What a panel edit means for the Draft: the intent to stage, or why the edit is refused. The panel is the one the user edited in,
@@ -282,15 +392,32 @@ export function intentForEdit(
   if (!input) return { ok: false, reason: `${named} can't be edited here` };
   if (!valueFits(input, value)) return { ok: false, reason: `${named} takes a ${input.kind}, not a ${value.kind}` };
   if (panel.literalId === undefined) return { ok: false, reason: `${id} has no Construct ID in the code to edit by` };
-  return { ok: true, intent: { type: 'setProp', path: id, expect: { className: panel.className, literalId: panel.literalId }, prop, value } };
+  return {
+    ok: true,
+    intent: {
+      type: 'setProp',
+      path: id,
+      expect: { className: panel.className, literalId: panel.literalId },
+      prop,
+      value,
+    },
+  };
 }
 
 /** What renaming the Node or Stack means for the Draft: the intent to stage, or why the new Construct ID is refused. */
-export function intentForRename(panel: PanelView | undefined, id: string, newId: string): { ok: true; intent: Intent } | { ok: false; reason: string } {
+export function intentForRename(
+  panel: PanelView | undefined,
+  id: string,
+  newId: string,
+): { ok: true; intent: Intent } | { ok: false; reason: string } {
   if (!panel) return { ok: false, reason: `No Node or Stack at ${id}` };
   if (panel.readOnly) return { ok: false, reason: panel.readOnly };
-  if (!panel.idEdit || panel.literalId === undefined) return { ok: false, reason: `The Construct ID of ${id} can't be changed here` };
+  if (!panel.idEdit || panel.literalId === undefined)
+    return { ok: false, reason: `The Construct ID of ${id} can't be changed here` };
   const problem = constructIdProblem(newId, panel.idEdit.siblings);
   if (problem) return { ok: false, reason: problem };
-  return { ok: true, intent: { type: 'renameId', path: id, expect: { className: panel.className, literalId: panel.literalId }, newId } };
+  return {
+    ok: true,
+    intent: { type: 'renameId', path: id, expect: { className: panel.className, literalId: panel.literalId }, newId },
+  };
 }

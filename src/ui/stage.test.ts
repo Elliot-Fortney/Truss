@@ -26,15 +26,38 @@ describe('chooseStage', () => {
 });
 
 describe('showStage', () => {
-  const stack = (id: string, extra: Partial<StackBoxView> = {}): StackBoxView => ({ id, label: id, env: 'env-agnostic', ...extra });
-  const node = (id: string, stackId: string): NodeView => ({ id, stackId, label: id, subtitle: '', fqn: '', icon: 'generic', source: { file: 'a.ts', line: 1, col: 1 } });
+  const stack = (id: string, extra: Partial<StackBoxView> = {}): StackBoxView => ({
+    id,
+    label: id,
+    env: 'env-agnostic',
+    ...extra,
+  });
+  const node = (id: string, stackId: string): NodeView => ({
+    id,
+    stackId,
+    label: id,
+    subtitle: '',
+    fqn: '',
+    icon: 'generic',
+    source: { file: 'a.ts', line: 1, col: 1 },
+  });
   const view: View = {
     version: 3,
     synthing: false,
     hasDesign: true,
     stages,
-    stacks: [stack('Pipeline'), stack('Dev/Core', { stageId: 'Dev' }), stack('Dev/Core/Worker', { stageId: 'Dev', parentId: 'Dev/Core' }), stack('Prod/Core', { stageId: 'Prod' })],
-    nodes: [node('Pipeline/a', 'Pipeline'), node('Dev/Core/b', 'Dev/Core'), node('Dev/Core/Worker/c', 'Dev/Core/Worker'), node('Prod/Core/d', 'Prod/Core')],
+    stacks: [
+      stack('Pipeline'),
+      stack('Dev/Core', { stageId: 'Dev' }),
+      stack('Dev/Core/Worker', { stageId: 'Dev', parentId: 'Dev/Core' }),
+      stack('Prod/Core', { stageId: 'Prod' }),
+    ],
+    nodes: [
+      node('Pipeline/a', 'Pipeline'),
+      node('Dev/Core/b', 'Dev/Core'),
+      node('Dev/Core/Worker/c', 'Dev/Core/Worker'),
+      node('Prod/Core/d', 'Prod/Core'),
+    ],
     edges: [],
     problems: [],
   };
@@ -46,7 +69,15 @@ describe('showStage', () => {
   });
 
   it('keeps the edges between the Nodes it shows, and drops those that reach one it does not', () => {
-    const edge = (from: string, to: string) => ({ id: `${from}->${to}`, kind: 'reference' as const, from, to, prop: 'p', text: 'x', source: { file: 'a.ts', line: 1, col: 1 } });
+    const edge = (from: string, to: string) => ({
+      id: `${from}->${to}`,
+      kind: 'reference' as const,
+      from,
+      to,
+      prop: 'p',
+      text: 'x',
+      source: { file: 'a.ts', line: 1, col: 1 },
+    });
     const withEdges = { ...view, edges: [edge('Dev/Core/b', 'Pipeline/a'), edge('Dev/Core/b', 'Prod/Core/d')] };
     expect(showStage(withEdges, 'Dev').edges.map((e) => e.id)).toEqual(['Dev/Core/b->Pipeline/a']);
   });
@@ -64,7 +95,11 @@ describe('showStage', () => {
 describe('the remembered Stage', () => {
   const memory = () => {
     const items = new Map<string, string>();
-    return { items, getItem: (k: string) => items.get(k) ?? null, setItem: (k: string, v: string) => void items.set(k, v) };
+    return {
+      items,
+      getItem: (k: string) => items.get(k) ?? null,
+      setItem: (k: string, v: string) => void items.set(k, v),
+    };
   };
 
   it('is kept in browser storage and read back', () => {

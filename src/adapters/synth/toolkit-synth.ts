@@ -44,7 +44,12 @@ export class ToolkitSynth implements Synth {
       shadow = await makeShadow(appDir, opts.overlay);
       return await this.run(shadow.dir, opts.signal, await needsBuild(appDir));
     } catch (err) {
-      return { ok: false, error: { message: `Couldn't set up the shadow copy for the Draft: ${err instanceof Error ? err.message : String(err)}` } };
+      return {
+        ok: false,
+        error: {
+          message: `Couldn't set up the shadow copy for the Draft: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
     } finally {
       await shadow?.remove();
     }
@@ -71,7 +76,8 @@ export class ToolkitSynth implements Synth {
         resolve(result);
       };
       const timer = setTimeout(
-        () => settle({ ok: false, error: { message: `synth timed out after ${this.timeoutMs / 1000} s`, output: log } }),
+        () =>
+          settle({ ok: false, error: { message: `synth timed out after ${this.timeoutMs / 1000} s`, output: log } }),
         this.timeoutMs,
       );
       const onAbort = () => settle({ ok: false, error: { message: 'synth was cancelled', output: log } });

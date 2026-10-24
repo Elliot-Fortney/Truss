@@ -8,9 +8,21 @@ const tableNameEnv: HintCall = { on: 'peer', forms: [['addEnvironment']], args: 
 const overlay: Overlay = {
   fqn: 'aws-cdk-lib.aws_dynamodb.Table',
   displayName: 'DynamoDB Table',
-  featuredProps: ['partitionKey', 'sortKey', 'billingMode', 'pointInTimeRecovery', 'timeToLiveAttribute', 'stream', 'deletionProtection', 'removalPolicy'],
+  featuredProps: [
+    'partitionKey',
+    'sortKey',
+    'billingMode',
+    'pointInTimeRecovery',
+    'timeToLiveAttribute',
+    'stream',
+    'deletionProtection',
+    'removalPolicy',
+  ],
   defaults: {
-    partitionKey: { code: "{ name: 'id', type: AttributeType.STRING }", uses: ['aws-cdk-lib.aws_dynamodb.AttributeType'] },
+    partitionKey: {
+      code: "{ name: 'id', type: AttributeType.STRING }",
+      uses: ['aws-cdk-lib.aws_dynamodb.AttributeType'],
+    },
   },
   connections: [
     {

@@ -90,7 +90,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const actual = (server.address() as AddressInfo).port;
 
   // A page on another site must not be able to talk to us, even through a rebound DNS name.
-  const hostOk = (req: IncomingMessage) => [`127.0.0.1:${actual}`, `localhost:${actual}`].includes(req.headers.host ?? '');
+  const hostOk = (req: IncomingMessage) =>
+    [`127.0.0.1:${actual}`, `localhost:${actual}`].includes(req.headers.host ?? '');
   const originOk = (req: IncomingMessage) =>
     [`http://127.0.0.1:${actual}`, `http://localhost:${actual}`].includes(req.headers.origin ?? '');
 
@@ -140,7 +141,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         const parsed = parseClientMessage(text);
         if (!parsed.ok) return reply({ type: 'refused', requestId: parsed.requestId, reason: parsed.reason });
         opts.source.handle(parsed.message).then(reply, (err) =>
-          reply({ type: 'refused', requestId: parsed.message.requestId, reason: err instanceof Error ? err.message : String(err) }),
+          reply({
+            type: 'refused',
+            requestId: parsed.message.requestId,
+            reason: err instanceof Error ? err.message : String(err),
+          }),
         );
       });
       // A malformed frame or a reset must drop that client, not crash Truss.

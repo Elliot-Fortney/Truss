@@ -43,15 +43,22 @@ describe('ToolkitSynth', () => {
       const edited = before.replace("'Uploads'", "'Renamed'");
       const result = await new ToolkitSynth().synth(dir, { overlay: new Map([['lib/shop-stack.ts', edited]]) });
       if (!result.ok) throw new Error(result.error.message);
-      expect(result.assembly.tree.children.find((c) => c.path === 'ShopStack')?.children.map((c) => c.path)).toContain('ShopStack/Renamed');
+      expect(result.assembly.tree.children.find((c) => c.path === 'ShopStack')?.children.map((c) => c.path)).toContain(
+        'ShopStack/Renamed',
+      );
       // The creation stacks are relative to the app folder, as they are for a real synth.
-      expect(result.assembly.creation['ShopStack/Renamed/Resource']?.[0]).toMatchObject({ file: 'lib/shop-stack.ts', line: 11 });
+      expect(result.assembly.creation['ShopStack/Renamed/Resource']?.[0]).toMatchObject({
+        file: 'lib/shop-stack.ts',
+        line: 11,
+      });
       expect(readFileSync(path, 'utf8')).toBe(before);
     });
 
     it('returns the synth error when the Draft’s text does not compile', async () => {
       const dir = fixtureDir('straight-line');
-      const result = await new ToolkitSynth().synth(dir, { overlay: new Map([['lib/shop-stack.ts', 'this is not typescript(']]) });
+      const result = await new ToolkitSynth().synth(dir, {
+        overlay: new Map([['lib/shop-stack.ts', 'this is not typescript(']]),
+      });
       expect(result.ok).toBe(false);
     });
 
@@ -76,15 +83,24 @@ describe('ToolkitSynth', () => {
     it('returns the build’s output as the synth error when the build fails', async () => {
       const dir = mkdtempSync(join(tmpdir(), 'truss-compiled-'));
       writeFileSync(join(dir, 'cdk.json'), JSON.stringify({ app: 'node app.js' }));
-      writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'node -e "console.error(\'type error in lib\'); process.exit(2)"' } }));
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "console.error(\'type error in lib\'); process.exit(2)"' } }),
+      );
       const result = await new ToolkitSynth().synth(dir, { overlay: new Map([['x.js', '']]) });
-      expect(result).toMatchObject({ ok: false, error: { message: expect.stringContaining('build'), output: expect.stringContaining('type error in lib') } });
+      expect(result).toMatchObject({
+        ok: false,
+        error: { message: expect.stringContaining('build'), output: expect.stringContaining('type error in lib') },
+      });
     });
   });
 
   it('returns a synth error, not a throw, when the app fails', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'truss-bad-'));
-    writeFileSync(join(dir, 'cdk.json'), JSON.stringify({ app: 'node -e "console.error(\'kaboom\'); process.exit(1)"' }));
+    writeFileSync(
+      join(dir, 'cdk.json'),
+      JSON.stringify({ app: 'node -e "console.error(\'kaboom\'); process.exit(1)"' }),
+    );
     const result = await new ToolkitSynth().synth(dir);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.message).toMatch(/exited|kaboom|failed/i);

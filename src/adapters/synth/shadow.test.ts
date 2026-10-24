@@ -15,8 +15,21 @@ const tempApp = (files: Record<string, string>) => {
 
 describe('makeShadow', () => {
   it('copies the app, links node_modules, leaves out cdk.out and .git, and writes the overlay over the copy', async () => {
-    const app = tempApp({ 'cdk.json': '{}', 'lib/a.ts': 'old', 'lib/b.ts': 'same', 'cdk.out/x': 'x', '.git/HEAD': 'x', 'node_modules/dep/index.js': 'dep' });
-    const shadow = await makeShadow(app, new Map([['lib/a.ts', 'new'], ['lib/deeper/c.ts', 'added']]));
+    const app = tempApp({
+      'cdk.json': '{}',
+      'lib/a.ts': 'old',
+      'lib/b.ts': 'same',
+      'cdk.out/x': 'x',
+      '.git/HEAD': 'x',
+      'node_modules/dep/index.js': 'dep',
+    });
+    const shadow = await makeShadow(
+      app,
+      new Map([
+        ['lib/a.ts', 'new'],
+        ['lib/deeper/c.ts', 'added'],
+      ]),
+    );
     try {
       expect(readFileSync(join(shadow.dir, 'lib/a.ts'), 'utf8')).toBe('new');
       expect(readFileSync(join(shadow.dir, 'lib/b.ts'), 'utf8')).toBe('same');
@@ -50,27 +63,48 @@ describe('makeShadow', () => {
 });
 
 describe('runsCompiledJs', () => {
-  it.each(['node bin/app.js', 'node dist/bin/app.mjs', 'node -r source-map-support/register bin/app.js', 'npm run build && node bin/app.js'])('is true for %s', (cmd) => {
+  it.each([
+    'node bin/app.js',
+    'node dist/bin/app.mjs',
+    'node -r source-map-support/register bin/app.js',
+    'npm run build && node bin/app.js',
+  ])('is true for %s', (cmd) => {
     expect(runsCompiledJs(cmd)).toBe(true);
   });
-  it.each(['npx tsx bin/app.ts', 'npx ts-node --prefer-ts-exts bin/app.ts', 'node --import tsx bin/app.ts', 'python app.py', 'npx ts-node bin/app.js'])('is false for %s', (cmd) => {
+  it.each([
+    'npx tsx bin/app.ts',
+    'npx ts-node --prefer-ts-exts bin/app.ts',
+    'node --import tsx bin/app.ts',
+    'python app.py',
+    'npx ts-node bin/app.js',
+  ])('is false for %s', (cmd) => {
     expect(runsCompiledJs(cmd)).toBe(false);
   });
 });
 
 describe('draftSupportOf', () => {
   it('supports an app that runs TypeScript directly', async () => {
-    expect(await draftSupportOf(tempApp({ 'cdk.json': JSON.stringify({ app: 'npx tsx bin/app.ts' }) }))).toEqual({ ok: true });
+    expect(await draftSupportOf(tempApp({ 'cdk.json': JSON.stringify({ app: 'npx tsx bin/app.ts' }) }))).toEqual({
+      ok: true,
+    });
   });
 
   it('supports an app that runs compiled JavaScript when it has a build script', async () => {
-    const app = tempApp({ 'cdk.json': JSON.stringify({ app: 'node bin/app.js' }), 'package.json': JSON.stringify({ scripts: { build: 'tsc' } }) });
+    const app = tempApp({
+      'cdk.json': JSON.stringify({ app: 'node bin/app.js' }),
+      'package.json': JSON.stringify({ scripts: { build: 'tsc' } }),
+    });
     expect(await draftSupportOf(app)).toEqual({ ok: true });
   });
 
   it('is read-only, with the reason, when compiled JavaScript has no build script', async () => {
-    const app = tempApp({ 'cdk.json': JSON.stringify({ app: 'node bin/app.js' }), 'package.json': JSON.stringify({ scripts: { test: 'jest' } }) });
+    const app = tempApp({
+      'cdk.json': JSON.stringify({ app: 'node bin/app.js' }),
+      'package.json': JSON.stringify({ scripts: { test: 'jest' } }),
+    });
     expect(await draftSupportOf(app)).toEqual({ ok: false, reason: expect.stringContaining('no "build" script') });
-    expect(await draftSupportOf(tempApp({ 'cdk.json': JSON.stringify({ app: 'node bin/app.js' }) }))).toMatchObject({ ok: false });
+    expect(await draftSupportOf(tempApp({ 'cdk.json': JSON.stringify({ app: 'node bin/app.js' }) }))).toMatchObject({
+      ok: false,
+    });
   });
 });

@@ -22,7 +22,9 @@ describe('nodeEditability', () => {
   });
 
   it('is locked, with the class named, inside a construct class of the app', () => {
-    expect(nodeEditability('Api/Service/Jobs', facts({ enclosingClass: { name: 'ApiService', kind: 'construct' } }))).toEqual({
+    expect(
+      nodeEditability('Api/Service/Jobs', facts({ enclosingClass: { name: 'ApiService', kind: 'construct' } })),
+    ).toEqual({
       editable: false,
       reason: 'Created inside ApiService, a construct class of your own',
     });
@@ -36,7 +38,9 @@ describe('nodeEditability', () => {
   });
 
   it('is locked in a helper, which it names', () => {
-    expect(nodeEditability('Api/A', facts({ literalId: undefined, surround: { kind: 'helper', name: 'makeQueue' } }))).toEqual({
+    expect(
+      nodeEditability('Api/A', facts({ literalId: undefined, surround: { kind: 'helper', name: 'makeQueue' } })),
+    ).toEqual({
       editable: false,
       reason: 'Created by the helper makeQueue',
     });
@@ -65,22 +69,37 @@ describe('nodeEditability', () => {
 
   it('stays editable when the span repeats only because its Stack class is created more than once (ADR 0008)', () => {
     expect(nodeEditability('Dev/Jobs', facts({ pathsOnSpan: 2 }))).toEqual({ editable: true });
-    expect(nodeEditability('Dev/Jobs', facts({ pathsOnSpan: 2, enclosingClass: { name: 'AppStage', kind: 'stage' } }))).toEqual({
+    expect(
+      nodeEditability('Dev/Jobs', facts({ pathsOnSpan: 2, enclosingClass: { name: 'AppStage', kind: 'stage' } })),
+    ).toEqual({
       editable: true,
     });
   });
 
   it('still locks a repeated span in a loop, even inside a Stack class', () => {
-    expect(nodeEditability('Dev/Loop1', facts({ pathsOnSpan: 4, surround: { kind: 'loop' } }))).toMatchObject({ editable: false });
+    expect(nodeEditability('Dev/Loop1', facts({ pathsOnSpan: 4, surround: { kind: 'loop' } }))).toMatchObject({
+      editable: false,
+    });
   });
 
   it('names the construct class before any other reason', () => {
-    const inClass = facts({ enclosingClass: { name: 'ApiService', kind: 'construct' }, surround: { kind: 'loop' }, literalId: undefined });
-    expect(nodeEditability('Api/Service/Q', inClass)).toMatchObject({ reason: 'Created inside ApiService, a construct class of your own' });
+    const inClass = facts({
+      enclosingClass: { name: 'ApiService', kind: 'construct' },
+      surround: { kind: 'loop' },
+      literalId: undefined,
+    });
+    expect(nodeEditability('Api/Service/Q', inClass)).toMatchObject({
+      reason: 'Created inside ApiService, a construct class of your own',
+    });
   });
 
   it('is locked for a resource the app refers to with a `fromXxx` call, which creates nothing to edit', () => {
-    expect(nodeEditability('Api/Existing', facts({ literalId: 'Existing', className: 's3.Bucket.fromBucketName', external: true }))).toEqual({
+    expect(
+      nodeEditability(
+        'Api/Existing',
+        facts({ literalId: 'Existing', className: 's3.Bucket.fromBucketName', external: true }),
+      ),
+    ).toEqual({
       editable: false,
       reason: 'Refers to an existing resource; the app does not create it',
     });

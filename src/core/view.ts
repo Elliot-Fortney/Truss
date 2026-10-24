@@ -281,13 +281,26 @@ function causes(nodes: readonly NodeView[], refs: readonly ResourceRef[]): Map<s
 /** Whether what a Reference to the prop `prop` of the construct `fqn` points at flows into it, which reverses the arrow. */
 export type FlowsIn = (fqn: string, prop: string) => boolean;
 
-export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, changed: ReadonlySet<string> = new Set(), added: ReadonlySet<string> = new Set(), flowsIn: FlowsIn = () => false): ViewBody {
+export function buildView(
+  facts: Facts,
+  assembly: Assembly,
+  sidecar: Sidecar,
+  changed: ReadonlySet<string> = new Set(),
+  added: ReadonlySet<string> = new Set(),
+  flowsIn: FlowsIn = () => false,
+): ViewBody {
   const envs = new Map(assembly.stacks.map((s) => [s.path, s.env]));
   const stages: StageView[] = [];
   const stacks: StackBoxView[] = [];
   const nodes: NodeView[] = [];
 
-  const visit = (tree: TreeNode, stack: StackBoxView | undefined, stageId: string | undefined, insideNode: boolean, atStackScope: boolean) => {
+  const visit = (
+    tree: TreeNode,
+    stack: StackBoxView | undefined,
+    stageId: string | undefined,
+    insideNode: boolean,
+    atStackScope: boolean,
+  ) => {
     if (tree.fqn === STAGE_FQN && stageId === undefined) {
       // A Stage inside a Stage is part of the outer one: the canvas has one picker, not a tree of them.
       stages.push({ id: tree.path, label: tree.id });
@@ -420,5 +433,10 @@ export interface OpenInEditorMessage extends EditorRequest {
 export function ghostsOf(base: ViewBody, removed: ReadonlySet<string>, place: (path: string) => string): NodeView[] {
   return base.nodes
     .filter((n) => removed.has(n.id))
-    .map(({ changed: _changed, added: _added, ...n }) => ({ ...n, id: place(n.id), stackId: place(n.stackId), removed: true as const }));
+    .map(({ changed: _changed, added: _added, ...n }) => ({
+      ...n,
+      id: place(n.id),
+      stackId: place(n.stackId),
+      removed: true as const,
+    }));
 }

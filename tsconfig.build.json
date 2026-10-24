@@ -1,6 +1,13 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "noEmit": false, "outDir": "dist", "rootDir": "src", "declaration": false, "sourceMap": false, "lib": ["ES2023"] },
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": false,
+    "sourceMap": false,
+    "lib": ["ES2023"]
+  },
   "include": ["src/cli.ts", "src/core", "src/session", "src/adapters", "src/cli"],
   "exclude": ["src/**/*.test.ts"]
 }

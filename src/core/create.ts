@@ -47,25 +47,51 @@ export function intentForAdd(
     else missing.push(prop);
   }
   const unfillable = missing.filter((p) => !p.input || p.input.kind === 'struct');
-  if (unfillable.length > 0) return { ok: false, reason: `${entry.name} needs ${unfillable.map((p) => p.name).join(', ')}, which Truss can't write a value for yet. Add it in your code.` };
+  if (unfillable.length > 0)
+    return {
+      ok: false,
+      reason: `${entry.name} needs ${unfillable.map((p) => p.name).join(', ')}, which Truss can't write a value for yet. Add it in your code.`,
+    };
   if (missing.length > 0) return { ok: false, form: missing };
   const id = freshId(entry.name, childIds(scope.tree, scope.id));
-  return { ok: true, intent: { type: 'addNode', path: scope.id, expect: { className: scope.facts.className, literalId: scope.facts.literalId ?? '' }, fqn, id, props } };
+  return {
+    ok: true,
+    intent: {
+      type: 'addNode',
+      path: scope.id,
+      expect: { className: scope.facts.className, literalId: scope.facts.literalId ?? '' },
+      fqn,
+      id,
+      props,
+    },
+  };
 }
 
 /** What copying the Node whose panel this is means for the Draft. */
-export function intentForDuplicate(panel: PanelView | undefined, id: string): { ok: true; intent: DuplicateIntent } | { ok: false; reason: string } {
+export function intentForDuplicate(
+  panel: PanelView | undefined,
+  id: string,
+): { ok: true; intent: DuplicateIntent } | { ok: false; reason: string } {
   if (!panel || panel.kind !== 'node') return { ok: false, reason: `No Node at ${id}` };
   if (panel.readOnly) return { ok: false, reason: panel.readOnly };
   if (!panel.idEdit || panel.literalId === undefined) return { ok: false, reason: `${id} can't be duplicated here` };
   const newId = freshId(panel.literalId, [...panel.idEdit.siblings, panel.literalId]);
-  return { ok: true, intent: { type: 'duplicate', path: id, expect: { className: panel.className, literalId: panel.literalId }, newId } };
+  return {
+    ok: true,
+    intent: { type: 'duplicate', path: id, expect: { className: panel.className, literalId: panel.literalId }, newId },
+  };
 }
 
 /** What deleting the Node whose panel this is means for the Draft. */
-export function intentForRemove(panel: PanelView | undefined, id: string): { ok: true; intent: RemoveNodeIntent } | { ok: false; reason: string } {
+export function intentForRemove(
+  panel: PanelView | undefined,
+  id: string,
+): { ok: true; intent: RemoveNodeIntent } | { ok: false; reason: string } {
   if (!panel || panel.kind !== 'node') return { ok: false, reason: `No Node at ${id}` };
   if (panel.readOnly) return { ok: false, reason: panel.readOnly };
   if (!panel.idEdit || panel.literalId === undefined) return { ok: false, reason: `${id} can't be removed here` };
-  return { ok: true, intent: { type: 'removeNode', path: id, expect: { className: panel.className, literalId: panel.literalId } } };
+  return {
+    ok: true,
+    intent: { type: 'removeNode', path: id, expect: { className: panel.className, literalId: panel.literalId } },
+  };
 }

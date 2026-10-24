@@ -66,15 +66,40 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
   const templates: EffectTemplate[] = [];
   collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs, annotations, templates);
   const { effects, importRefs } = templateEffects(templates);
-  return { schemaVersion: String(manifest.version), tree, stacks, creation, resourceRefs, annotations, effects, importRefs };
+  return {
+    schemaVersion: String(manifest.version),
+    tree,
+    stacks,
+    creation,
+    resourceRefs,
+    annotations,
+    effects,
+    importRefs,
+  };
 }
 
 /** Adds the stacks of one assembly directory, then those of the nested assembly each Stage writes. */
-function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creation: Record<string, Frame[]>, resourceRefs: ResourceRef[], annotations: Annotation[], templates: EffectTemplate[]): void {
+function collectStacks(
+  dir: string,
+  appDir: string,
+  stacks: StackInfo[],
+  creation: Record<string, Frame[]>,
+  resourceRefs: ResourceRef[],
+  annotations: Annotation[],
+  templates: EffectTemplate[],
+): void {
   const manifest = readJson(join(dir, 'manifest.json'));
   for (const [id, artifact] of Object.entries<RawArtifact>(manifest.artifacts ?? {})) {
     if (artifact.type === 'cdk:cloud-assembly' && artifact.properties?.directoryName) {
-      collectStacks(join(dir, artifact.properties.directoryName), appDir, stacks, creation, resourceRefs, annotations, templates);
+      collectStacks(
+        join(dir, artifact.properties.directoryName),
+        appDir,
+        stacks,
+        creation,
+        resourceRefs,
+        annotations,
+        templates,
+      );
       continue;
     }
     if (artifact.type !== 'aws:cloudformation:stack') continue;
@@ -86,11 +111,15 @@ function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creatio
       templates.push(template);
     }
     if (!artifact.additionalMetadataFile) continue;
-    const metadata = readJson(join(dir, artifact.additionalMetadataFile)) as Record<string, { type: string; data: unknown }[]>;
+    const metadata = readJson(join(dir, artifact.additionalMetadataFile)) as Record<
+      string,
+      { type: string; data: unknown }[]
+    >;
     for (const [path, entries] of Object.entries(metadata)) {
       for (const e of entries) {
         const level = /^aws:cdk:(error|warning|info)$/.exec(e.type)?.[1] as Annotation['level'] | undefined;
-        if (level && typeof e.data === 'string') annotations.push({ path: path.replace(/^\//, ''), level, message: e.data });
+        if (level && typeof e.data === 'string')
+          annotations.push({ path: path.replace(/^\//, ''), level, message: e.data });
       }
       const entry = entries.find((e) => e.type === 'aws:cdk:creationStack');
       if (!entry || !Array.isArray(entry.data)) continue;
@@ -102,7 +131,10 @@ function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creatio
 
 interface RawTemplate {
   Parameters?: unknown;
-  Resources?: Record<string, { Type?: string; Metadata?: Record<string, unknown>; Properties?: unknown; DependsOn?: unknown }>;
+  Resources?: Record<
+    string,
+    { Type?: string; Metadata?: Record<string, unknown>; Properties?: unknown; DependsOn?: unknown }
+  >;
 }
 
 /** The logical IDs a template value points at: `Ref`, `Fn::GetAtt` (both forms) and the `${Id}` and `${Id.Attr}` of `Fn::Sub`. */

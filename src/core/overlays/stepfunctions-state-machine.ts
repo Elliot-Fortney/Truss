@@ -3,7 +3,16 @@ import type { Overlay } from '../overlay.ts';
 const overlay: Overlay = {
   fqn: 'aws-cdk-lib.aws_stepfunctions.StateMachine',
   displayName: 'Step Functions State Machine',
-  featuredProps: ['stateMachineName', 'definitionBody', 'stateMachineType', 'timeout', 'tracingEnabled', 'logs', 'role', 'removalPolicy'],
+  featuredProps: [
+    'stateMachineName',
+    'definitionBody',
+    'stateMachineType',
+    'timeout',
+    'tracingEnabled',
+    'logs',
+    'role',
+    'removalPolicy',
+  ],
   // One Pass state, so the machine is valid until its definition is written.
   defaults: {
     definitionBody: {

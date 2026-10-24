@@ -1,5 +1,14 @@
 import { unifiedDiff, type FileDiff } from '../core/diff.ts';
-import { describeIntent, emptyDraftHistory, idOf, redo, stage, undo, type DraftHistory, type Intent } from '../core/intents.ts';
+import {
+  describeIntent,
+  emptyDraftHistory,
+  idOf,
+  redo,
+  stage,
+  undo,
+  type DraftHistory,
+  type Intent,
+} from '../core/intents.ts';
 import type { Source, SourceUse } from '../core/ports.ts';
 import { buildReport, type Problem } from '../core/problems.ts';
 import type { DraftView } from '../core/view.ts';
@@ -94,7 +103,11 @@ export class Draft {
   rebase(base: Base): void {
     this.current = base;
     const dropped: string[] = [];
-    for (let plan = this.source.plan(base.files, base.facts, this.history.intents); !plan.ok; plan = this.source.plan(base.files, base.facts, this.history.intents)) {
+    for (
+      let plan = this.source.plan(base.files, base.facts, this.history.intents);
+      !plan.ok;
+      plan = this.source.plan(base.files, base.facts, this.history.intents)
+    ) {
       const intent = this.history.intents[plan.intent];
       if (!intent) break;
       dropped.push(`Dropped ${describeIntent(intent)} on ${intent.expect.literalId}: ${plan.reason}`);
@@ -115,7 +128,9 @@ export class Draft {
 
   /** Why Save can't go ahead yet, when it can't: the screen has to show the Draft as it is now, because the checks were made on what it shows. */
   saveBlock(): string | undefined {
-    return this.checkedIntents === this.history.intents ? undefined : 'Truss is still checking the Draft. Try again in a moment.';
+    return this.checkedIntents === this.history.intents
+      ? undefined
+      : 'Truss is still checking the Draft. Try again in a moment.';
   }
 
   /** The Draft's intents planned on the Base. Undefined with no Base to plan on. */

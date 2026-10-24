@@ -54,7 +54,9 @@ test('References are drawn as edges, and a drag from one Node to another stages 
     await page.mouse.up();
 
     await dragFromTo(page, node('Plain'), node('Spare'));
-    await expect(page.locator('.draft-bar, [aria-label="Draft"]').first()).toContainText('encryptionKey → Spare', { timeout: 30_000 });
+    await expect(page.locator('.draft-bar, [aria-label="Draft"]').first()).toContainText('encryptionKey → Spare', {
+      timeout: 30_000,
+    });
     await expect(page.locator('.react-flow__edge.reference-edge')).toHaveCount(4, { timeout: 30_000 });
   } finally {
     truss.child.kill('SIGINT');

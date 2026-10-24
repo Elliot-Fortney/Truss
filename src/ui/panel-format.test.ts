@@ -26,7 +26,9 @@ describe('unsetText', () => {
 
 describe('propsNotice', () => {
   it('says why every prop is read-only when the props are passed as a variable', () => {
-    expect(propsNotice({ propsSource: 'bucketProps' })).toBe('Props are passed as bucketProps, so Truss shows every prop read-only.');
+    expect(propsNotice({ propsSource: 'bucketProps' })).toBe(
+      'Props are passed as bucketProps, so Truss shows every prop read-only.',
+    );
   });
 
   it('has nothing to say when the props are written out', () => {
@@ -50,14 +52,20 @@ describe('idFieldState', () => {
   });
 
   it('warns that CloudFormation replaces the resource once a valid ID is typed, without blocking it', () => {
-    expect(idFieldState('Files', panel)).toEqual({ note: 'Changes the construct path: CloudFormation will replace this resource.', canStage: true });
+    expect(idFieldState('Files', panel)).toEqual({
+      note: 'Changes the construct path: CloudFormation will replace this resource.',
+      canStage: true,
+    });
     expect(idFieldState('files_bucket', panel).canStage).toBe(true);
   });
 
   it('gives the problem instead, and stages nothing, for an ID the rules refuse', () => {
     expect(idFieldState('', panel)).toMatchObject({ problem: expect.stringContaining('empty'), canStage: false });
     expect(idFieldState('a/b', panel)).toMatchObject({ problem: expect.any(String), canStage: false });
-    expect(idFieldState('Other', panel)).toMatchObject({ problem: expect.stringContaining('sibling'), canStage: false });
+    expect(idFieldState('Other', panel)).toMatchObject({
+      problem: expect.stringContaining('sibling'),
+      canStage: false,
+    });
     expect(idFieldState('Resource', panel)).toMatchObject({ problem: expect.stringContaining('Default') });
     expect(idFieldState('Other', panel).note).toBeUndefined();
   });

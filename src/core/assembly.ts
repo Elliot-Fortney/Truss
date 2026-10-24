@@ -92,9 +92,7 @@ export interface Assembly {
   importRefs?: ImportRef[];
 }
 
-export type SynthResult =
-  | { ok: true; assembly: Assembly }
-  | { ok: false; error: SynthError };
+export type SynthResult = { ok: true; assembly: Assembly } | { ok: false; error: SynthError };
 
 /** A place in the app's own source (1-based line and column), file relative to the app folder. */
 export interface SourceLocation {

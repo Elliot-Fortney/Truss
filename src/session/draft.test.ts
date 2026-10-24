@@ -10,7 +10,12 @@ import { readFixtureAssembly, readFixtureFiles } from '../../test/support/fixtur
 import { Session } from './session.ts';
 
 const doc = (summary: string) => ({ summary, stability: 'stable' });
-const prop = (name: string, type: unknown, optional = true) => ({ name, type, docs: doc(`The ${name}.`), ...(optional ? { optional: true } : {}) });
+const prop = (name: string, type: unknown, optional = true) => ({
+  name,
+  type,
+  docs: doc(`The ${name}.`),
+  ...(optional ? { optional: true } : {}),
+});
 const cls = (fqn: string, propsFqn: string) => ({
   kind: 'class',
   fqn,
@@ -18,9 +23,21 @@ const cls = (fqn: string, propsFqn: string) => ({
   namespace: fqn.split('.')[1],
   base: 'constructs.Construct',
   docs: doc(`A ${fqn}.`),
-  initializer: { parameters: [{ name: 'scope', type: { fqn: 'constructs.Construct' } }, { name: 'id', type: { primitive: 'string' } }, { name: 'props', optional: true, type: { fqn: propsFqn } }] },
+  initializer: {
+    parameters: [
+      { name: 'scope', type: { fqn: 'constructs.Construct' } },
+      { name: 'id', type: { primitive: 'string' } },
+      { name: 'props', optional: true, type: { fqn: propsFqn } },
+    ],
+  },
 });
-const struct = (fqn: string, properties: unknown[]) => ({ kind: 'interface', datatype: true, fqn, name: fqn.split('.').at(-1), properties });
+const struct = (fqn: string, properties: unknown[]) => ({
+  kind: 'interface',
+  datatype: true,
+  fqn,
+  name: fqn.split('.').at(-1),
+  properties,
+});
 
 /** A small aws-cdk-lib with the three constructs of the straight-line fixture. */
 const catalog = buildCatalog([
@@ -30,16 +47,42 @@ const catalog = buildCatalog([
     types: Object.fromEntries(
       [
         cls('aws-cdk-lib.aws_s3.Bucket', 'aws-cdk-lib.aws_s3.BucketProps'),
-        struct('aws-cdk-lib.aws_s3.BucketProps', [prop('versioned', { primitive: 'boolean' }), prop('bucketName', { primitive: 'string' }), prop('removalPolicy', { fqn: 'aws-cdk-lib.RemovalPolicy' })]),
+        struct('aws-cdk-lib.aws_s3.BucketProps', [
+          prop('versioned', { primitive: 'boolean' }),
+          prop('bucketName', { primitive: 'string' }),
+          prop('removalPolicy', { fqn: 'aws-cdk-lib.RemovalPolicy' }),
+        ]),
         cls('aws-cdk-lib.aws_sqs.Queue', 'aws-cdk-lib.aws_sqs.QueueProps'),
-        struct('aws-cdk-lib.aws_sqs.QueueProps', [prop('visibilityTimeout', { fqn: 'aws-cdk-lib.Duration' }), prop('fifo', { primitive: 'boolean' })]),
+        struct('aws-cdk-lib.aws_sqs.QueueProps', [
+          prop('visibilityTimeout', { fqn: 'aws-cdk-lib.Duration' }),
+          prop('fifo', { primitive: 'boolean' }),
+        ]),
         cls('aws-cdk-lib.aws_dynamodb.Table', 'aws-cdk-lib.aws_dynamodb.TableProps'),
-        struct('aws-cdk-lib.aws_dynamodb.TableProps', [prop('partitionKey', { fqn: 'aws-cdk-lib.aws_dynamodb.Attribute'}, false), prop('tableName', { primitive: 'string' })]),
-        struct('aws-cdk-lib.aws_dynamodb.Attribute', [prop('name', { primitive: 'string' }, false), prop('type', { fqn: 'aws-cdk-lib.aws_dynamodb.AttributeType' }, false)]),
-        { kind: 'enum', fqn: 'aws-cdk-lib.aws_dynamodb.AttributeType', name: 'AttributeType', members: [{ name: 'STRING' }, { name: 'NUMBER' }] },
-        { kind: 'enum', fqn: 'aws-cdk-lib.RemovalPolicy', name: 'RemovalPolicy', members: [{ name: 'DESTROY' }, { name: 'RETAIN' }] },
+        struct('aws-cdk-lib.aws_dynamodb.TableProps', [
+          prop('partitionKey', { fqn: 'aws-cdk-lib.aws_dynamodb.Attribute' }, false),
+          prop('tableName', { primitive: 'string' }),
+        ]),
+        struct('aws-cdk-lib.aws_dynamodb.Attribute', [
+          prop('name', { primitive: 'string' }, false),
+          prop('type', { fqn: 'aws-cdk-lib.aws_dynamodb.AttributeType' }, false),
+        ]),
+        {
+          kind: 'enum',
+          fqn: 'aws-cdk-lib.aws_dynamodb.AttributeType',
+          name: 'AttributeType',
+          members: [{ name: 'STRING' }, { name: 'NUMBER' }],
+        },
+        {
+          kind: 'enum',
+          fqn: 'aws-cdk-lib.RemovalPolicy',
+          name: 'RemovalPolicy',
+          members: [{ name: 'DESTROY' }, { name: 'RETAIN' }],
+        },
         cls('aws-cdk-lib.aws_sns.Topic', 'aws-cdk-lib.aws_sns.TopicProps'),
-        struct('aws-cdk-lib.aws_sns.TopicProps', [prop('displayName', { primitive: 'string' }, false), prop('fifo', { primitive: 'boolean' })]),
+        struct('aws-cdk-lib.aws_sns.TopicProps', [
+          prop('displayName', { primitive: 'string' }, false),
+          prop('fifo', { primitive: 'boolean' }),
+        ]),
         { kind: 'class', fqn: 'aws-cdk-lib.Duration', name: 'Duration' },
       ].map((t) => [t.fqn, t]),
     ),
@@ -75,9 +118,20 @@ async function rig(opts: { source?: TsSource; synth?: FakeSynth } = {}): Promise
   const sources = readFixtureFiles('straight-line');
   const memory = memoryFiles(sources);
   const listeners = new Set<() => void>();
-  const files = Object.assign(memory, { sources, read: async () => new Map(sources), change: () => listeners.forEach((l) => l()), watch: (l: () => void) => (listeners.add(l), () => listeners.delete(l)) }) as Rig['files'];
+  const files = Object.assign(memory, {
+    sources,
+    read: async () => new Map(sources),
+    change: () => listeners.forEach((l) => l()),
+    watch: (l: () => void) => (listeners.add(l), () => listeners.delete(l)),
+  }) as Rig['files'];
   const synth = opts.synth ?? new FakeSynth();
-  const session = new Session({ appDir: '/app', synth, files: files as Files, source: opts.source ?? new TsSource(), catalog });
+  const session = new Session({
+    appDir: '/app',
+    synth,
+    files: files as Files,
+    source: opts.source ?? new TsSource(),
+    catalog,
+  });
   await session.start();
   return { session, files, synth };
 }
@@ -85,7 +139,8 @@ async function rig(opts: { source?: TsSource; synth?: FakeSynth } = {}): Promise
 let n = 0;
 const set = (r: Rig, id: string, prop: string | string[], value: PropValue): Promise<Reply> =>
   r.session.handle({ type: 'setProp', requestId: `r${++n}`, id, prop: Array.isArray(prop) ? prop : [prop], value });
-const send = (r: Rig, type: 'undo' | 'redo' | 'save' | 'discard'): Promise<Reply> => r.session.handle({ type, requestId: `r${++n}` });
+const send = (r: Rig, type: 'undo' | 'redo' | 'save' | 'discard'): Promise<Reply> =>
+  r.session.handle({ type, requestId: `r${++n}` });
 const settled = (r: Rig) => vi.waitFor(() => expect(r.session.view().synthing).toBe(false));
 const bool = (value: boolean): PropValue => ({ kind: 'boolean', value });
 const refusal = (reply: Reply) => (reply.type === 'refused' ? reply.reason : `not refused: ${reply.type}`);
@@ -138,7 +193,11 @@ describe('the Draft', () => {
     await settled(r);
 
     expect(await send(r, 'undo')).toMatchObject({ type: 'ack' });
-    expect(r.session.view().draft).toMatchObject({ items: [{ summary: 'versioned → false' }], canUndo: true, canRedo: true });
+    expect(r.session.view().draft).toMatchObject({
+      items: [{ summary: 'versioned → false' }],
+      canUndo: true,
+      canRedo: true,
+    });
     expect(await send(r, 'redo')).toMatchObject({ type: 'ack' });
     expect(r.session.view().draft?.items.map((i) => i.id)).toEqual([UPLOADS, 'ShopStack/Orders']);
     expect(r.session.view().draft?.canRedo).toBe(false);
@@ -187,8 +246,12 @@ describe('the Draft', () => {
 
   it('sets a field of an object-literal prop, and a Duration', async () => {
     const r = await rig();
-    expect(await set(r, 'ShopStack/Catalog', ['partitionKey', 'name'], { kind: 'string', value: 'id' })).toMatchObject({ type: 'ack' });
-    expect(await set(r, 'ShopStack/Orders', 'visibilityTimeout', { kind: 'duration', unit: 'minutes', amount: 2 })).toMatchObject({ type: 'ack' });
+    expect(await set(r, 'ShopStack/Catalog', ['partitionKey', 'name'], { kind: 'string', value: 'id' })).toMatchObject({
+      type: 'ack',
+    });
+    expect(
+      await set(r, 'ShopStack/Orders', 'visibilityTimeout', { kind: 'duration', unit: 'minutes', amount: 2 }),
+    ).toMatchObject({ type: 'ack' });
     const diff = r.session.view().draft!.diffs[0]!.diff;
     expect(diff).toContain("+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },");
     expect(diff).toContain('+      visibilityTimeout: cdk.Duration.minutes(2),');
@@ -223,8 +286,20 @@ describe('the Draft', () => {
       const r = await rig();
       expect(refusal(await set(r, UPLOADS, 'nonsense', bool(true)))).toMatch(/can't be edited/);
       expect(refusal(await set(r, UPLOADS, 'versioned', { kind: 'string', value: 'yes' }))).toMatch(/takes a boolean/);
-      expect(refusal(await set(r, UPLOADS, 'removalPolicy', { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'EXPLODE' }))).toMatch(/takes a enum/);
-      expect(refusal(await set(r, UPLOADS, 'removalPolicy', { kind: 'enum', type: 'aws-cdk-lib.aws_s3.Other', member: 'DESTROY' }))).toMatch(/takes a enum/);
+      expect(
+        refusal(
+          await set(r, UPLOADS, 'removalPolicy', {
+            kind: 'enum',
+            type: 'aws-cdk-lib.RemovalPolicy',
+            member: 'EXPLODE',
+          }),
+        ),
+      ).toMatch(/takes a enum/);
+      expect(
+        refusal(
+          await set(r, UPLOADS, 'removalPolicy', { kind: 'enum', type: 'aws-cdk-lib.aws_s3.Other', member: 'DESTROY' }),
+        ),
+      ).toMatch(/takes a enum/);
       expect(r.session.draftSize()).toBe(0);
     });
 
@@ -241,9 +316,21 @@ describe('the Draft', () => {
         catalog,
       });
       await session.start();
-      const reply = await session.handle({ type: 'setProp', requestId: 'r', id: 'Shapes/LoopOne', prop: ['fifo'], value: bool(true) });
+      const reply = await session.handle({
+        type: 'setProp',
+        requestId: 'r',
+        id: 'Shapes/LoopOne',
+        prop: ['fifo'],
+        value: bool(true),
+      });
       expect(refusal(reply)).toMatch(/loop/i);
-      const fromVariable = await session.handle({ type: 'setProp', requestId: 'r', id: 'Shapes/FromVariable', prop: ['tableName'], value: { kind: 'string', value: 'x' } });
+      const fromVariable = await session.handle({
+        type: 'setProp',
+        requestId: 'r',
+        id: 'Shapes/FromVariable',
+        prop: ['tableName'],
+        value: { kind: 'string', value: 'x' },
+      });
       expect(refusal(fromVariable)).toMatch(/passed as tableProps/);
       expect(session.draftSize()).toBe(0);
     });
@@ -288,8 +375,15 @@ describe('the Draft', () => {
   });
 
   describe('Problems', () => {
-    const withRefs = (assembly: ReturnType<typeof readFixtureAssembly>, ...pairs: [string, string][]) => ({ ...assembly, resourceRefs: [...assembly.resourceRefs, ...pairs.map(([from, to]) => ({ from, to }))] });
-    const annotated = (level: 'error' | 'warning' | 'info', message: string, path = 'ShopStack/Orders') => ({ path, level, message });
+    const withRefs = (assembly: ReturnType<typeof readFixtureAssembly>, ...pairs: [string, string][]) => ({
+      ...assembly,
+      resourceRefs: [...assembly.resourceRefs, ...pairs.map(([from, to]) => ({ from, to }))],
+    });
+    const annotated = (level: 'error' | 'warning' | 'info', message: string, path = 'ShopStack/Orders') => ({
+      path,
+      level,
+      message,
+    });
     /** A rig whose app on disk is good, and whose Draft synths to whatever `draft` says. */
     const rigWith = (draft: (overlay: FileSet) => SynthResult, base: SynthResult = good()) => {
       const synth = new FakeSynth();
@@ -303,7 +397,15 @@ describe('the Draft', () => {
       const r = await rigWith(() => ({ ok: false, error: { message: 'boom', output: trace(12) } }));
       await set(r, UPLOADS, 'versioned', bool(false));
       await vi.waitFor(() => expect(r.session.view().error).toMatchObject({ kind: 'draft' }));
-      expect(r.session.view().problems).toEqual([expect.objectContaining({ source: 'synth', path: UPLOADS, draft: true, blocking: true, location: { file: SHOP, line: 12, col: 7 } })]);
+      expect(r.session.view().problems).toEqual([
+        expect.objectContaining({
+          source: 'synth',
+          path: UPLOADS,
+          draft: true,
+          blocking: true,
+          location: { file: SHOP, line: 12, col: 7 },
+        }),
+      ]);
     });
 
     it('traces to file:line when the frame is in no Node', async () => {
@@ -357,8 +459,16 @@ describe('the Draft', () => {
     it('blocks Save on an error annotation the Draft adds, and badges nothing for the one the app already had', async () => {
       const base = readFixtureAssembly('straight-line');
       base.annotations = [annotated('error', 'old error', 'ShopStack/Catalog')];
-      const r = await rigWith(() => ({ ok: true, assembly: { ...base, annotations: [...base.annotations!, annotated('error', 'queue is wrong')] } }), { ok: true, assembly: base });
-      expect(r.session.view().problems).toEqual([expect.objectContaining({ message: 'old error', draft: false, blocking: false })]);
+      const r = await rigWith(
+        () => ({
+          ok: true,
+          assembly: { ...base, annotations: [...base.annotations!, annotated('error', 'queue is wrong')] },
+        }),
+        { ok: true, assembly: base },
+      );
+      expect(r.session.view().problems).toEqual([
+        expect.objectContaining({ message: 'old error', draft: false, blocking: false }),
+      ]);
       await set(r, UPLOADS, 'versioned', bool(false));
       await settled(r);
       expect(r.session.view().problems.map((p) => [p.message, p.draft, p.blocking])).toEqual([
@@ -370,33 +480,63 @@ describe('the Draft', () => {
     });
 
     it('does not block Save on a warning', async () => {
-      const r = await rigWith(() => ({ ok: true, assembly: { ...readFixtureAssembly('straight-line'), annotations: [annotated('warning', 'careful')] } }));
+      const r = await rigWith(() => ({
+        ok: true,
+        assembly: { ...readFixtureAssembly('straight-line'), annotations: [annotated('warning', 'careful')] },
+      }));
       await set(r, UPLOADS, 'versioned', bool(false));
       await settled(r);
-      expect(r.session.view().problems).toEqual([expect.objectContaining({ severity: 'warning', draft: true, blocking: false })]);
+      expect(r.session.view().problems).toEqual([
+        expect.objectContaining({ severity: 'warning', draft: true, blocking: false }),
+      ]);
       expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
     });
 
     it('names the resources of a cycle the Draft closes, blocks Save, and only reports one the app had', async () => {
-      const had = withRefs(readFixtureAssembly('straight-line'), ['ShopStack/Orders/Resource', 'ShopStack/Uploads/Resource'], ['ShopStack/Uploads/Resource', 'ShopStack/Orders/Resource']);
-      const closes = withRefs(had, ['ShopStack/Catalog/Resource', 'ShopStack/Catalog/Role'], ['ShopStack/Catalog/Role', 'ShopStack/Catalog/Resource']);
+      const had = withRefs(
+        readFixtureAssembly('straight-line'),
+        ['ShopStack/Orders/Resource', 'ShopStack/Uploads/Resource'],
+        ['ShopStack/Uploads/Resource', 'ShopStack/Orders/Resource'],
+      );
+      const closes = withRefs(
+        had,
+        ['ShopStack/Catalog/Resource', 'ShopStack/Catalog/Role'],
+        ['ShopStack/Catalog/Role', 'ShopStack/Catalog/Resource'],
+      );
       const r = await rigWith(() => ({ ok: true, assembly: closes }), { ok: true, assembly: had });
-      expect(r.session.view().problems).toEqual([expect.objectContaining({ source: 'cycle', draft: false, blocking: false })]);
+      expect(r.session.view().problems).toEqual([
+        expect.objectContaining({ source: 'cycle', draft: false, blocking: false }),
+      ]);
       await set(r, UPLOADS, 'versioned', bool(false));
       await settled(r);
       const cycles = r.session.view().problems.filter((p) => p.source === 'cycle');
-      expect(cycles.map((p) => [p.draft, p.blocking]).sort()).toEqual([[false, false], [true, true]]);
-      expect(cycles.find((p) => p.draft)!.message).toBe('Dependency cycle: ShopStack/Catalog/Resource → ShopStack/Catalog/Role → ShopStack/Catalog/Resource');
+      expect(cycles.map((p) => [p.draft, p.blocking]).sort()).toEqual([
+        [false, false],
+        [true, true],
+      ]);
+      expect(cycles.find((p) => p.draft)!.message).toBe(
+        'Dependency cycle: ShopStack/Catalog/Resource → ShopStack/Catalog/Role → ShopStack/Catalog/Resource',
+      );
       expect(refusal(await send(r, 'save'))).toMatch(/Dependency cycle/);
     });
 
     it('shows a TypeScript diagnostic the Draft adds as a Problem on its Node', async () => {
       const source = new TsSource();
-      source.diagnostics = (_dir, files) => (files.get(SHOP)!.includes('versioned: false') ? [{ file: SHOP, line: 12, code: 2322, message: 'Type is not assignable' }] : []);
+      source.diagnostics = (_dir, files) =>
+        files.get(SHOP)!.includes('versioned: false')
+          ? [{ file: SHOP, line: 12, code: 2322, message: 'Type is not assignable' }]
+          : [];
       const r = await rig({ source });
       await set(r, UPLOADS, 'versioned', bool(false));
       await settled(r);
-      expect(r.session.view().problems).toEqual([expect.objectContaining({ source: 'typescript', path: UPLOADS, blocking: true, message: expect.stringContaining('TypeScript 2322') })]);
+      expect(r.session.view().problems).toEqual([
+        expect.objectContaining({
+          source: 'typescript',
+          path: UPLOADS,
+          blocking: true,
+          message: expect.stringContaining('TypeScript 2322'),
+        }),
+      ]);
     });
 
     it('calls a failed check of the planned edit a bug in Truss, and gives a report with only the changed lines', async () => {
@@ -419,9 +559,14 @@ describe('the Draft', () => {
     });
 
     it('lists what is on a construct, info included, in its property panel', async () => {
-      const r = await rigWith(() => good(), { ok: true, assembly: { ...readFixtureAssembly('straight-line'), annotations: [annotated('info', 'FYI')] } });
+      const r = await rigWith(() => good(), {
+        ok: true,
+        assembly: { ...readFixtureAssembly('straight-line'), annotations: [annotated('info', 'FYI')] },
+      });
       const reply = await r.session.handle({ type: 'panel', requestId: 'p', id: 'ShopStack/Orders' });
-      expect(reply.type === 'panel' ? reply.panel.problems : undefined).toEqual([{ severity: 'info', message: 'FYI', draft: false }]);
+      expect(reply.type === 'panel' ? reply.panel.problems : undefined).toEqual([
+        { severity: 'info', message: 'FYI', draft: false },
+      ]);
     });
   });
 
@@ -513,7 +658,12 @@ describe('the Draft', () => {
     it('is blocked by a TypeScript diagnostic the edit introduces, and not by one the code already had', async () => {
       const source = new TsSource();
       const existing: Diagnostic = { file: SHOP, line: 3, code: 2304, message: 'Cannot find name x' };
-      source.diagnostics = (_dir, files) => [existing, ...(files.get(SHOP)!.includes('versioned: false') ? [{ file: SHOP, line: 12, code: 2322, message: 'Type is not assignable' }] : [])];
+      source.diagnostics = (_dir, files) => [
+        existing,
+        ...(files.get(SHOP)!.includes('versioned: false')
+          ? [{ file: SHOP, line: 12, code: 2322, message: 'Type is not assignable' }]
+          : []),
+      ];
       const r = await rig({ source });
       await set(r, UPLOADS, 'bucketName', { kind: 'string', value: 'ok' });
       await settled(r);
@@ -589,7 +739,9 @@ describe('the Draft', () => {
       r.files.change();
       await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(2));
       await settled(r);
-      expect(r.session.view().draft?.notices.join('\n')).toMatch(/versioned → false on Uploads[^]*fifo → true on Orders/);
+      expect(r.session.view().draft?.notices.join('\n')).toMatch(
+        /versioned → false on Uploads[^]*fifo → true on Orders/,
+      );
 
       await send(r, 'discard');
       expect(r.session.view().draft).toBeUndefined();
@@ -683,7 +835,8 @@ describe('the Draft', () => {
 });
 
 describe('renaming a Construct ID', () => {
-  const rename = (r: Rig, id: string, newId: string): Promise<Reply> => r.session.handle({ type: 'renameId', requestId: `r${++n}`, id, newId });
+  const rename = (r: Rig, id: string, newId: string): Promise<Reply> =>
+    r.session.handle({ type: 'renameId', requestId: `r${++n}`, id, newId });
   const FILES = 'ShopStack/Files';
 
   /** The fixture's assembly as synth makes it once Uploads is called Files: the same subtree under another path. */
@@ -702,9 +855,13 @@ describe('renaming a Construct ID', () => {
   it('stages a rename as an intent, shows its diff at once, and writes nothing until Save', async () => {
     const r = await rig();
     expect(await rename(r, UPLOADS, 'Files')).toMatchObject({ type: 'ack' });
-    expect(r.session.view().draft?.items).toEqual([{ id: UPLOADS, label: 'Uploads', summary: 'Construct ID → "Files"' }]);
+    expect(r.session.view().draft?.items).toEqual([
+      { id: UPLOADS, label: 'Uploads', summary: 'Construct ID → "Files"' },
+    ]);
     expect(r.session.view().nodes.find((x) => x.id === UPLOADS)?.changed).toBe(true);
-    expect(r.session.view().draft?.diffs[0]?.diff).toContain("-    new s3.Bucket(this, 'Uploads', {\n+    new s3.Bucket(this, 'Files', {");
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain(
+      "-    new s3.Bucket(this, 'Uploads', {\n+    new s3.Bucket(this, 'Files', {",
+    );
     await settled(r);
     expect(r.synth.shadowCalls[0]!.overlay!.get(SHOP)).toContain("new s3.Bucket(this, 'Files'");
     expect(r.files.writes).toEqual([]);
@@ -714,7 +871,9 @@ describe('renaming a Construct ID', () => {
     const r = await rig();
     const reply = await r.session.handle({ type: 'panel', requestId: 'p', id: UPLOADS });
     // Beside the other Nodes are the constructs the Design does not draw, which an ID can clash with too.
-    expect(reply.type === 'panel' && reply.panel.idEdit?.siblings).toEqual(expect.arrayContaining(['Orders', 'Catalog', 'CDKMetadata']));
+    expect(reply.type === 'panel' && reply.panel.idEdit?.siblings).toEqual(
+      expect.arrayContaining(['Orders', 'Catalog', 'CDKMetadata']),
+    );
     expect(reply.type === 'panel' && reply.panel.idEdit?.siblings).not.toContain('Uploads');
   });
 
@@ -744,7 +903,14 @@ describe('renaming a Construct ID', () => {
 
     it('writes the new ID and moves the Sidecar entry of the Node, and of what is beneath it, with it', async () => {
       const r = await rig({ synth: synthRenamed() });
-      r.files.texts.set('truss.json', sidecar({ [UPLOADS]: { position: { x: 1, y: 2 }, note: 'mine' }, [`${UPLOADS}/Resource`]: { note: 'deep' }, 'ShopStack/Orders': { position: { x: 5, y: 6 } } }));
+      r.files.texts.set(
+        'truss.json',
+        sidecar({
+          [UPLOADS]: { position: { x: 1, y: 2 }, note: 'mine' },
+          [`${UPLOADS}/Resource`]: { note: 'deep' },
+          'ShopStack/Orders': { position: { x: 5, y: 6 } },
+        }),
+      );
       await r.session.handle({ type: 'note', requestId: 'n', id: UPLOADS, note: 'mine' });
       await rename(r, UPLOADS, 'Files');
       await settled(r);
@@ -782,8 +948,10 @@ describe('renaming a Construct ID', () => {
 });
 
 describe('adding a Node, and duplicating one', () => {
-  const add = (r: Rig, scope: string, fqn: string, props?: Record<string, PropValue>): Promise<Reply> => r.session.handle({ type: 'addNode', requestId: `r${++n}`, scope, fqn, ...(props ? { props } : {}) });
-  const duplicate = (r: Rig, id: string): Promise<Reply> => r.session.handle({ type: 'duplicate', requestId: `r${++n}`, id });
+  const add = (r: Rig, scope: string, fqn: string, props?: Record<string, PropValue>): Promise<Reply> =>
+    r.session.handle({ type: 'addNode', requestId: `r${++n}`, scope, fqn, ...(props ? { props } : {}) });
+  const duplicate = (r: Rig, id: string): Promise<Reply> =>
+    r.session.handle({ type: 'duplicate', requestId: `r${++n}`, id });
   const BUCKET = 'aws-cdk-lib.aws_s3.Bucket';
 
   /** The fixture's assembly with one more child under ShopStack: `path` made like `like`, or a bare `fqn`. */
@@ -791,7 +959,9 @@ describe('adding a Node, and duplicating one', () => {
     const assembly = readFixtureAssembly('straight-line');
     const stack = assembly.tree.children.find((c) => c.path === 'ShopStack')!;
     const like = child.like ? stack.children.find((c) => c.path === child.like)! : undefined;
-    const copy = like ? JSON.parse(JSON.stringify(like).replaceAll(like.path, `ShopStack/${child.id}`)) : { id: child.id, path: `ShopStack/${child.id}`, fqn: child.fqn, children: [] };
+    const copy = like
+      ? JSON.parse(JSON.stringify(like).replaceAll(like.path, `ShopStack/${child.id}`))
+      : { id: child.id, path: `ShopStack/${child.id}`, fqn: child.fqn, children: [] };
     stack.children.push({ ...copy, id: child.id, path: `ShopStack/${child.id}` });
     return { ok: true, assembly };
   };
@@ -804,7 +974,9 @@ describe('adding a Node, and duplicating one', () => {
   it('stages the statement a developer would write, shows it at once, and writes it on Save', async () => {
     const r = await rig({ synth: synthWith({ id: 'Bucket', fqn: BUCKET }, "new s3.Bucket(this, 'Bucket')") });
     expect(await add(r, 'ShopStack', BUCKET)).toMatchObject({ type: 'ack' });
-    expect(r.session.view().draft?.items).toEqual([{ id: 'ShopStack', label: 'Bucket', summary: 'Add Bucket "Bucket"' }]);
+    expect(r.session.view().draft?.items).toEqual([
+      { id: 'ShopStack', label: 'Bucket', summary: 'Add Bucket "Bucket"' },
+    ]);
     expect(r.session.view().draft?.diffs[0]?.diff).toContain("+    const bucket = new s3.Bucket(this, 'Bucket');");
     await settled(r);
     expect(r.session.view().draft?.problems).toEqual([]);
@@ -833,16 +1005,26 @@ describe('adding a Node, and duplicating one', () => {
   it('asks for the props the construct needs and has no default for, and stages nothing until they come', async () => {
     const r = await rig();
     const asked = await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic');
-    expect(asked).toMatchObject({ type: 'form', fqn: 'aws-cdk-lib.aws_sns.Topic', props: [{ name: 'displayName', required: true }] });
+    expect(asked).toMatchObject({
+      type: 'form',
+      fqn: 'aws-cdk-lib.aws_sns.Topic',
+      props: [{ name: 'displayName', required: true }],
+    });
     expect(r.session.draftSize()).toBe(0);
-    expect(await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic', { displayName: { kind: 'string', value: 'Alerts' } })).toMatchObject({ type: 'ack' });
-    expect(r.session.view().draft?.diffs[0]?.diff).toContain("const topic = new sns.Topic(this, 'Topic', { displayName: 'Alerts' });");
+    expect(
+      await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic', { displayName: { kind: 'string', value: 'Alerts' } }),
+    ).toMatchObject({ type: 'ack' });
+    expect(r.session.view().draft?.diffs[0]?.diff).toContain(
+      "const topic = new sns.Topic(this, 'Topic', { displayName: 'Alerts' });",
+    );
     expect(r.session.view().draft?.diffs[0]?.diff).toContain("import * as sns from 'aws-cdk-lib/aws-sns';");
   });
 
   it('refuses a value of the wrong kind for the form, a construct that needs what Truss cannot write, and a scope that is not a Stack', async () => {
     const r = await rig();
-    expect(await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic', { displayName: { kind: 'boolean', value: true } })).toMatchObject({ type: 'form' });
+    expect(
+      await add(r, 'ShopStack', 'aws-cdk-lib.aws_sns.Topic', { displayName: { kind: 'boolean', value: true } }),
+    ).toMatchObject({ type: 'form' });
     expect(refusal(await add(r, 'ShopStack', 'aws-cdk-lib.aws_dynamodb.Table'))).toMatch(/partitionKey/);
     expect(refusal(await add(r, 'ShopStack/Uploads', BUCKET))).toMatch(/No Stack/);
     expect(refusal(await add(r, 'ShopStack', 'aws-cdk-lib.aws_nothing.Thing'))).toMatch(/not in the Catalog/);
@@ -852,7 +1034,9 @@ describe('adding a Node, and duplicating one', () => {
   it('copies a Node with a fresh ID, and saves it', async () => {
     const r = await rig({ synth: synthWith({ id: 'Uploads2', fqn: BUCKET, like: UPLOADS }, "'Uploads2'") });
     expect(await duplicate(r, UPLOADS)).toMatchObject({ type: 'ack' });
-    expect(r.session.view().draft?.items).toEqual([{ id: UPLOADS, label: 'Uploads2', summary: 'Duplicate as "Uploads2"' }]);
+    expect(r.session.view().draft?.items).toEqual([
+      { id: UPLOADS, label: 'Uploads2', summary: 'Duplicate as "Uploads2"' },
+    ]);
     await settled(r);
     expect(r.session.view().draft?.problems).toEqual([]);
     expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
@@ -873,7 +1057,8 @@ describe('adding a Node, and duplicating one', () => {
 });
 
 describe('removing a Node', () => {
-  const remove = (r: Rig, id: string): Promise<Reply> => r.session.handle({ type: 'removeNode', requestId: `r${++n}`, id });
+  const remove = (r: Rig, id: string): Promise<Reply> =>
+    r.session.handle({ type: 'removeNode', requestId: `r${++n}`, id });
   const ORDERS = 'ShopStack/Orders';
   const sidecar = (nodes: object) => JSON.stringify({ formatVersion: 1, nodes });
 
@@ -893,20 +1078,33 @@ describe('removing a Node', () => {
 
   it('stages the removal, shows the Node as a ghost, and writes the deletion on Save with the Sidecar entry gone', async () => {
     const r = await rig({ synth: synthWithout() });
-    r.files.texts.set('truss.json', sidecar({ [UPLOADS]: { position: { x: 1, y: 2 } }, [`${UPLOADS}/Resource`]: { note: 'deep' }, [ORDERS]: { position: { x: 5, y: 6 } } }));
+    r.files.texts.set(
+      'truss.json',
+      sidecar({
+        [UPLOADS]: { position: { x: 1, y: 2 } },
+        [`${UPLOADS}/Resource`]: { note: 'deep' },
+        [ORDERS]: { position: { x: 5, y: 6 } },
+      }),
+    );
     await r.session.handle({ type: 'note', requestId: 'n', id: ORDERS, note: 'keep' });
     expect(await remove(r, UPLOADS)).toMatchObject({ type: 'ack' });
     expect(r.session.view().draft?.items).toEqual([{ id: UPLOADS, label: 'Uploads', summary: 'Remove Uploads' }]);
     expect(r.session.view().draft?.diffs[0]?.diff).toContain("-    new s3.Bucket(this, 'Uploads', {");
     await settled(r);
     expect(r.session.view().draft?.problems).toEqual([]);
-    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)).toMatchObject({ removed: true, label: 'Uploads', stackId: 'ShopStack' });
+    expect(r.session.view().nodes.find((x) => x.id === UPLOADS)).toMatchObject({
+      removed: true,
+      label: 'Uploads',
+      stackId: 'ShopStack',
+    });
     expect(r.session.view().nodes.filter((x) => x.removed)).toHaveLength(1);
     expect(r.files.writes).not.toContain(SHOP);
 
     expect(await send(r, 'save')).toMatchObject({ type: 'ack' });
     expect(r.files.texts.get(SHOP)).not.toContain('Uploads');
-    expect(JSON.parse(r.files.texts.get('truss.json')!).nodes).toEqual({ [ORDERS]: { position: { x: 5, y: 6 }, note: 'keep' } });
+    expect(JSON.parse(r.files.texts.get('truss.json')!).nodes).toEqual({
+      [ORDERS]: { position: { x: 5, y: 6 }, note: 'keep' },
+    });
     await settled(r);
     expect(r.session.view().nodes.some((x) => x.removed)).toBe(false);
   });
@@ -930,7 +1128,16 @@ describe('removing a Node', () => {
   it('refuses a Node that other code uses, and lists where', async () => {
     const r = await rig();
     // The statement keeps its line and column, so the creation site synth recorded still points at it.
-    r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("super(scope, id, props);\n\n    new s3.Bucket(this, 'Uploads', {", "super(scope, id, props);\n    const uploads =\n    new s3.Bucket(this, 'Uploads', {").replace('    });\n\n    new sqs', '    });\n    console.log(uploads);\n    new sqs'));
+    r.files.sources.set(
+      SHOP,
+      r.files.sources
+        .get(SHOP)!
+        .replace(
+          "super(scope, id, props);\n\n    new s3.Bucket(this, 'Uploads', {",
+          "super(scope, id, props);\n    const uploads =\n    new s3.Bucket(this, 'Uploads', {",
+        )
+        .replace('    });\n\n    new sqs', '    });\n    console.log(uploads);\n    new sqs'),
+    );
     r.files.change();
     await settled(r);
     const reply = await remove(r, UPLOADS);

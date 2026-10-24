@@ -39,7 +39,8 @@ function readEntry(path: string, raw: unknown): SidecarEntry | string {
   const entry: SidecarEntry = {};
   if (raw['position'] !== undefined) {
     const p = raw['position'];
-    if (!isObject(p) || !isCoordinate(p['x']) || !isCoordinate(p['y'])) return `"${path}" has a position without numeric x and y`;
+    if (!isObject(p) || !isCoordinate(p['x']) || !isCoordinate(p['y']))
+      return `"${path}" has a position without numeric x and y`;
     entry.position = { x: p['x'], y: p['y'] };
   }
   if (raw['note'] !== undefined) {
@@ -55,7 +56,10 @@ export function parseSidecar(text: string, migrations: readonly Migration[] = MI
   try {
     raw = JSON.parse(text);
   } catch (err) {
-    return { ok: false, message: `${SIDECAR_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      ok: false,
+      message: `${SIDECAR_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   if (!isObject(raw)) return { ok: false, message: `${SIDECAR_FILE} is not a JSON object` };
   const version = raw['formatVersion'];
@@ -73,7 +77,10 @@ export function parseSidecar(text: string, migrations: readonly Migration[] = MI
   try {
     for (let v = version; v < current; v++) migrated = { ...migrations[v - 1]!(migrated), formatVersion: v + 1 };
   } catch (err) {
-    return { ok: false, message: `${SIDECAR_FILE} could not be upgraded from format ${version}: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      ok: false,
+      message: `${SIDECAR_FILE} could not be upgraded from format ${version}: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   if (!isObject(migrated['nodes'])) return { ok: false, message: `${SIDECAR_FILE} has no "nodes" object` };
   const nodes: Record<string, SidecarEntry> = {};
@@ -108,7 +115,10 @@ export function withPosition(sidecar: Sidecar, path: string, position: Point): S
   const entry = sidecar.nodes[path] ?? {};
   return {
     ...sidecar,
-    nodes: { ...sidecar.nodes, [path]: { ...entry, position: { x: Math.round(position.x), y: Math.round(position.y) } } },
+    nodes: {
+      ...sidecar.nodes,
+      [path]: { ...entry, position: { x: Math.round(position.x), y: Math.round(position.y) } },
+    },
   };
 }
 
@@ -132,5 +142,13 @@ export function withMoves(sidecar: Sidecar, moves: readonly Move[]): Sidecar {
   if (moves.length === 0) return sidecar;
   const entries = Object.entries(sidecar.nodes).map(([path, entry]) => ({ path, to: afterMoves(moves, path), entry }));
   // An entry that was already at the place another moves to is left behind by it.
-  return { ...sidecar, nodes: Object.fromEntries([...entries.filter((e) => e.to === e.path), ...entries.filter((e) => e.to !== e.path)].map((e) => [e.to, e.entry])) };
+  return {
+    ...sidecar,
+    nodes: Object.fromEntries(
+      [...entries.filter((e) => e.to === e.path), ...entries.filter((e) => e.to !== e.path)].map((e) => [
+        e.to,
+        e.entry,
+      ]),
+    ),
+  };
 }

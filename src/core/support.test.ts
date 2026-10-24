@@ -10,7 +10,9 @@ describe('checkSupported', () => {
   });
 
   it('opens an app exactly on the minimum', () => {
-    expect(checkSupported({ ...app, cdkLibVersion: MIN_CDK_LIB_VERSION, schemaRange: undefined }, truss)).toEqual({ ok: true });
+    expect(checkSupported({ ...app, cdkLibVersion: MIN_CDK_LIB_VERSION, schemaRange: undefined }, truss)).toEqual({
+      ok: true,
+    });
   });
 
   it('refuses an aws-cdk-lib below the minimum, naming both versions', () => {
@@ -26,7 +28,9 @@ describe('checkSupported', () => {
   });
 
   it('ignores a prerelease tag', () => {
-    expect(checkSupported({ ...app, cdkLibVersion: '2.274.0-alpha.0', schemaRange: undefined }, truss)).toEqual({ ok: true });
+    expect(checkSupported({ ...app, cdkLibVersion: '2.274.0-alpha.0', schemaRange: undefined }, truss)).toEqual({
+      ok: true,
+    });
   });
 
   it('refuses CDK v1, which has no aws-cdk-lib', () => {

@@ -26,15 +26,21 @@ describe('parseCreationStack', () => {
   });
 
   it('reads file:// URLs, as ESM loaders print them', () => {
-    expect(parseCreationStack(['file:///work/app/bin/app.ts:5:1', 'run (file:///work/app/lib/a.ts:2:3)'], APP)).toEqual([
-      { file: 'bin/app.ts', line: 5, col: 1 },
-      { fn: 'run', file: 'lib/a.ts', line: 2, col: 3 },
-    ]);
+    expect(parseCreationStack(['file:///work/app/bin/app.ts:5:1', 'run (file:///work/app/lib/a.ts:2:3)'], APP)).toEqual(
+      [
+        { file: 'bin/app.ts', line: 5, col: 1 },
+        { fn: 'run', file: 'lib/a.ts', line: 2, col: 3 },
+      ],
+    );
   });
 });
 
 describe('templateRefs', () => {
-  const resource = (path: string, extra: Record<string, unknown> = {}) => ({ Type: 'AWS::X::Y', Metadata: { 'aws:cdk:path': path }, ...extra });
+  const resource = (path: string, extra: Record<string, unknown> = {}) => ({
+    Type: 'AWS::X::Y',
+    Metadata: { 'aws:cdk:path': path },
+    ...extra,
+  });
 
   it('finds what each resource points at through Ref, GetAtt in both forms, Sub and DependsOn, by construct path', () => {
     const refs = templateRefs({
@@ -62,7 +68,9 @@ describe('templateRefs', () => {
         K: resource('S/K/Resource'),
       },
     });
-    expect(refs.map((r) => r.to).sort()).toEqual(['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'].map((x) => `S/${x}/Resource`));
+    expect(refs.map((r) => r.to).sort()).toEqual(
+      ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'].map((x) => `S/${x}/Resource`),
+    );
     expect(refs.every((r) => r.from === 'S/A/Resource')).toBe(true);
   });
 
@@ -70,7 +78,16 @@ describe('templateRefs', () => {
     const refs = templateRefs({
       Parameters: { P: { Type: 'String' } },
       Resources: {
-        A: resource('S/A/Resource', { Properties: { X: { Ref: 'B' }, Y: { Ref: 'B' }, Z: { Ref: 'AWS::Region' }, W: { Ref: 'P' }, V: { Ref: 'A' }, U: { Ref: 'Bare' } } }),
+        A: resource('S/A/Resource', {
+          Properties: {
+            X: { Ref: 'B' },
+            Y: { Ref: 'B' },
+            Z: { Ref: 'AWS::Region' },
+            W: { Ref: 'P' },
+            V: { Ref: 'A' },
+            U: { Ref: 'Bare' },
+          },
+        }),
         B: resource('S/B/Resource'),
         Bare: { Type: 'AWS::X::Y' },
       },
@@ -106,29 +123,43 @@ describe('readAssembly', () => {
         },
       });
       write(root, 'assembly-Dev/DevCore.metadata.json', {
-        '/Dev/Core/Events/Resource': [{ type: 'aws:cdk:creationStack', data: [`new AppStage (${root}/lib/app-stage.ts:9:5)`] }],
+        '/Dev/Core/Events/Resource': [
+          { type: 'aws:cdk:creationStack', data: [`new AppStage (${root}/lib/app-stage.ts:9:5)`] },
+        ],
       });
 
       const assembly = readAssembly(root, root);
 
       expect(assembly.stacks).toEqual([{ path: 'Dev/Core' }, { path: 'Web', env: 'aws://111111111111/eu-west-1' }]);
-      expect(assembly.creation['Dev/Core/Events/Resource']).toEqual([{ fn: 'new AppStage', file: 'lib/app-stage.ts', line: 9, col: 5 }]);
+      expect(assembly.creation['Dev/Core/Events/Resource']).toEqual([
+        { fn: 'new AppStage', file: 'lib/app-stage.ts', line: 9, col: 5 },
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it('reads the references between resources from each Stack\'s template', () => {
+  it("reads the references between resources from each Stack's template", () => {
     const root = mkdtempSync(join(tmpdir(), 'truss-assembly-'));
     try {
       write(root, 'tree.json', { tree: { id: 'App', path: '', children: {} } });
       write(root, 'manifest.json', {
         version: '55.0.0',
-        artifacts: { Web: { type: 'aws:cloudformation:stack', displayName: 'Web', properties: { templateFile: 'Web.template.json' } } },
+        artifacts: {
+          Web: {
+            type: 'aws:cloudformation:stack',
+            displayName: 'Web',
+            properties: { templateFile: 'Web.template.json' },
+          },
+        },
       });
       write(root, 'Web.template.json', {
         Resources: {
-          A: { Type: 'AWS::X::Y', Metadata: { 'aws:cdk:path': 'Web/A/Resource' }, Properties: { Arn: { 'Fn::GetAtt': ['B', 'Arn'] } } },
+          A: {
+            Type: 'AWS::X::Y',
+            Metadata: { 'aws:cdk:path': 'Web/A/Resource' },
+            Properties: { Arn: { 'Fn::GetAtt': ['B', 'Arn'] } },
+          },
           B: { Type: 'AWS::X::Y', Metadata: { 'aws:cdk:path': 'Web/B/Resource' } },
         },
       });
@@ -144,7 +175,9 @@ describe('readAssembly', () => {
       write(root, 'tree.json', { tree: { id: 'App', path: '', children: {} } });
       write(root, 'manifest.json', {
         version: '55.0.0',
-        artifacts: { Web: { type: 'aws:cloudformation:stack', displayName: 'Web', additionalMetadataFile: 'Web.metadata.json' } },
+        artifacts: {
+          Web: { type: 'aws:cloudformation:stack', displayName: 'Web', additionalMetadataFile: 'Web.metadata.json' },
+        },
       });
       write(root, 'Web.metadata.json', {
         '/Web/Queue': [
@@ -168,7 +201,10 @@ describe('readAssembly', () => {
     const root = mkdtempSync(join(tmpdir(), 'truss-assembly-'));
     try {
       write(root, 'tree.json', { tree: { id: 'App', path: '', children: {} } });
-      write(root, 'manifest.json', { version: '55.0.0', artifacts: { Web: { type: 'aws:cloudformation:stack', displayName: 'Web' } } });
+      write(root, 'manifest.json', {
+        version: '55.0.0',
+        artifacts: { Web: { type: 'aws:cloudformation:stack', displayName: 'Web' } },
+      });
       expect(readAssembly(root, root).resourceRefs).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });

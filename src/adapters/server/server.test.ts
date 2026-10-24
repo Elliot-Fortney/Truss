@@ -6,7 +6,16 @@ import type { ClientMessage, Reply } from '../../core/protocol.ts';
 import type { View } from '../../core/view.ts';
 import { startServer, type RunningServer, type ViewSource } from './server.ts';
 
-const view = (version: number): View => ({ version, synthing: false, hasDesign: false, stages: [], stacks: [], nodes: [], edges: [], problems: [] });
+const view = (version: number): View => ({
+  version,
+  synthing: false,
+  hasDesign: false,
+  stages: [],
+  stacks: [],
+  nodes: [],
+  edges: [],
+  problems: [],
+});
 
 function fakeSource(initial: View): ViewSource & { push(v: View): void; handled: ClientMessage[] } {
   let current = initial;
@@ -18,7 +27,9 @@ function fakeSource(initial: View): ViewSource & { push(v: View): void; handled:
       handled.push(m);
       if (m.type === 'search') return { type: 'results', requestId: m.requestId, hits: [] };
       if (!('id' in m)) return { type: 'ack', requestId: m.requestId };
-      return m.id === 'unknown' ? { type: 'refused', requestId: m.requestId, reason: 'No Node' } : { type: 'ack', requestId: m.requestId };
+      return m.id === 'unknown'
+        ? { type: 'refused', requestId: m.requestId, reason: 'No Node' }
+        : { type: 'ack', requestId: m.requestId };
     },
     view: () => current,
     subscribe: (l) => (listeners.add(l), () => listeners.delete(l)),
@@ -83,7 +94,9 @@ describe('startServer', () => {
 
   it('refuses a WebSocket upgrade without the session token', async () => {
     const { server } = await start();
-    expect(await connect(`ws://127.0.0.1:${server.port}/ws`, `http://127.0.0.1:${server.port}`)).toEqual({ status: 401 });
+    expect(await connect(`ws://127.0.0.1:${server.port}/ws`, `http://127.0.0.1:${server.port}`)).toEqual({
+      status: 401,
+    });
     expect(await connect(wsUrl(server, 'wrong'), `http://127.0.0.1:${server.port}`)).toEqual({ status: 401 });
   });
 
@@ -212,12 +225,19 @@ describe('startServer', () => {
 
     it('hands a search to the session and sends back its hits', async () => {
       const source = fakeSource(view(1));
-      expect(await ask(source, JSON.stringify({ type: 'search', requestId: 's', query: 'queue' }))).toEqual({ type: 'results', requestId: 's', hits: [] });
+      expect(await ask(source, JSON.stringify({ type: 'search', requestId: 's', query: 'queue' }))).toEqual({
+        type: 'results',
+        requestId: 's',
+        hits: [],
+      });
       expect(source.handled).toEqual([{ type: 'search', requestId: 's', query: 'queue' }]);
     });
 
     it("sends back the session's refusal", async () => {
-      const reply = await ask(fakeSource(view(1)), JSON.stringify({ type: 'move', requestId: 'r', id: 'unknown', x: 1, y: 1 }));
+      const reply = await ask(
+        fakeSource(view(1)),
+        JSON.stringify({ type: 'move', requestId: 'r', id: 'unknown', x: 1, y: 1 }),
+      );
       expect(reply).toEqual({ type: 'refused', requestId: 'r', reason: 'No Node' });
     });
 
@@ -227,7 +247,11 @@ describe('startServer', () => {
       ['a move without numbers', JSON.stringify({ type: 'move', requestId: 'r', id: 'A', x: '1', y: 2 }), 'r'],
       ['a move to infinity', '{"type":"move","requestId":"r","id":"A","x":1e999,"y":2}', 'r'],
       ['a note that is not text', JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 5 }), 'r'],
-      ['a note that is far too long', JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 'x'.repeat(10_001) }), 'r'],
+      [
+        'a note that is far too long',
+        JSON.stringify({ type: 'note', requestId: 'r', id: 'A', note: 'x'.repeat(10_001) }),
+        'r',
+      ],
       ['no request ID', JSON.stringify({ type: 'move', id: 'A', x: 1, y: 2 }), ''],
       ['a search without a query', JSON.stringify({ type: 'search', requestId: 'r' }), 'r'],
     ])('refuses %s without troubling the session', async (_why, payload, requestId) => {

@@ -6,7 +6,11 @@ const triggers = (peer: string, target: string, isDefault = false): ConnectionHi
   peers: [peer],
   flow: 'out',
   ...(isDefault ? { default: true as const } : {}),
-  primary: { forms: [['addTarget']], args: [`new ${target}({peer})`], uses: [`aws-cdk-lib.aws_events_targets.${target}`] },
+  primary: {
+    forms: [['addTarget']],
+    args: [`new ${target}({peer})`],
+    uses: [`aws-cdk-lib.aws_events_targets.${target}`],
+  },
 });
 
 const overlay: Overlay = {
@@ -15,7 +19,10 @@ const overlay: Overlay = {
   featuredProps: ['schedule', 'eventPattern', 'description', 'enabled', 'ruleName', 'eventBus'],
   // A rule with neither a schedule nor an event pattern throws.
   defaults: {
-    schedule: { code: 'Schedule.rate(Duration.hours(1))', uses: ['aws-cdk-lib.aws_events.Schedule', 'aws-cdk-lib.Duration'] },
+    schedule: {
+      code: 'Schedule.rate(Duration.hours(1))',
+      uses: ['aws-cdk-lib.aws_events.Schedule', 'aws-cdk-lib.Duration'],
+    },
   },
   connections: [
     triggers('aws-cdk-lib.aws_lambda.Function', 'LambdaFunction', true),

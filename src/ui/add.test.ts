@@ -30,7 +30,11 @@ describe('stackPathOf', () => {
 describe('writtenOf', () => {
   it('shows a form value as the code would write it', () => {
     expect(writtenOf({ kind: 'string', value: 'x' })).toEqual({ kind: 'literal', value: 'x', text: 'x' });
-    expect(writtenOf({ kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY' })).toMatchObject({ member: { type: 'RemovalPolicy', name: 'DESTROY' } });
-    expect(writtenOf({ kind: 'duration', unit: 'seconds', amount: 30 })).toMatchObject({ quantity: { type: 'Duration', unit: 'seconds', amount: 30 } });
+    expect(writtenOf({ kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY' })).toMatchObject({
+      member: { type: 'RemovalPolicy', name: 'DESTROY' },
+    });
+    expect(writtenOf({ kind: 'duration', unit: 'seconds', amount: 30 })).toMatchObject({
+      quantity: { type: 'Duration', unit: 'seconds', amount: 30 },
+    });
   });
 });

@@ -92,7 +92,11 @@ function layOutLayer(parentId: string, children: readonly LayerChildView[], expa
       bottom = Math.max(bottom, y + height);
       layers.push({ id: k.id, parentId: id, x: LAYER_PADDING + x, y: LAYER_HEADER + y, width, height }, ...below);
     }
-    return { width: Math.max(NODE_WIDTH, right + LAYER_PADDING * 2), height: LAYER_HEADER + bottom + LAYER_PADDING, layers };
+    return {
+      width: Math.max(NODE_WIDTH, right + LAYER_PADDING * 2),
+      height: LAYER_HEADER + bottom + LAYER_PADDING,
+      layers,
+    };
   };
   return lay(parentId);
 }
@@ -130,7 +134,9 @@ export function layoutView(view: View, expanded: ReadonlySet<string> = new Set()
     // A hoisted Node goes to the right of the Node that caused it.
     for (const n of members) for (const cause of n.causedBy ?? []) if (g.hasNode(cause)) g.setEdge(cause, n.id);
     // Arrows run left to right: a Node goes to the left of the Node its arrow points at.
-    for (const e of view.edges) if (g.hasNode(e.from) && g.hasNode(e.to) && e.from !== e.to) e.flow === 'in' ? g.setEdge(e.to, e.from) : g.setEdge(e.from, e.to);
+    for (const e of view.edges)
+      if (g.hasNode(e.from) && g.hasNode(e.to) && e.from !== e.to)
+        e.flow === 'in' ? g.setEdge(e.to, e.from) : g.setEdge(e.from, e.to);
     dagre.layout(g);
 
     // Canvas coordinates of each member's top-left corner.
@@ -138,7 +144,12 @@ export function layoutView(view: View, expanded: ReadonlySet<string> = new Set()
       const size = memberSize.get(n.id)!;
       if (n.position) return { id: n.id, x: n.position.x, y: n.position.y, ...size };
       const p = g.node(n.id); // dagre positions by centre
-      return { id: n.id, x: x + STACK_PADDING + p.x - size.width / 2, y: y + STACK_HEADER + p.y - size.height / 2, ...size };
+      return {
+        id: n.id,
+        x: x + STACK_PADDING + p.x - size.width / 2,
+        y: y + STACK_HEADER + p.y - size.height / 2,
+        ...size,
+      };
     });
 
     let childX = placed.length > 0 ? Math.max(...placed.map((p) => p.x + p.width)) + STACK_GAP : x + STACK_PADDING;
@@ -156,7 +167,13 @@ export function layoutView(view: View, expanded: ReadonlySet<string> = new Set()
     const bottoms = [...placed.map((p) => p.y + p.height), ...children.map((c) => c.y + c.height)];
     let box: StackLayout;
     if (lefts.length === 0) {
-      box = { id: stack.id, x, y, width: NODE_WIDTH + STACK_PADDING * 2, height: NODE_HEIGHT + STACK_HEADER + STACK_PADDING };
+      box = {
+        id: stack.id,
+        x,
+        y,
+        width: NODE_WIDTH + STACK_PADDING * 2,
+        height: NODE_HEIGHT + STACK_HEADER + STACK_PADDING,
+      };
     } else {
       const minX = Math.min(...lefts);
       const minY = Math.min(...tops);

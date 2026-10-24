@@ -13,14 +13,23 @@ describe('editorCommand', () => {
 
   it('jumps to file:line:col in VS Code and its forks', () => {
     for (const editor of ['code', 'cursor', 'windsurf', 'codium']) {
-      expect(editorCommand({ TRUSS_EDITOR: editor }, 'linux', at)).toEqual({ cmd: editor, args: ['--goto', '/app/lib/a.ts:12:9'] });
+      expect(editorCommand({ TRUSS_EDITOR: editor }, 'linux', at)).toEqual({
+        cmd: editor,
+        args: ['--goto', '/app/lib/a.ts:12:9'],
+      });
     }
   });
 
   it('jumps to file:line:col in Sublime Text, Zed and JetBrains IDEs', () => {
     expect(editorCommand({ TRUSS_EDITOR: 'subl' }, 'linux', at).args).toEqual(['/app/lib/a.ts:12:9']);
     expect(editorCommand({ TRUSS_EDITOR: 'zed' }, 'linux', at).args).toEqual(['/app/lib/a.ts:12:9']);
-    expect(editorCommand({ TRUSS_EDITOR: 'idea' }, 'linux', at).args).toEqual(['--line', '12', '--column', '9', '/app/lib/a.ts']);
+    expect(editorCommand({ TRUSS_EDITOR: 'idea' }, 'linux', at).args).toEqual([
+      '--line',
+      '12',
+      '--column',
+      '9',
+      '/app/lib/a.ts',
+    ]);
   });
 
   it('opens just the file in an editor it does not know', () => {

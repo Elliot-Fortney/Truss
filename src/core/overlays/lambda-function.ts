@@ -18,7 +18,11 @@ const overlay: Overlay = {
       peers: ['aws-cdk-lib.aws_sqs.Queue'],
       flow: 'in',
       default: true,
-      primary: { forms: [['addEventSource']], args: ['new SqsEventSource({peer})'], uses: ['aws-cdk-lib.aws_lambda_event_sources.SqsEventSource'] },
+      primary: {
+        forms: [['addEventSource']],
+        args: ['new SqsEventSource({peer})'],
+        uses: ['aws-cdk-lib.aws_lambda_event_sources.SqsEventSource'],
+      },
     },
     {
       kind: 'integration',

@@ -57,7 +57,12 @@ export function NodePicker({ name, nodes, pick }: { name: string; nodes: PropNod
                   read-only
                 </span>
               ) : (
-                <button type="button" className="picked-remove" aria-label={`Remove ${c.label} from ${name}`} onClick={() => void pick.disconnect(name, c.id)}>
+                <button
+                  type="button"
+                  className="picked-remove"
+                  aria-label={`Remove ${c.label} from ${name}`}
+                  onClick={() => void pick.disconnect(name, c.id)}
+                >
                   ✕
                 </button>
               )}

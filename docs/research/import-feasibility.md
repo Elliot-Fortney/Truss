@@ -6,10 +6,10 @@ Claims marked **[exp]** were checked by experiment. The experiment synthesized a
 
 ## TL;DR
 
-- **Synth output is the backbone.** `tree.json` gives the full construct tree: id, path, jsii FQN and version for every construct (L3 → L2 → L1). For L1s it also gives the CFN type and the *resolved* CFN props. The CFN templates give connections as `Ref`/`Fn::GetAtt` plus IAM policy statements. Each resource carries `aws:cdk:path`, which joins it back to the tree. **L2/L3 props are not recorded** (only their L1 effects are).
+- **Synth output is the backbone.** `tree.json` gives the full construct tree: id, path, jsii FQN and version for every construct (L3 → L2 → L1). For L1s it also gives the CFN type and the _resolved_ CFN props. The CFN templates give connections as `Ref`/`Fn::GetAtt` plus IAM policy statements. Each resource carries `aws:cdk:path`, which joins it back to the tree. **L2/L3 props are not recorded** (only their L1 effects are).
 - **Source locations come for free.** By default, every `CfnElement` and `Stack` records an `aws:cdk:creationStack` trace into `<stack>.metadata.json`. The trace is filtered to "just my code", so it points at the user line that called `new s3.Bucket(...)` **[exp]**. The new official `cdk lsp` (`@aws-cdk/cdk-explorer`) already maps these traces through `.js.map` source maps to `.ts` line and column. Caveat: Node's default 10-frame limit drops the call site of lazily created children such as a grant's `DefaultPolicy`. `--stack-trace-limit=50` recovers it, including the frame name `grantRead` **[exp]**.
 - **Static TS AST analysis recovers what synth loses**: the authored L2/L3 props as source expressions, `grant*` / `add*` calls, variable names, and exact positions. It cannot handle loops, conditionals, helper functions, computed IDs, or anything that needs evaluation **[exp]**. It is also exposed to churn: **TypeScript 7.0 ships no stable programmatic API**. The `typescript@7.0.2` package exports only `unstable/*` entry points **[exp]**, and a stable API is promised for 7.1. Import must pin the TS 6 API (`@typescript/typescript6`).
-- **Running the app with instrumentation** (a `require` hook that wraps `aws-cdk-lib` classes) captures the *actual* constructor arguments of every user-authored construct, keyed by construct path **[exp]**. It is exact and handles loops, but it executes user code (Node only, needs trust, and may need AWS context lookups).
+- **Running the app with instrumentation** (a `require` hook that wraps `aws-cdk-lib` classes) captures the _actual_ constructor arguments of every user-authored construct, keyed by construct path **[exp]**. It is exact and handles loops, but it executes user code (Node only, needs trust, and may need AWS context lookups).
 - **Recommended v2 Import = synth + static join.** Read `cdk.out` (tree.json + manifest metadata + templates) for structure, types and connections. Use creation-stack locations to join each construct to its `NewExpression` in the TS AST, and read authored props from there. Instrumentation is an optional precision upgrade. A browser-only Truss can take an uploaded `cdk.out` plus the source files. Running synth needs a local Node helper.
 - **What v1 Exports must contain** (details in §6):
   1. Literal, stable construct IDs, because the construct path is the join key.
@@ -20,17 +20,17 @@ Claims marked **[exp]** were checked by experiment. The experiment synthesized a
 
 ## 1. What each technique recovers
 
-| Recovers | Synth: `tree.json` | Synth: templates + `aws:cdk:path` | Synth: manifest metadata (`*.metadata.json`) | Static TS AST | Instrumented run |
-|---|---|---|---|---|---|
-| Construct tree (L3→L2→L1) | **Yes**, every construct incl. library-internal children | L1 only (via path) | Paths of constructs with metadata | Only what the user wrote; library internals invisible | User-authored constructs (plus tree via `node.children`) |
-| Construct type | **jsii FQN + version** (`constructInfo`) | CFN type | No | Resolved class symbol → `.d.ts` file (FQN derivable) | jsii FQN via `Symbol.for('jsii.rtti')` |
-| L1 props | **Resolved values** (`aws:cdk:cloudformation:props`) | Resolved values | No | Only if user wrote an L1 | Yes |
-| L2/L3 props | **No** | No | Only if `@aws-cdk/core:enableAdditionalMetadataCollection` is on, and then **redacted** (strings/numbers → `*`) | **Yes**, as source expressions | **Yes**, as runtime values |
-| Connections | No (attributes only) | **Yes**: `Ref`, `Fn::GetAtt`, `DependsOn`, IAM statements | No | Yes, as `grant*` calls and props referencing variables | Yes, if methods are wrapped too |
-| Intent of connection (`grantRead` vs hand-written policy) | No | No: the grant becomes an `AWS::IAM::Policy` with expanded actions | Frame name `grantRead` in the creation stack, if the trace limit is high enough **[exp]** | **Yes** | Yes |
-| Source locations | No | No | **Yes**: `aws:cdk:creationStack`, `aws:cdk:logicalId` trace, `aws:cdk:propertyAssignment` (debug) | **Yes**, exact | Yes (stack at construction) |
-| Handles loops/conditionals/helpers | Yes (it is the result) | Yes | Yes | **No** | Yes |
-| Needs to execute user code | Yes (`cdk synth`) | Yes | Yes | **No** | Yes |
+| Recovers                                                  | Synth: `tree.json`                                       | Synth: templates + `aws:cdk:path`                                 | Synth: manifest metadata (`*.metadata.json`)                                                                    | Static TS AST                                          | Instrumented run                                         |
+| --------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| Construct tree (L3→L2→L1)                                 | **Yes**, every construct incl. library-internal children | L1 only (via path)                                                | Paths of constructs with metadata                                                                               | Only what the user wrote; library internals invisible  | User-authored constructs (plus tree via `node.children`) |
+| Construct type                                            | **jsii FQN + version** (`constructInfo`)                 | CFN type                                                          | No                                                                                                              | Resolved class symbol → `.d.ts` file (FQN derivable)   | jsii FQN via `Symbol.for('jsii.rtti')`                   |
+| L1 props                                                  | **Resolved values** (`aws:cdk:cloudformation:props`)     | Resolved values                                                   | No                                                                                                              | Only if user wrote an L1                               | Yes                                                      |
+| L2/L3 props                                               | **No**                                                   | No                                                                | Only if `@aws-cdk/core:enableAdditionalMetadataCollection` is on, and then **redacted** (strings/numbers → `*`) | **Yes**, as source expressions                         | **Yes**, as runtime values                               |
+| Connections                                               | No (attributes only)                                     | **Yes**: `Ref`, `Fn::GetAtt`, `DependsOn`, IAM statements         | No                                                                                                              | Yes, as `grant*` calls and props referencing variables | Yes, if methods are wrapped too                          |
+| Intent of connection (`grantRead` vs hand-written policy) | No                                                       | No: the grant becomes an `AWS::IAM::Policy` with expanded actions | Frame name `grantRead` in the creation stack, if the trace limit is high enough **[exp]**                       | **Yes**                                                | Yes                                                      |
+| Source locations                                          | No                                                       | No                                                                | **Yes**: `aws:cdk:creationStack`, `aws:cdk:logicalId` trace, `aws:cdk:propertyAssignment` (debug)               | **Yes**, exact                                         | Yes (stack at construction)                              |
+| Handles loops/conditionals/helpers                        | Yes (it is the result)                                   | Yes                                                               | Yes                                                                                                             | **No**                                                 | Yes                                                      |
+| Needs to execute user code                                | Yes (`cdk synth`)                                        | Yes                                                               | Yes                                                                                                             | **No**                                                 | Yes                                                      |
 
 ## 2. Synth output in detail
 
@@ -66,8 +66,14 @@ When context `aws:cdk:enable-path-metadata` is set, `CfnResource` writes `Metada
 Connections are the intrinsic references. In the experiment the grant became **[exp]**:
 
 ```json
-{"Action": ["s3:GetObject*","s3:GetBucket*","s3:List*"], "Effect": "Allow",
- "Resource": [{"Fn::GetAtt": ["Uploads4F6EB0FD","Arn"]}, {"Fn::Join": ["", [{"Fn::GetAtt": ["Uploads4F6EB0FD","Arn"]}, "/*"]]}]}
+{
+  "Action": ["s3:GetObject*", "s3:GetBucket*", "s3:List*"],
+  "Effect": "Allow",
+  "Resource": [
+    { "Fn::GetAtt": ["Uploads4F6EB0FD", "Arn"] },
+    { "Fn::Join": ["", [{ "Fn::GetAtt": ["Uploads4F6EB0FD", "Arn"] }, "/*"]] }
+  ]
+}
 ```
 
 That statement sits in `ThumbnailerServiceRoleDefaultPolicy9BAC8CD0`, attached to the function's role. The template alone cannot say "`grantRead`" rather than "a hand-written policy with these actions". It can only be pattern-matched against known grant action sets. cdk-dia derives its edges exactly this way, by scanning `aws:cdk:cloudformation:props` in tree.json for `Ref` / `Fn::GetAtt` ([`src/diagram/aws/aws-edge-resolver.ts`](https://github.com/pistazie/cdk-dia/blob/main/src/diagram/aws/aws-edge-resolver.ts)).
@@ -78,13 +84,13 @@ Logical IDs are a function of the construct path: the human-readable components 
 
 Every construct's `node.metadata` entries are written, keyed by `/<construct path>`, into `<artifactId>.metadata.json`, which is referenced from `manifest.json` as `additionalMetadataFile` ([`core/lib/stack-synthesizers/_shared.ts`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/lib/stack-synthesizers/_shared.ts), `collectStackMetadata`). Entry shape is `{ type, data?, trace? }`. Relevant types ([`metadata-schema.ts`](https://github.com/aws/aws-cdk-cli/blob/main/packages/%40aws-cdk/cloud-assembly-schema/lib/cloud-assembly/metadata-schema.ts)):
 
-| Type | Written by | Default? | Use for Import |
-|---|---|---|---|
-| `aws:cdk:logicalId` | every `CfnElement` | yes, unless `aws:cdk:disable-logicalId-metadata` | path → logical ID |
-| `aws:cdk:creationStack` | every `CfnElement` and `Stack` constructor | **yes**, unless `aws:cdk:disable-creation-stack-traces` (re-enabled by `CDK_DEBUG`) | **source location** |
-| `aws:cdk:propertyAssignment` | `traceProperty()` on later property mutation | only with `CDK_DEBUG` | where a prop was changed after creation |
-| `aws:cdk:analytics:construct` / `:method` | `addConstructMetadata` / `@MethodMetadata` on L2s | only with feature flag `@aws-cdk/core:enableAdditionalMetadataCollection`; values **redacted** to `*` except booleans/known enums | prop *shape* only; not usable for values |
-| any custom type | `node.addMetadata(type, data)` | yes | a channel for Truss markers (§6) |
+| Type                                      | Written by                                        | Default?                                                                                                                          | Use for Import                           |
+| ----------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `aws:cdk:logicalId`                       | every `CfnElement`                                | yes, unless `aws:cdk:disable-logicalId-metadata`                                                                                  | path → logical ID                        |
+| `aws:cdk:creationStack`                   | every `CfnElement` and `Stack` constructor        | **yes**, unless `aws:cdk:disable-creation-stack-traces` (re-enabled by `CDK_DEBUG`)                                               | **source location**                      |
+| `aws:cdk:propertyAssignment`              | `traceProperty()` on later property mutation      | only with `CDK_DEBUG`                                                                                                             | where a prop was changed after creation  |
+| `aws:cdk:analytics:construct` / `:method` | `addConstructMetadata` / `@MethodMetadata` on L2s | only with feature flag `@aws-cdk/core:enableAdditionalMetadataCollection`; values **redacted** to `*` except booleans/known enums | prop _shape_ only; not usable for values |
+| any custom type                           | `node.addMetadata(type, data)`                    | yes                                                                                                                               | a channel for Truss markers (§6)         |
 
 Sources: [`core/lib/cfn-element.ts`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/lib/cfn-element.ts), [`core/lib/stack.ts`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/lib/stack.ts), [`core/lib/metadata-resource.ts`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/lib/metadata-resource.ts), [`core/lib/debug.ts`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/lib/debug.ts), [`cx-api/lib/app.ts`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/cx-api/lib/app.ts).
 
@@ -140,12 +146,12 @@ Demo/Thumbnailer  aws-cdk-lib.aws_lambda.Function  {"runtime":"Runtime","handler
 
 ## 5. Existing visualisers (CDK → picture)
 
-| Tool | Input | Edges from | Notes |
-|---|---|---|---|
-| **cdk-dia** ([repo](https://github.com/pistazie/cdk-dia), npm `cdk-dia@0.12.4`, updated 2026-09) | `cdk.out/tree.json` after `cdk synth` | `Ref`/`Fn::GetAtt` in L1 props and stack exports | Collapses L2s by default. A `CdkDiaDecorator` via `IInspectable` can expand or ignore a construct (TS/JS only). Graphviz output, plus experimental Cytoscape HTML. |
-| **AWS PDK cdk-graph + diagram plugin** ([guide](https://github.com/aws/aws-pdk/blob/mainline/packages/cdk-graph/docs/developer_guides/cdk-graph/index.md)) | In-app construct at synth | Graph built from tree + references | PDK unsupported; points to the Nx Plugin for AWS. |
-| **AWS Toolkit CDK Explorer** ([docs](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/cdk-explorer.html)) | `tree.json` | none (tree view only) | Preview, read-only. |
-| **`cdk lsp` / cdk-explorer** ([README](https://github.com/aws/aws-cdk-cli/tree/main/packages/%40aws-cdk/cdk-explorer)) | runs the app, reads `cdk.out` | n/a | Source ↔ construct ↔ template navigation via creation stacks and source maps. |
+| Tool                                                                                                                                                       | Input                                 | Edges from                                       | Notes                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **cdk-dia** ([repo](https://github.com/pistazie/cdk-dia), npm `cdk-dia@0.12.4`, updated 2026-09)                                                           | `cdk.out/tree.json` after `cdk synth` | `Ref`/`Fn::GetAtt` in L1 props and stack exports | Collapses L2s by default. A `CdkDiaDecorator` via `IInspectable` can expand or ignore a construct (TS/JS only). Graphviz output, plus experimental Cytoscape HTML. |
+| **AWS PDK cdk-graph + diagram plugin** ([guide](https://github.com/aws/aws-pdk/blob/mainline/packages/cdk-graph/docs/developer_guides/cdk-graph/index.md)) | In-app construct at synth             | Graph built from tree + references               | PDK unsupported; points to the Nx Plugin for AWS.                                                                                                                  |
+| **AWS Toolkit CDK Explorer** ([docs](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/cdk-explorer.html))                                   | `tree.json`                           | none (tree view only)                            | Preview, read-only.                                                                                                                                                |
+| **`cdk lsp` / cdk-explorer** ([README](https://github.com/aws/aws-cdk-cli/tree/main/packages/%40aws-cdk/cdk-explorer))                                     | runs the app, reads `cdk.out`         | n/a                                              | Source ↔ construct ↔ template navigation via creation stacks and source maps.                                                                                      |
 
 All of them read synth output. None recovers L2 props or intent, and none writes code back. Truss's Import would be the first to combine synth with source.
 

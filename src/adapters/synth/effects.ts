@@ -60,7 +60,9 @@ function flatten(value: Json, scope: Scope, paths: Set<string>): string {
       return vars && id in vars ? flatten(vars[id], scope, paths) : reference(id);
     });
   }
-  return Object.values(obj).map((v) => flatten(v, scope, paths)).join('');
+  return Object.values(obj)
+    .map((v) => flatten(v, scope, paths))
+    .join('');
 }
 
 function endOf(value: Json, scope: Scope): EffectEnd {
@@ -96,7 +98,8 @@ function grantsOf(at: string, document: Json, source: EffectEnd, scope: Scope): 
     if (statement.Effect !== 'Allow' || statement.Resource === undefined) continue;
     const actions = list(statement.Action).filter((a): a is string => typeof a === 'string');
     const detail = actions.length > 0 ? actions.join(', ') : 'all actions except those listed';
-    for (const resource of list(statement.Resource)) out.push({ kind: 'grant', at, source, target: endOf(resource, scope), detail });
+    for (const resource of list(statement.Resource))
+      out.push({ kind: 'grant', at, source, target: endOf(resource, scope), detail });
   }
   return out;
 }
@@ -152,14 +155,18 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
     });
     const principals = (props: Record<string, Json>): EffectEnd => {
       const paths = new Set<string>();
-      const text = ['Roles', 'Users', 'Groups'].map((k) => flatten(props[k], scope, paths)).filter(Boolean).join(', ');
+      const text = ['Roles', 'Users', 'Groups']
+        .map((k) => flatten(props[k], scope, paths))
+        .filter(Boolean)
+        .join(', ');
       return { paths: [...paths], text };
     };
     // A managed policy a role lists in `ManagedPolicyArns` is attached to that role, even when it names no role itself.
     const attachedTo = new Map<string, string[]>();
     for (const r of resources) {
       if (r.type !== 'AWS::IAM::Role') continue;
-      for (const id of idsIn(r.props.ManagedPolicyArns)) (attachedTo.get(id) ?? attachedTo.set(id, []).get(id)!).push(r.path);
+      for (const id of idsIn(r.props.ManagedPolicyArns))
+        (attachedTo.get(id) ?? attachedTo.set(id, []).get(id)!).push(r.path);
     }
 
     for (const r of resources) {
@@ -169,7 +176,10 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
         case 'AWS::IAM::ManagedPolicy': {
           const named = principals(props);
           const roles = attachedTo.get(r.id) ?? [];
-          const source: EffectEnd = { paths: [...new Set([...named.paths, ...roles])], text: [named.text, ...roles.map((p) => `{${p}}`)].filter(Boolean).join(', ') };
+          const source: EffectEnd = {
+            paths: [...new Set([...named.paths, ...roles])],
+            text: [named.text, ...roles.map((p) => `{${p}}`)].filter(Boolean).join(', '),
+          };
           effects.push(...grantsOf(r.path, props.PolicyDocument, source, scope));
           break;
         }
@@ -179,30 +189,82 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
           }
           break;
         case 'AWS::Lambda::EventSourceMapping':
-          effects.push({ kind: 'integration', at: r.path, source: endOf(props.EventSourceArn, scope), target: endOf(props.FunctionName, scope), detail: 'event source mapping' });
+          effects.push({
+            kind: 'integration',
+            at: r.path,
+            source: endOf(props.EventSourceArn, scope),
+            target: endOf(props.FunctionName, scope),
+            detail: 'event source mapping',
+          });
           break;
         case 'AWS::SNS::Subscription':
-          effects.push({ kind: 'integration', at: r.path, source: endOf(props.TopicArn, scope), target: endOf(props.Endpoint, scope), detail: `subscription (${flatten(props.Protocol, scope, new Set())})` });
+          effects.push({
+            kind: 'integration',
+            at: r.path,
+            source: endOf(props.TopicArn, scope),
+            target: endOf(props.Endpoint, scope),
+            detail: `subscription (${flatten(props.Protocol, scope, new Set())})`,
+          });
           break;
         case 'AWS::Events::Rule':
           for (const target of list(props.Targets) as Array<Record<string, Json>>) {
-            effects.push({ kind: 'integration', at: r.path, source: { paths: [r.path], text: `{${r.path}}` }, target: endOf(target.Arn, scope), detail: 'rule target' });
+            effects.push({
+              kind: 'integration',
+              at: r.path,
+              source: { paths: [r.path], text: `{${r.path}}` },
+              target: endOf(target.Arn, scope),
+              detail: 'rule target',
+            });
           }
           break;
         case 'AWS::EC2::SecurityGroupIngress':
-          effects.push({ kind: 'network', at: r.path, source: peerOf(props, scope, ['SourceSecurityGroupId', 'CidrIp', 'CidrIpv6', 'SourcePrefixListId']), target: endOf(props.GroupId, scope), detail: ports(props) });
+          effects.push({
+            kind: 'network',
+            at: r.path,
+            source: peerOf(props, scope, ['SourceSecurityGroupId', 'CidrIp', 'CidrIpv6', 'SourcePrefixListId']),
+            target: endOf(props.GroupId, scope),
+            detail: ports(props),
+          });
           break;
         case 'AWS::EC2::SecurityGroupEgress':
-          effects.push({ kind: 'network', at: r.path, source: endOf(props.GroupId, scope), target: peerOf(props, scope, ['DestinationSecurityGroupId', 'CidrIp', 'CidrIpv6', 'DestinationPrefixListId']), detail: ports(props) });
+          effects.push({
+            kind: 'network',
+            at: r.path,
+            source: endOf(props.GroupId, scope),
+            target: peerOf(props, scope, [
+              'DestinationSecurityGroupId',
+              'CidrIp',
+              'CidrIpv6',
+              'DestinationPrefixListId',
+            ]),
+            detail: ports(props),
+          });
           break;
         case 'AWS::EC2::SecurityGroup': {
           const self: EffectEnd = { paths: [r.path], text: `{${r.path}}` };
           for (const rule of list(props.SecurityGroupIngress) as Array<Record<string, Json>>) {
-            effects.push({ kind: 'network', at: r.path, source: peerOf(rule, scope, ['SourceSecurityGroupId', 'CidrIp', 'CidrIpv6', 'SourcePrefixListId']), target: self, detail: ports(rule) });
+            effects.push({
+              kind: 'network',
+              at: r.path,
+              source: peerOf(rule, scope, ['SourceSecurityGroupId', 'CidrIp', 'CidrIpv6', 'SourcePrefixListId']),
+              target: self,
+              detail: ports(rule),
+            });
           }
           for (const rule of list(props.SecurityGroupEgress) as Array<Record<string, Json>>) {
             if (isDefaultEgress(rule)) continue;
-            effects.push({ kind: 'network', at: r.path, source: self, target: peerOf(rule, scope, ['DestinationSecurityGroupId', 'CidrIp', 'CidrIpv6', 'DestinationPrefixListId']), detail: ports(rule) });
+            effects.push({
+              kind: 'network',
+              at: r.path,
+              source: self,
+              target: peerOf(rule, scope, [
+                'DestinationSecurityGroupId',
+                'CidrIp',
+                'CidrIpv6',
+                'DestinationPrefixListId',
+              ]),
+              detail: ports(rule),
+            });
           }
           break;
         }

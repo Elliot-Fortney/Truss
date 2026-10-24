@@ -30,8 +30,18 @@ describe('constructIdProblem', () => {
   });
 });
 
-const node = (path: string, ...children: TreeNode[]): TreeNode => ({ id: path.split('/').at(-1)!, path, fqn: 'x', children });
-const tree: TreeNode = { id: '', path: '', fqn: 'App', children: [node('S', node('S/A'), node('S/B', node('S/B/Resource'))), node('T')] };
+const node = (path: string, ...children: TreeNode[]): TreeNode => ({
+  id: path.split('/').at(-1)!,
+  path,
+  fqn: 'x',
+  children,
+});
+const tree: TreeNode = {
+  id: '',
+  path: '',
+  fqn: 'App',
+  children: [node('S', node('S/A'), node('S/B', node('S/B/Resource'))), node('T')],
+};
 
 describe('siblingIds', () => {
   it('lists the IDs beside a construct, not its own', () => {

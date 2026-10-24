@@ -11,7 +11,11 @@ export async function commit(files: Files, overlay: FileSet, baseFiles: FileSet)
   const touched = [...overlay.keys()];
   const onDisk = await files.read();
   const changed = touched.filter((file) => onDisk.get(file) !== baseFiles.get(file));
-  if (changed.length > 0) return { ok: false, reason: `${changed.join(', ')} changed on disk since Truss last read it. Nothing was saved; Truss is reading the new code.` };
+  if (changed.length > 0)
+    return {
+      ok: false,
+      reason: `${changed.join(', ')} changed on disk since Truss last read it. Nothing was saved; Truss is reading the new code.`,
+    };
 
   const written: string[] = [];
   try {
@@ -21,7 +25,10 @@ export async function commit(files: Files, overlay: FileSet, baseFiles: FileSet)
     }
   } catch (err) {
     for (const file of written) await files.writeText(file, baseFiles.get(file)!).catch(() => undefined);
-    return { ok: false, reason: `Couldn't write ${touched.join(', ')}; nothing was saved: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      ok: false,
+      reason: `Couldn't write ${touched.join(', ')}; nothing was saved: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   return { ok: true };
 }

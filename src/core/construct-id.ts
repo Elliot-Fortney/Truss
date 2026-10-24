@@ -21,7 +21,8 @@ export function constructIdProblem(id: string, siblings: readonly string[]): str
   if (siblings.some((s) => cdkId(s) === written)) return `A sibling already has the Construct ID "${written}".`;
   // CDK names the default child of a construct `Resource` or `Default`, and drops both from the logical ID, so the pair can't both exist.
   const partner = written === 'Resource' ? 'Default' : written === 'Default' ? 'Resource' : undefined;
-  if (partner && siblings.includes(partner)) return `"${written}" can't sit next to a sibling called "${partner}": CDK gives the two the same name in the template.`;
+  if (partner && siblings.includes(partner))
+    return `"${written}" can't sit next to a sibling called "${partner}": CDK gives the two the same name in the template.`;
   return undefined;
 }
 

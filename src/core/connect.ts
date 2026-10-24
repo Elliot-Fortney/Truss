@@ -44,12 +44,14 @@ function whyReadOnly(ctx: ConnectContext, node: NodeView, facts: NodeFacts | und
   if (!facts) return `Truss found no code for ${nameOf(node)}`;
   const lock = nodeEditability(node.id, facts);
   if (!lock.editable) return lock.reason;
-  if (facts.props?.form === 'other') return `The props of ${nameOf(node)} are passed as ${facts.props.text}, so Truss can't change them`;
+  if (facts.props?.form === 'other')
+    return `The props of ${nameOf(node)} are passed as ${facts.props.text}, so Truss can't change them`;
   return ctx.blocked;
 }
 
 /** What the prop `prop` of `from` points at now. */
-const held = (refs: readonly ReferenceFacts[], from: string, prop: string) => refs.filter((r) => r.from === from && r.prop === prop);
+const held = (refs: readonly ReferenceFacts[], from: string, prop: string) =>
+  refs.filter((r) => r.from === from && r.prop === prop);
 
 /** How many elements an array literal as written holds; -1 for anything that isn't one. */
 function countElements(text: string): number {
@@ -67,7 +69,14 @@ function countElements(text: string): number {
   return inner.endsWith(',') ? count - 1 : count;
 }
 
-function optionsOf(ctx: ConnectContext, from: NodeView, to: NodeView, entry: CatalogEntry, fromFacts: NodeFacts, why: string[]): ConnectOption[] {
+function optionsOf(
+  ctx: ConnectContext,
+  from: NodeView,
+  to: NodeView,
+  entry: CatalogEntry,
+  fromFacts: NodeFacts,
+  why: string[],
+): ConnectOption[] {
   const target = entryFor(ctx.catalog!, to.fqn);
   const assignable = new Set([to.fqn, ...(target?.assignableTo ?? [])]);
   const refs = ctx.facts.references ?? [];
@@ -76,7 +85,8 @@ function optionsOf(ctx: ConnectContext, from: NodeView, to: NodeView, entry: Cat
   for (const prop of entry.props) {
     if (!prop.accepts || !assignable.has(prop.accepts.fqn)) continue;
     const now = held(refs, from.id, prop.name);
-    const written = fromFacts.props?.form === 'object' ? fromFacts.props.props.find((p) => p.name === prop.name) : undefined;
+    const written =
+      fromFacts.props?.form === 'object' ? fromFacts.props.props.find((p) => p.name === prop.name) : undefined;
     const many = prop.accepts.many === true;
     const fixed = now.find((r) => !r.editable);
     if (fixed) {
@@ -112,7 +122,8 @@ function optionsOf(ctx: ConnectContext, from: NodeView, to: NodeView, entry: Cat
  */
 export function canConnect(ctx: ConnectContext, from: string, to: string): ConnectCheck {
   const reference = canReference(ctx, from, to);
-  if (from === to || !ctx.view.nodes.some((n) => n.id === from) || !ctx.view.nodes.some((n) => n.id === to)) return reference;
+  if (from === to || !ctx.view.nodes.some((n) => n.id === from) || !ctx.view.nodes.some((n) => n.id === to))
+    return reference;
   const hints = hintsFor(ctx, from, to);
   if (!hints.ok) return reference.ok || hints.nothing ? reference : { ok: false, reason: hints.reason };
   return { ok: true, options: reference.ok ? reference.options : [], hints: hints.options };
@@ -130,15 +141,28 @@ function canReference(ctx: ConnectContext, from: string, to: string): ConnectChe
   if (locked || !fromFacts) return { ok: false, reason: locked ?? `Truss found no code for ${nameOf(source)}` };
   if (target.removed) return { ok: false, reason: `${nameOf(target)} is deleted in the Draft` };
   if (ctx.added?.has(to)) return { ok: false, reason: ADDED };
-  if (target.hoisted || !toFacts) return { ok: false, reason: `${nameOf(target)} is created by the library, not by a statement of your code, so there is nothing to point at` };
-  if (toFacts.binding === 'none') return { ok: false, reason: `${nameOf(target)} isn't kept in a variable or a field, so there is nothing to point at` };
-  if (toFacts.pathsOnSpan !== fromFacts.pathsOnSpan) return { ok: false, reason: `${nameOf(target)} and ${nameOf(source)} are not made the same number of times` };
+  if (target.hoisted || !toFacts)
+    return {
+      ok: false,
+      reason: `${nameOf(target)} is created by the library, not by a statement of your code, so there is nothing to point at`,
+    };
+  if (toFacts.binding === 'none')
+    return {
+      ok: false,
+      reason: `${nameOf(target)} isn't kept in a variable or a field, so there is nothing to point at`,
+    };
+  if (toFacts.pathsOnSpan !== fromFacts.pathsOnSpan)
+    return { ok: false, reason: `${nameOf(target)} and ${nameOf(source)} are not made the same number of times` };
   if (toFacts.span.file !== fromFacts.span.file || toFacts.enclosingClass?.name !== fromFacts.enclosingClass?.name) {
-    return { ok: false, reason: `${nameOf(source)} and ${nameOf(target)} have no scope in common: ${nameOf(target)} is in ${toFacts.enclosingClass?.name ?? toFacts.span.file}` };
+    return {
+      ok: false,
+      reason: `${nameOf(source)} and ${nameOf(target)} have no scope in common: ${nameOf(target)} is in ${toFacts.enclosingClass?.name ?? toFacts.span.file}`,
+    };
   }
   const entry = ctx.catalog && entryFor(ctx.catalog, source.fqn);
   const written = fromFacts.className.split('.').at(-1);
-  if (!entry || written !== entry.name) return { ok: false, reason: `Truss doesn't know the props of ${source.subtitle || source.fqn}` };
+  if (!entry || written !== entry.name)
+    return { ok: false, reason: `Truss doesn't know the props of ${source.subtitle || source.fqn}` };
   const why: string[] = [];
   const options = optionsOf(ctx, source, target, entry, fromFacts, why);
   if (options.length > 0) return { ok: true, options };
@@ -147,7 +171,9 @@ function canReference(ctx: ConnectContext, from: string, to: string): ConnectChe
 
 /** What dragging from `from` could end on: the answer for every other Node of the Design. */
 export function connectTargets(ctx: ConnectContext, from: string): Record<string, ConnectCheck> {
-  return Object.fromEntries(ctx.view.nodes.filter((n) => n.id !== from).map((n) => [n.id, canConnect(ctx, from, n.id)]));
+  return Object.fromEntries(
+    ctx.view.nodes.filter((n) => n.id !== from).map((n) => [n.id, canConnect(ctx, from, n.id)]),
+  );
 }
 
 const nodeRef = (ctx: ConnectContext, path: string): NodeRef => {
@@ -173,9 +199,15 @@ export function intentForConnect(ctx: ConnectContext, from: string, to: string, 
   const base = { path: from, expect: sourceExpect(ctx, from), prop };
   if (option.replaces) {
     if (!replace) return { ok: false, reason: `${prop} already points at ${option.replaces.label}` };
-    return { ok: true, intent: { type: 'repointReference', ...base, was: nodeRef(ctx, option.replaces.id), to: nodeRef(ctx, to) } };
+    return {
+      ok: true,
+      intent: { type: 'repointReference', ...base, was: nodeRef(ctx, option.replaces.id), to: nodeRef(ctx, to) },
+    };
   }
-  return { ok: true, intent: { type: 'addReference', ...base, ...(option.many ? { many: true as const } : {}), to: nodeRef(ctx, to) } };
+  return {
+    ok: true,
+    intent: { type: 'addReference', ...base, ...(option.many ? { many: true as const } : {}), to: nodeRef(ctx, to) },
+  };
 }
 
 /** What taking `to` out of a prop of `from` means for the Draft. */
@@ -187,7 +219,10 @@ export function intentForDisconnect(ctx: ConnectContext, from: string, to: strin
   const ref = (ctx.facts.references ?? []).find((r) => r.from === from && r.to === to && r.prop === prop);
   if (!ref) return { ok: false, reason: `${prop} doesn't point at ${labelOf(ctx, to)}` };
   if (!ref.editable) return { ok: false, reason: ref.reason ?? `${prop} can't be changed here` };
-  return { ok: true, intent: { type: 'removeReference', path: from, expect: sourceExpect(ctx, from), prop, to: nodeRef(ctx, to) } };
+  return {
+    ok: true,
+    intent: { type: 'removeReference', path: from, expect: sourceExpect(ctx, from), prop, to: nodeRef(ctx, to) },
+  };
 }
 
 /** What moving the end of a Reference from `was` to `to` means for the Draft. */
@@ -199,5 +234,15 @@ export function intentForRepoint(ctx: ConnectContext, from: string, was: string,
   // Re-pointing a single-value prop is a drop that replaces; an array prop gets the Node in the place of the old one.
   const option = check.options.find((o) => o.prop === prop);
   if (!option) return { ok: false, reason: `${prop} doesn't take ${labelOf(ctx, to)}` };
-  return { ok: true, intent: { type: 'repointReference', path: from, expect: sourceExpect(ctx, from), prop, was: nodeRef(ctx, was), to: nodeRef(ctx, to) } };
+  return {
+    ok: true,
+    intent: {
+      type: 'repointReference',
+      path: from,
+      expect: sourceExpect(ctx, from),
+      prop,
+      was: nodeRef(ctx, was),
+      to: nodeRef(ctx, to),
+    },
+  };
 }

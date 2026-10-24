@@ -69,7 +69,10 @@ export interface Catalog {
 }
 
 /** An entry as the palette lists it: everything but the props, with the Overlay's friendly name and whether it is featured. */
-export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay' | 'assignableTo' | 'grantMethods'> & { displayName?: string; featured?: true };
+export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay' | 'assignableTo' | 'grantMethods'> & {
+  displayName?: string;
+  featured?: true;
+};
 
 // --- Digest ---------------------------------------------------------------------------------------------
 
@@ -190,17 +193,34 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
       });
     } else if (t['kind'] === 'enum') {
       enums.push(fqn);
-      enumMembers[fqn] = (Array.isArray(t['members']) ? t['members'] : []).flatMap((m) => (isObject(m) && str(m['name']) ? [m['name'] as string] : []));
+      enumMembers[fqn] = (Array.isArray(t['members']) ? t['members'] : []).flatMap((m) =>
+        isObject(m) && str(m['name']) ? [m['name'] as string] : [],
+      );
     } else if (t['kind'] === 'interface') {
       const bases = stringList(t['interfaces']);
-      if (t['datatype'] === true) structs.push({ fqn, bases, props: (Array.isArray(t['properties']) ? t['properties'] : []).flatMap(digestProp) });
+      if (t['datatype'] === true)
+        structs.push({
+          fqn,
+          bases,
+          props: (Array.isArray(t['properties']) ? t['properties'] : []).flatMap(digestProp),
+        });
       else interfaces.push({ fqn, bases, ...digestMembers(t) });
     }
   }
-  return { format: DIGEST_FORMAT, name: raw['name'] as string, version: raw['version'] as string, classes, structs, interfaces, enums, enumMembers };
+  return {
+    format: DIGEST_FORMAT,
+    name: raw['name'] as string,
+    version: raw['version'] as string,
+    classes,
+    structs,
+    interfaces,
+    enums,
+    enumMembers,
+  };
 }
 
-const stringList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((b): b is string => typeof b === 'string') : []);
+const stringList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((b): b is string => typeof b === 'string') : [];
 
 /** The instance methods and properties of a class or interface, left out when it has none. */
 function digestMembers(t: Json): { methods?: string[]; grantMethods?: string[]; properties?: Record<string, string> } {
@@ -208,9 +228,15 @@ function digestMembers(t: Json): { methods?: string[]; grantMethods?: string[]; 
   const methods = callable.map((m) => m['name'] as string);
   const grantMethods = callable.filter(grantsToIdentity).map((m) => m['name'] as string);
   const properties = Object.fromEntries(
-    (Array.isArray(t['properties']) ? t['properties'] : []).flatMap((p) => (isCallable(p) ? [[p['name'] as string, isObject(p['type']) ? (str(p['type']['fqn']) ?? '') : '']] : [])),
+    (Array.isArray(t['properties']) ? t['properties'] : []).flatMap((p) =>
+      isCallable(p) ? [[p['name'] as string, isObject(p['type']) ? (str(p['type']['fqn']) ?? '') : '']] : [],
+    ),
   );
-  return { ...(methods.length > 0 ? { methods } : {}), ...(grantMethods.length > 0 ? { grantMethods } : {}), ...(Object.keys(properties).length > 0 ? { properties } : {}) };
+  return {
+    ...(methods.length > 0 ? { methods } : {}),
+    ...(grantMethods.length > 0 ? { grantMethods } : {}),
+    ...(Object.keys(properties).length > 0 ? { properties } : {}),
+  };
 }
 
 const GRANTABLE = 'aws-cdk-lib.aws_iam.IGrantable';
@@ -276,7 +302,11 @@ function renderType(t: TypeRef): string {
 }
 
 /** The props of a struct and of every struct it inherits from, the most distant first; a prop declared again replaces the inherited one. */
-function flatten(fqn: string, structs: ReadonlyMap<string, DigestStruct>, seen = new Set<string>()): Map<string, DigestProp> {
+function flatten(
+  fqn: string,
+  structs: ReadonlyMap<string, DigestStruct>,
+  seen = new Set<string>(),
+): Map<string, DigestProp> {
   const out = new Map<string, DigestProp>();
   const s = structs.get(fqn);
   if (!s || seen.has(fqn)) return out;
@@ -292,11 +322,17 @@ const MAX_INPUT_DEPTH = 3;
 const CDK_LIB = 'aws-cdk-lib.';
 
 /** Works out, for a prop's type, the input the panel edits it with. Shared by every prop of the same struct, so the work is done once per struct. */
-function inputs(structs: ReadonlyMap<string, DigestStruct>, enumMembers: ReadonlyMap<string, string[]>): (t: TypeRef, depth: number) => { input?: PropInput } {
+function inputs(
+  structs: ReadonlyMap<string, DigestStruct>,
+  enumMembers: ReadonlyMap<string, string[]>,
+): (t: TypeRef, depth: number) => { input?: PropInput } {
   const structInputs = new Map<string, PropInput | undefined>();
 
   const inputFor = (t: TypeRef, depth: number): PropInput | undefined => {
-    if ('primitive' in t) return t.primitive === 'string' || t.primitive === 'number' || t.primitive === 'boolean' ? { kind: t.primitive } : undefined;
+    if ('primitive' in t)
+      return t.primitive === 'string' || t.primitive === 'number' || t.primitive === 'boolean'
+        ? { kind: t.primitive }
+        : undefined;
     if ('union' in t) {
       // L1 props widen from `string` to `string | IxxxRef`; the Ref alternative stays out of the panel (see renderType).
       const shown = t.union.types.filter((m) => !('fqn' in m && m.fqn.startsWith(REF_INTERFACES)));
@@ -306,14 +342,25 @@ function inputs(structs: ReadonlyMap<string, DigestStruct>, enumMembers: Readonl
     if (t.fqn === 'aws-cdk-lib.Duration') return { kind: 'duration' };
     if (t.fqn === 'aws-cdk-lib.Size') return { kind: 'size' };
     const members = enumMembers.get(t.fqn);
-    if (members) return t.fqn.startsWith(CDK_LIB) && members.length > 0 ? { kind: 'enum', fqn: t.fqn, members } : undefined;
+    if (members)
+      return t.fqn.startsWith(CDK_LIB) && members.length > 0 ? { kind: 'enum', fqn: t.fqn, members } : undefined;
     if (!structs.has(t.fqn) || depth >= MAX_INPUT_DEPTH) return undefined;
     const key = `${t.fqn}@${depth}`;
     if (!structInputs.has(key)) {
       structInputs.set(key, undefined); // a struct that contains itself stops here
       const fields = [...flatten(t.fqn, structs).values()].flatMap((p): CatalogProp[] => {
         const input = inputFor(p.type, depth + 1);
-        return input ? [{ name: p.name, type: renderType(p.type), required: p.optional !== true, input, ...(p.summary ? { summary: p.summary } : {}) }] : [];
+        return input
+          ? [
+              {
+                name: p.name,
+                type: renderType(p.type),
+                required: p.optional !== true,
+                input,
+                ...(p.summary ? { summary: p.summary } : {}),
+              },
+            ]
+          : [];
       });
       structInputs.set(key, fields.length > 0 ? { kind: 'struct', fields } : undefined);
     }
@@ -354,9 +401,18 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
   const enums = new Set<string>();
   const enumMembers = new Map<string, string[]>();
   /** What a call can be made on: every class and interface, with the types it inherits members from. */
-  const members = new Map<string, { bases: string[]; methods?: string[]; grantMethods?: string[]; properties?: Record<string, string> }>();
+  const members = new Map<
+    string,
+    { bases: string[]; methods?: string[]; grantMethods?: string[]; properties?: Record<string, string> }
+  >();
   for (const d of digests) {
-    for (const c of d.classes) members.set(c.fqn, { bases: [...(c.base ? [c.base] : []), ...(c.interfaces ?? [])], ...(c.methods ? { methods: c.methods } : {}), ...(c.grantMethods ? { grantMethods: c.grantMethods } : {}), ...(c.properties ? { properties: c.properties } : {}) });
+    for (const c of d.classes)
+      members.set(c.fqn, {
+        bases: [...(c.base ? [c.base] : []), ...(c.interfaces ?? [])],
+        ...(c.methods ? { methods: c.methods } : {}),
+        ...(c.grantMethods ? { grantMethods: c.grantMethods } : {}),
+        ...(c.properties ? { properties: c.properties } : {}),
+      });
     for (const i of d.interfaces) members.set(i.fqn, i);
     for (const c of d.classes) classes.set(c.fqn, { c, library: d.name });
     for (const s of d.structs) structs.set(s.fqn, s);
@@ -378,7 +434,8 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
   };
 
   /** An interface, or a class that is a construct: what a Reference could point at. Not `Duration`, `Size` or the like. */
-  const takesConstruct = (fqn: string) => interfaceFqns.has(fqn) || (classes.has(fqn) && ancestors(fqn).includes(CONSTRUCT));
+  const takesConstruct = (fqn: string) =>
+    interfaceFqns.has(fqn) || (classes.has(fqn) && ancestors(fqn).includes(CONSTRUCT));
 
   const entries: CatalogEntry[] = [];
   for (const [fqn, { c, library }] of classes) {
@@ -450,7 +507,9 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
       continue;
     }
     if (o.tier) entry.tier = o.tier;
-    entry.overlay = resolveOverlay(o, entry, world, (what, why) => dropped.push(`Overlay for ${o.fqn}: dropped ${what}, ${why}.`));
+    entry.overlay = resolveOverlay(o, entry, world, (what, why) =>
+      dropped.push(`Overlay for ${o.fqn}: dropped ${what}, ${why}.`),
+    );
   }
 
   return { entries: entries.sort((a, b) => compare(a.fqn, b.fqn)), dropped };
@@ -482,7 +541,12 @@ function supertypes(members: ReadonlyMap<string, { bases: string[] }>, fqn: stri
 }
 
 /** Follows `path` through properties from the class `from`; the last step is checked by `last`. */
-function follows(world: World, from: string, path: readonly string[], last: (fqn: string, name: string) => boolean): boolean {
+function follows(
+  world: World,
+  from: string,
+  path: readonly string[],
+  last: (fqn: string, name: string) => boolean,
+): boolean {
   let at = from;
   for (const name of path.slice(0, -1)) {
     const type = world.propertyType(at, name);
@@ -495,7 +559,12 @@ function follows(world: World, from: string, path: readonly string[], last: (fqn
 
 const named = (path: readonly string[]) => path.join('.');
 
-function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (what: string, why: string) => void): ResolvedOverlay {
+function resolveOverlay(
+  o: Overlay,
+  entry: CatalogEntry,
+  world: World,
+  drop: (what: string, why: string) => void,
+): ResolvedOverlay {
   const propNames = new Set(entry.props.map((p) => p.name));
   const noProp = (name: string) => `${entry.name} has no prop "${name}"`;
   const missing = (uses: readonly string[] | undefined) => (uses ?? []).filter((f) => !world.hasType(f));
@@ -519,9 +588,12 @@ function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (wh
 
   /** The spellings of a call that resolve on every class in `receivers`. A spelling is only worth a line of its own when another one survives. */
   const callForms = (forms: readonly string[][], receivers: readonly string[], label: string) => {
-    const resolves = (form: string[]) => receivers.every((r) => follows(world, r, form, (fqn, name) => world.hasMethod(fqn, name)));
+    const resolves = (form: string[]) =>
+      receivers.every((r) => follows(world, r, form, (fqn, name) => world.hasMethod(fqn, name)));
     const kept = forms.filter(resolves);
-    if (kept.length > 0) for (const form of forms.filter((f) => !kept.includes(f))) drop(`form ${named(form)} of ${label}`, `it doesn't resolve on ${receivers.join(', ')}`);
+    if (kept.length > 0)
+      for (const form of forms.filter((f) => !kept.includes(f)))
+        drop(`form ${named(form)} of ${label}`, `it doesn't resolve on ${receivers.join(', ')}`);
     return kept;
   };
 
@@ -533,11 +605,17 @@ function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (wh
       drop(label, 'none of its peers are in the installed libraries');
       continue;
     }
-    for (const gone of hint.peers.filter((p) => !peers.includes(p))) drop(`peer ${gone} of ${label}`, `it isn't in the installed libraries`);
+    for (const gone of hint.peers.filter((p) => !peers.includes(p)))
+      drop(`peer ${gone} of ${label}`, `it isn't in the installed libraries`);
     const primaryGone = missing(hint.primary.uses);
     const forms = callForms(hint.primary.forms, [entry.fqn], `${label}'s call`);
     if (primaryGone.length > 0 || forms.length === 0) {
-      drop(label, primaryGone.length > 0 ? `${primaryGone.join(', ')} isn't in the installed libraries` : `its call ${hint.primary.forms.map(named).join(' or ')} doesn't resolve`);
+      drop(
+        label,
+        primaryGone.length > 0
+          ? `${primaryGone.join(', ')} isn't in the installed libraries`
+          : `its call ${hint.primary.forms.map(named).join(' or ')} doesn't resolve`,
+      );
       continue;
     }
     const secondary: HintCall[] = [];
@@ -545,14 +623,17 @@ function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (wh
       const gone = missing(call.uses);
       const callForm = callForms(call.forms, call.on === 'self' ? [entry.fqn] : peers, `${label}'s call on ${call.on}`);
       if (gone.length > 0) drop(`a call of ${label}`, `${gone.join(', ')} isn't in the installed libraries`);
-      else if (callForm.length === 0) drop(`a call of ${label}`, `${call.forms.map(named).join(' or ')} doesn't resolve`);
+      else if (callForm.length === 0)
+        drop(`a call of ${label}`, `${call.forms.map(named).join(' or ')} doesn't resolve`);
       else secondary.push({ ...call, forms: callForm });
     }
     connections.push({ ...hint, peers, primary: { ...hint.primary, forms }, ...(hint.secondary ? { secondary } : {}) });
   }
 
   const accessors = (o.accessors ?? []).filter(
-    (a) => follows(world, entry.fqn, a.path, (fqn, name) => world.propertyType(fqn, name) !== undefined) || (drop(`accessor ${named(a.path)}`, `${entry.name} has no such property`), false),
+    (a) =>
+      follows(world, entry.fqn, a.path, (fqn, name) => world.propertyType(fqn, name) !== undefined) ||
+      (drop(`accessor ${named(a.path)}`, `${entry.name} has no such property`), false),
   );
 
   const referenceFlows: Record<string, 'in'> = {};
@@ -561,7 +642,15 @@ function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (wh
     else drop(`reference flow "${prop}"`, noProp(prop));
   }
 
-  return { displayName: o.displayName, featuredProps, defaults: snippets('default', o.defaults), fixtures: snippets('fixture', o.fixtures), connections, accessors, referenceFlows };
+  return {
+    displayName: o.displayName,
+    featuredProps,
+    defaults: snippets('default', o.defaults),
+    fixtures: snippets('fixture', o.fixtures),
+    connections,
+    accessors,
+    referenceFlows,
+  };
 }
 
 const indexes = new WeakMap<Catalog, Map<string, CatalogEntry>>();
@@ -626,5 +715,9 @@ export function searchCatalog(catalog: Catalog, query: string, limit = 50): Sear
       compare(a.e.name, b.e.name) ||
       compare(a.e.fqn, b.e.fqn),
   );
-  return scored.slice(0, limit).map(({ e: { props: _props, assignableTo: _assignableTo, overlay, ...hit } }) => (overlay ? { ...hit, displayName: overlay.displayName, featured: true as const } : hit));
+  return scored
+    .slice(0, limit)
+    .map(({ e: { props: _props, assignableTo: _assignableTo, overlay, ...hit } }) =>
+      overlay ? { ...hit, displayName: overlay.displayName, featured: true as const } : hit,
+    );
 }

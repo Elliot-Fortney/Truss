@@ -14,7 +14,13 @@ function factsOf(text: string): Facts {
     const before = text.slice(0, m.index);
     const line = before.split('\n').length;
     const col = m.index - before.lastIndexOf('\n');
-    nodes[`Stack/${m[2]}`] = { span: { file: FILE, start: { line, col }, end: { line, col } }, className: m[1]!, literalId: m[2]!, pathsOnSpan: 1, binding: 'none' };
+    nodes[`Stack/${m[2]}`] = {
+      span: { file: FILE, start: { line, col }, end: { line, col } },
+      className: m[1]!,
+      literalId: m[2]!,
+      pathsOnSpan: 1,
+      binding: 'none',
+    };
   }
   return { nodes };
 }
@@ -93,22 +99,40 @@ describe('Source.plan golden diffs', () => {
   });
 
   it('appends inside a single-line object, keeping its spacing', () => {
-    expect(after(bucket(`    new s3.Bucket(this, 'A', { versioned: true });`), set('A', 's3.Bucket', 'bucketName', str('a')))).toContain(`{ versioned: true, bucketName: 'a' }`);
-    expect(after(bucket(`    new s3.Bucket(this, 'A', {versioned: true});`), set('A', 's3.Bucket', 'bucketName', str('a')))).toContain(`{versioned: true, bucketName: 'a'}`);
-    expect(after(bucket(`    new s3.Bucket(this, 'A', { versioned: true, });`), set('A', 's3.Bucket', 'bucketName', str('a')))).toContain(`{ versioned: true, bucketName: 'a', }`);
+    expect(
+      after(
+        bucket(`    new s3.Bucket(this, 'A', { versioned: true });`),
+        set('A', 's3.Bucket', 'bucketName', str('a')),
+      ),
+    ).toContain(`{ versioned: true, bucketName: 'a' }`);
+    expect(
+      after(bucket(`    new s3.Bucket(this, 'A', {versioned: true});`), set('A', 's3.Bucket', 'bucketName', str('a'))),
+    ).toContain(`{versioned: true, bucketName: 'a'}`);
+    expect(
+      after(
+        bucket(`    new s3.Bucket(this, 'A', { versioned: true, });`),
+        set('A', 's3.Bucket', 'bucketName', str('a')),
+      ),
+    ).toContain(`{ versioned: true, bucketName: 'a', }`);
   });
 
   it('puts the prop after a spread, where it wins', () => {
     const text = bucket(`    new s3.Bucket(this, 'A', {
       ...defaults,
     });`);
-    expect(after(text, set('A', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }))).toContain(`      ...defaults,
+    expect(after(text, set('A', 's3.Bucket', 'versioned', { kind: 'boolean', value: true })))
+      .toContain(`      ...defaults,
       versioned: true,
     });`);
   });
 
   it('fills an empty object', () => {
-    expect(after(bucket(`    new s3.Bucket(this, 'A', {});`), set('A', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }))).toContain(`new s3.Bucket(this, 'A', { versioned: true });`);
+    expect(
+      after(
+        bucket(`    new s3.Bucket(this, 'A', {});`),
+        set('A', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }),
+      ),
+    ).toContain(`new s3.Bucket(this, 'A', { versioned: true });`);
   });
 
   it('adds an object literal when the props are omitted', () => {
@@ -146,20 +170,36 @@ describe('Source.plan golden diffs', () => {
       partitionKey: { name: 'sku', type: dynamodb.AttributeType.STRING },
     });
     new dynamodb.Table(this, 'U', {});`);
-    expect(after(text, set('T', 'dynamodb.Table', ['partitionKey', 'name'], str('id')))).toContain(`partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING }`);
-    expect(after(text, set('T', 'dynamodb.Table', ['partitionKey', 'sortKey'], str('x')))).toContain(`partitionKey: { name: 'sku', type: dynamodb.AttributeType.STRING, sortKey: 'x' }`);
-    expect(after(text, set('U', 'dynamodb.Table', ['partitionKey', 'name'], str('id')))).toContain(`new dynamodb.Table(this, 'U', { partitionKey: { name: 'id' } });`);
+    expect(after(text, set('T', 'dynamodb.Table', ['partitionKey', 'name'], str('id')))).toContain(
+      `partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING }`,
+    );
+    expect(after(text, set('T', 'dynamodb.Table', ['partitionKey', 'sortKey'], str('x')))).toContain(
+      `partitionKey: { name: 'sku', type: dynamodb.AttributeType.STRING, sortKey: 'x' }`,
+    );
+    expect(after(text, set('U', 'dynamodb.Table', ['partitionKey', 'name'], str('id')))).toContain(
+      `new dynamodb.Table(this, 'U', { partitionKey: { name: 'id' } });`,
+    );
   });
 
   it('edits each construct of a line of constructs, without disturbing the others', () => {
     const text = bucket(`    new s3.Bucket(this, 'A'); new s3.Bucket(this, 'B');`);
-    expect(after(text, set('B', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }))).toContain(`new s3.Bucket(this, 'A'); new s3.Bucket(this, 'B', { versioned: true });`);
+    expect(after(text, set('B', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }))).toContain(
+      `new s3.Bucket(this, 'A'); new s3.Bucket(this, 'B', { versioned: true });`,
+    );
   });
 
   it('edits a construct nested in another one’s props', () => {
-    const text = bucket(`    new s3.Bucket(this, 'Outer', { eventBridgeEnabled: true, serverAccessLogsBucket: new s3.Bucket(this, 'Inner') });`);
-    const out = after(text, set('Inner', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }), set('Outer', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }));
-    expect(out).toContain(`new s3.Bucket(this, 'Outer', { eventBridgeEnabled: true, serverAccessLogsBucket: new s3.Bucket(this, 'Inner', { versioned: true }), versioned: true })`);
+    const text = bucket(
+      `    new s3.Bucket(this, 'Outer', { eventBridgeEnabled: true, serverAccessLogsBucket: new s3.Bucket(this, 'Inner') });`,
+    );
+    const out = after(
+      text,
+      set('Inner', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }),
+      set('Outer', 's3.Bucket', 'versioned', { kind: 'boolean', value: true }),
+    );
+    expect(out).toContain(
+      `new s3.Bucket(this, 'Outer', { eventBridgeEnabled: true, serverAccessLogsBucket: new s3.Bucket(this, 'Inner', { versioned: true }), versioned: true })`,
+    );
   });
 
   it('keeps a comment after the last prop on its line', () => {
@@ -169,7 +209,11 @@ describe('Source.plan golden diffs', () => {
     new s3.Bucket(this, 'B', {
       versioned: true // keep
     });`);
-    const out = after(text, set('A', 's3.Bucket', 'bucketName', str('a')), set('B', 's3.Bucket', 'bucketName', str('b')));
+    const out = after(
+      text,
+      set('A', 's3.Bucket', 'bucketName', str('a')),
+      set('B', 's3.Bucket', 'bucketName', str('b')),
+    );
     expect(out).toContain(`      versioned: true, // keep
       bucketName: 'a',
     });`);
@@ -187,7 +231,11 @@ describe('Source.plan golden diffs', () => {
     const out = after(
       text,
       set('Q', 'sqs.Queue', 'visibilityTimeout', { kind: 'duration', unit: 'minutes', amount: 2 }),
-      set('Q', 'sqs.Queue', 'encryption', { kind: 'enum', type: 'aws-cdk-lib.aws_sqs.QueueEncryption', member: 'SQS_MANAGED' }),
+      set('Q', 'sqs.Queue', 'encryption', {
+        kind: 'enum',
+        type: 'aws-cdk-lib.aws_sqs.QueueEncryption',
+        member: 'SQS_MANAGED',
+      }),
       set('Q', 'sqs.Queue', 'queueName', str('it"s')),
     );
     expect(out).toContain(`visibilityTimeout: cdk.Duration.minutes(2),`);
@@ -197,7 +245,11 @@ describe('Source.plan golden diffs', () => {
 
   it('writes numbers, negative numbers and sizes', () => {
     const text = bucket(`    new X.Y(this, 'A', { n: 1, s: Size.mebibytes(1) });`);
-    const out = after(text, set('A', 'X.Y', 'n', { kind: 'number', value: -2.5 }), set('A', 'X.Y', 's', { kind: 'size', unit: 'gibibytes', amount: 4 }));
+    const out = after(
+      text,
+      set('A', 'X.Y', 'n', { kind: 'number', value: -2.5 }),
+      set('A', 'X.Y', 's', { kind: 'size', unit: 'gibibytes', amount: 4 }),
+    );
     expect(out).toContain(`{ n: -2.5, s: Size.gibibytes(4) }`);
   });
 });
@@ -220,18 +272,28 @@ describe('Source.plan imports', () => {
   });
 
   it('adds the name to an existing named import', () => {
-    expect(edit(`import { Stack } from 'aws-cdk-lib';\nnew X.Y(this, 'A');\n`, duration)).toBe(`import { Stack, Duration } from 'aws-cdk-lib';\nnew X.Y(this, 'A', { p: Duration.seconds(5) });\n`);
-    expect(edit(`import {\n  Stack,\n} from 'aws-cdk-lib';\nnew X.Y(this, 'A');\n`, removal)).toContain(`import {\n  Stack,\n  RemovalPolicy,\n} from 'aws-cdk-lib';`);
+    expect(edit(`import { Stack } from 'aws-cdk-lib';\nnew X.Y(this, 'A');\n`, duration)).toBe(
+      `import { Stack, Duration } from 'aws-cdk-lib';\nnew X.Y(this, 'A', { p: Duration.seconds(5) });\n`,
+    );
+    expect(edit(`import {\n  Stack,\n} from 'aws-cdk-lib';\nnew X.Y(this, 'A');\n`, removal)).toContain(
+      `import {\n  Stack,\n  RemovalPolicy,\n} from 'aws-cdk-lib';`,
+    );
   });
 
   it('adds a named import in the file’s quote and semicolon style when it imports nothing from the module', () => {
-    expect(edit(`import { Construct } from "constructs"\nnew X.Y(this, 'A');\n`, duration)).toBe(`import { Construct } from "constructs"\nimport { Duration } from "aws-cdk-lib"\nnew X.Y(this, 'A', { p: Duration.seconds(5) });\n`);
-    expect(edit(`new X.Y(this, 'A');\n`, duration)).toBe(`import { Duration } from 'aws-cdk-lib';\nnew X.Y(this, 'A', { p: Duration.seconds(5) });\n`);
+    expect(edit(`import { Construct } from "constructs"\nnew X.Y(this, 'A');\n`, duration)).toBe(
+      `import { Construct } from "constructs"\nimport { Duration } from "aws-cdk-lib"\nnew X.Y(this, 'A', { p: Duration.seconds(5) });\n`,
+    );
+    expect(edit(`new X.Y(this, 'A');\n`, duration)).toBe(
+      `import { Duration } from 'aws-cdk-lib';\nnew X.Y(this, 'A', { p: Duration.seconds(5) });\n`,
+    );
   });
 
   it('imports the module of a service enum as a namespace, with the alias CDK apps use', () => {
     const out = edit(`import * as sqs from 'aws-cdk-lib/aws-sqs';\nnew X.Y(this, 'A');\n`, encryption);
-    expect(out).toBe(`import * as sqs from 'aws-cdk-lib/aws-sqs';\nimport * as s3 from 'aws-cdk-lib/aws-s3';\nnew X.Y(this, 'A', { p: s3.BucketEncryption.KMS });\n`);
+    expect(out).toBe(
+      `import * as sqs from 'aws-cdk-lib/aws-sqs';\nimport * as s3 from 'aws-cdk-lib/aws-s3';\nnew X.Y(this, 'A', { p: s3.BucketEncryption.KMS });\n`,
+    );
   });
 
   it('imports it by name when the file imports its CDK modules by name', () => {
@@ -241,9 +303,19 @@ describe('Source.plan imports', () => {
   });
 
   it('refuses an enum of another library, and a name the file already uses for something else', () => {
-    expect(plan(`new X.Y(this, 'A');\n`, set('A', 'X.Y', 'p', { kind: 'enum', type: 'aws-cdk-lib.aws_s3.nested.Deep', member: 'A' }))).toMatchObject({ ok: false });
-    expect(plan(`new X.Y(this, 'A');\n`, set('A', 'X.Y', 'p', { kind: 'enum', type: 'other-lib.Color', member: 'RED' }))).toMatchObject({ ok: false, reason: expect.stringContaining('other-lib') });
-    expect(plan(`const s3 = 1;\nnew X.Y(this, 'A');\n`, set('A', 'X.Y', 'p', encryption))).toMatchObject({ ok: false, reason: expect.stringContaining('s3') });
+    expect(
+      plan(
+        `new X.Y(this, 'A');\n`,
+        set('A', 'X.Y', 'p', { kind: 'enum', type: 'aws-cdk-lib.aws_s3.nested.Deep', member: 'A' }),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      plan(`new X.Y(this, 'A');\n`, set('A', 'X.Y', 'p', { kind: 'enum', type: 'other-lib.Color', member: 'RED' })),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining('other-lib') });
+    expect(plan(`const s3 = 1;\nnew X.Y(this, 'A');\n`, set('A', 'X.Y', 'p', encryption))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('s3'),
+    });
   });
 });
 
@@ -313,13 +385,35 @@ describe('Source.plan style matrix', () => {
     expect(out).toBe(expected);
   });
 
-  it.each(styles.map((s) => [JSON.stringify(s), s] as const))('adds an object literal, and appends to a one-line object, in the style of %s', (_name, s) => {
-    const { indent: i, quote: q, semi, eol } = s;
-    const wrap = (...calls: string[]) => [`import * as s3 from ${q}aws-cdk-lib/aws-s3${q}${semi}`, ``, `export class S extends Stack {`, `${i}constructor() {`, ...calls.map((c) => `${i}${i}${c}${semi}`), `${i}}`, `}`, ``].join(eol);
-    const text = wrap(`new s3.Bucket(this, ${q}A${q})`, `new s3.Bucket(this, ${q}B${q}, { versioned: true })`);
-    const out = after(text, set('A', 's3.Bucket', 'bucketName', str('a')), set('B', 's3.Bucket', 'bucketName', str('b')));
-    expect(out).toBe(wrap(`new s3.Bucket(this, ${q}A${q}, { bucketName: ${q}a${q} })`, `new s3.Bucket(this, ${q}B${q}, { versioned: true, bucketName: ${q}b${q} })`));
-  });
+  it.each(styles.map((s) => [JSON.stringify(s), s] as const))(
+    'adds an object literal, and appends to a one-line object, in the style of %s',
+    (_name, s) => {
+      const { indent: i, quote: q, semi, eol } = s;
+      const wrap = (...calls: string[]) =>
+        [
+          `import * as s3 from ${q}aws-cdk-lib/aws-s3${q}${semi}`,
+          ``,
+          `export class S extends Stack {`,
+          `${i}constructor() {`,
+          ...calls.map((c) => `${i}${i}${c}${semi}`),
+          `${i}}`,
+          `}`,
+          ``,
+        ].join(eol);
+      const text = wrap(`new s3.Bucket(this, ${q}A${q})`, `new s3.Bucket(this, ${q}B${q}, { versioned: true })`);
+      const out = after(
+        text,
+        set('A', 's3.Bucket', 'bucketName', str('a')),
+        set('B', 's3.Bucket', 'bucketName', str('b')),
+      );
+      expect(out).toBe(
+        wrap(
+          `new s3.Bucket(this, ${q}A${q}, { bucketName: ${q}a${q} })`,
+          `new s3.Bucket(this, ${q}B${q}, { versioned: true, bucketName: ${q}b${q} })`,
+        ),
+      );
+    },
+  );
 
   it('writes the CRLF it finds, never a bare LF, when it adds lines', () => {
     const text = file({ indent: '  ', eol: '\r\n', semi: ';', quote: "'", trailing: true }, [`versioned: true`]);
@@ -336,22 +430,44 @@ describe('Source.plan refusals', () => {
   const bool: PropValue = { kind: 'boolean', value: true };
 
   it('refuses props passed as a variable, shorthand props, and expressions it must not replace', () => {
-    expect(plan(text, set('A', 's3.Bucket', 'versioned', bool))).toMatchObject({ ok: false, intent: 0, reason: expect.stringContaining('props') });
-    expect(plan(text, set('B', 's3.Bucket', 'versioned', bool))).toMatchObject({ ok: false, reason: expect.stringContaining('versioned') });
-    expect(plan(text, set('C', 's3.Bucket', 'versioned', bool))).toMatchObject({ ok: false, reason: expect.stringContaining('flag') });
+    expect(plan(text, set('A', 's3.Bucket', 'versioned', bool))).toMatchObject({
+      ok: false,
+      intent: 0,
+      reason: expect.stringContaining('props'),
+    });
+    expect(plan(text, set('B', 's3.Bucket', 'versioned', bool))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('versioned'),
+    });
+    expect(plan(text, set('C', 's3.Bucket', 'versioned', bool))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('flag'),
+    });
     expect(plan(text, set('C', 's3.Bucket', 'name', str('x')))).toMatchObject({ ok: false });
-    expect(plan(text, set('D', 's3.Bucket', ['nested', 'field'], bool))).toMatchObject({ ok: false, reason: expect.stringContaining('other') });
+    expect(plan(text, set('D', 's3.Bucket', ['nested', 'field'], bool))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('other'),
+    });
   });
 
   it('names the intent it failed on', () => {
-    expect(plan(text, set('C', 's3.Bucket', 'other', bool), set('A', 's3.Bucket', 'versioned', bool))).toMatchObject({ ok: false, intent: 1 });
+    expect(plan(text, set('C', 's3.Bucket', 'other', bool), set('A', 's3.Bucket', 'versioned', bool))).toMatchObject({
+      ok: false,
+      intent: 1,
+    });
   });
 
   it('refuses a target whose class or Construct ID is no longer what the user saw', () => {
     const intent = set('C', 's3.Bucket', 'other', bool);
-    expect(plan(text, { ...intent, expect: { className: 'sqs.Queue', literalId: 'C' } })).toMatchObject({ ok: false, reason: expect.stringContaining('no longer') });
+    expect(plan(text, { ...intent, expect: { className: 'sqs.Queue', literalId: 'C' } })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('no longer'),
+    });
     expect(plan(text, { ...intent, expect: { className: 's3.Bucket', literalId: 'Z' } })).toMatchObject({ ok: false });
-    expect(plan(text, set('Gone', 's3.Bucket', 'x', bool))).toMatchObject({ ok: false, reason: expect.stringContaining('no construct') });
+    expect(plan(text, set('Gone', 's3.Bucket', 'x', bool))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('no construct'),
+    });
   });
 
   it('refuses a construct that is only referred to, and a prop name that is not a name', () => {
@@ -374,7 +490,12 @@ describe('Source.plan refusals', () => {
 });
 
 describe('Source.plan renameId', () => {
-  const rename = (id: string, newId: string, className = 's3.Bucket', parent = 'Stack'): Intent => ({ type: 'renameId', path: `${parent}/${id}`, expect: { className, literalId: id }, newId });
+  const rename = (id: string, newId: string, className = 's3.Bucket', parent = 'Stack'): Intent => ({
+    type: 'renameId',
+    path: `${parent}/${id}`,
+    expect: { className, literalId: id },
+    newId,
+  });
 
   it('rewrites the literal and nothing else', () => {
     const text = bucket(`    new s3.Bucket(this, 'Uploads', {
@@ -397,16 +518,24 @@ describe('Source.plan renameId', () => {
 
   it('leaves the variable the construct is assigned to alone', () => {
     const text = bucket("    const uploads = new s3.Bucket(this, 'Uploads');\n    uploads.grantRead(role);");
-    expect(after(text, rename('Uploads', 'Files'))).toBe(bucket("    const uploads = new s3.Bucket(this, 'Files');\n    uploads.grantRead(role);"));
+    expect(after(text, rename('Uploads', 'Files'))).toBe(
+      bucket("    const uploads = new s3.Bucket(this, 'Files');\n    uploads.grantRead(role);"),
+    );
   });
 
   it('keeps the quotes the ID was written in', () => {
-    expect(after(bucket('    new s3.Bucket(this, "Uploads");'), rename('Uploads', 'Files'))).toBe(bucket('    new s3.Bucket(this, "Files");'));
-    expect(after(bucket('    new s3.Bucket(this, `Uploads`);'), rename('Uploads', 'Files'))).toBe(bucket('    new s3.Bucket(this, `Files`);'));
+    expect(after(bucket('    new s3.Bucket(this, "Uploads");'), rename('Uploads', 'Files'))).toBe(
+      bucket('    new s3.Bucket(this, "Files");'),
+    );
+    expect(after(bucket('    new s3.Bucket(this, `Uploads`);'), rename('Uploads', 'Files'))).toBe(
+      bucket('    new s3.Bucket(this, `Files`);'),
+    );
   });
 
   it('escapes what the ID holds that the quote would not', () => {
-    expect(after(bucket("    new s3.Bucket(this, 'Uploads');"), rename('Uploads', "It's"))).toBe(bucket("    new s3.Bucket(this, 'It\\'s');"));
+    expect(after(bucket("    new s3.Bucket(this, 'Uploads');"), rename('Uploads', "It's"))).toBe(
+      bucket("    new s3.Bucket(this, 'It\\'s');"),
+    );
   });
 
   it('renames one of several constructs and no other', () => {
@@ -416,9 +545,13 @@ describe('Source.plan renameId', () => {
 
   it('plans a rename and a prop edit of the same construct together', () => {
     const text = bucket("    new s3.Bucket(this, 'Uploads', { versioned: true });");
-    expect(after(text, rename('Uploads', 'Files'), { ...set('Uploads', 's3.Bucket', 'versioned', { kind: 'boolean', value: false }), path: 'Stack/Files', expect: { className: 's3.Bucket', literalId: 'Files' } })).toBe(
-      bucket("    new s3.Bucket(this, 'Files', { versioned: false });"),
-    );
+    expect(
+      after(text, rename('Uploads', 'Files'), {
+        ...set('Uploads', 's3.Bucket', 'versioned', { kind: 'boolean', value: false }),
+        path: 'Stack/Files',
+        expect: { className: 's3.Bucket', literalId: 'Files' },
+      }),
+    ).toBe(bucket("    new s3.Bucket(this, 'Files', { versioned: false });"));
   });
 
   it('adds no props to a construct that passes none', () => {
@@ -442,7 +575,12 @@ describe('Source.plan renameId', () => {
     const files: FileSet = new Map([[FILE, text]]);
     const facts = factsOf(text);
     const inner = facts.nodes['Stack/Uploads']!;
-    const outer = { ...inner, className: 'Stack', literalId: 'Stack', span: { ...inner.span, start: { line: 1, col: 1 }, end: { line: 1, col: 2 } } };
+    const outer = {
+      ...inner,
+      className: 'Stack',
+      literalId: 'Stack',
+      span: { ...inner.span, start: { line: 1, col: 1 }, end: { line: 1, col: 2 } },
+    };
     const result = source.plan(files, { nodes: { ...facts.nodes, Stack: outer } }, [
       { type: 'renameId', path: 'Stack', expect: { className: 'Stack', literalId: 'Stack' }, newId: 'Shop' },
       { ...rename('Uploads', 'Files'), path: 'Shop/Uploads' },
@@ -454,7 +592,11 @@ describe('Source.plan renameId', () => {
 
   it('refuses an ID the code could not hold, naming the intent', () => {
     const text = bucket("    new s3.Bucket(this, 'Uploads');");
-    expect(plan(text, rename('Uploads', 'a/b'))).toMatchObject({ ok: false, intent: 0, reason: expect.stringContaining("'/'") });
+    expect(plan(text, rename('Uploads', 'a/b'))).toMatchObject({
+      ok: false,
+      intent: 0,
+      reason: expect.stringContaining("'/'"),
+    });
     expect(plan(text, rename('Uploads', ''))).toMatchObject({ ok: false, reason: expect.stringContaining('empty') });
   });
 
@@ -463,11 +605,17 @@ describe('Source.plan renameId', () => {
     const files: FileSet = new Map([[FILE, text]]);
     const facts = factsOf(text);
     facts.nodes['Stack/Uploads']!.pathsOnSpan = 2;
-    expect(source.plan(files, facts, [rename('Uploads', 'Files')])).toMatchObject({ ok: false, reason: expect.stringContaining('2 constructs') });
+    expect(source.plan(files, facts, [rename('Uploads', 'Files')])).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('2 constructs'),
+    });
   });
 
   it('refuses a construct that is no longer what the user saw', () => {
     const text = bucket("    new s3.Bucket(this, 'Uploads');");
-    expect(plan(text, rename('Uploads', 'Files', 'sqs.Queue'))).toMatchObject({ ok: false, reason: expect.stringContaining('no longer') });
+    expect(plan(text, rename('Uploads', 'Files', 'sqs.Queue'))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('no longer'),
+    });
   });
 });

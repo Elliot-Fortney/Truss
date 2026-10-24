@@ -11,7 +11,9 @@ export interface TextChange {
 
 /** Applies changes made against `text`. They must not overlap; insertions at one offset keep the order given. */
 export function applyChanges(text: string, changes: readonly TextChange[]): string {
-  const sorted = changes.map((c, i) => ({ c, i })).sort((a, b) => a.c.start - b.c.start || a.c.end - b.c.end || a.i - b.i);
+  const sorted = changes
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => a.c.start - b.c.start || a.c.end - b.c.end || a.i - b.i);
   let out = '';
   let at = 0;
   for (const { c } of sorted) {
@@ -63,11 +65,13 @@ function script(a: string[], b: string[]): Op[] {
     const n = midA.length;
     const m = midB.length;
     const lcs = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i]![j] = midA[i] === midB[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        lcs[i]![j] = midA[i] === midB[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
     let i = 0;
     let j = 0;
     while (i < n || j < m) {
-      if (i < n && j < m && midA[i] === midB[j]) ops.push({ sign: ' ', line: midA[i++]! }), j++;
+      if (i < n && j < m && midA[i] === midB[j]) (ops.push({ sign: ' ', line: midA[i++]! }), j++);
       else if (i < n && (j === m || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) ops.push({ sign: '-', line: midA[i++]! });
       else ops.push({ sign: '+', line: midB[j++]! });
     }
@@ -90,7 +94,7 @@ export function unifiedDiff(file: string, before: string, after: string): FileDi
   const out = [`--- a/${file}`, `+++ b/${file}`];
   let oldLine = 1;
   let newLine = 1;
-  for (let i = 0; i < ops.length; ) {
+  for (let i = 0; i < ops.length;) {
     if (!shown[i]) {
       const op = ops[i++]!;
       if (op.sign !== '+') oldLine++;

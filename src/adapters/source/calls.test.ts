@@ -12,7 +12,11 @@ beforeAll(async () => {
   catalog = load.catalog;
 }, 60_000);
 
-const summary = (facts: Facts) => (facts.calls ?? []).map((c) => `${c.role} ${c.kind} ${c.on.slice(7)}.${c.method.join('.')}(${c.peer.slice(7)}) ${c.from.slice(7)}->${c.to.slice(7)}${c.env ? ` env=${c.env}` : ''}${c.editable ? '' : ` READONLY ${c.reason}`}`);
+const summary = (facts: Facts) =>
+  (facts.calls ?? []).map(
+    (c) =>
+      `${c.role} ${c.kind} ${c.on.slice(7)}.${c.method.join('.')}(${c.peer.slice(7)}) ${c.from.slice(7)}->${c.to.slice(7)}${c.env ? ` env=${c.env}` : ''}${c.editable ? '' : ` READONLY ${c.reason}`}`,
+  );
 
 describe('analyse on the connections fixture', () => {
   it('reads Overlay hint calls in both forms, a generic jsii grant, and the environment variable that goes with a grant', () => {
@@ -29,19 +33,27 @@ describe('analyse on the connections fixture', () => {
       'primary network Db.connections.allowDefaultPortFrom(Handler) Handler->Db',
     ]);
     expect((facts.calls ?? []).find((c) => c.method[0] === 'grantPurge')?.hint).toBeUndefined();
-    expect((facts.calls ?? []).find((c) => c.method[0] === 'grantRead')?.hint).toMatch(/^aws-cdk-lib\.aws_s3\.Bucket#\d+$/);
+    expect((facts.calls ?? []).find((c) => c.method[0] === 'grantRead')?.hint).toMatch(
+      /^aws-cdk-lib\.aws_s3\.Bucket#\d+$/,
+    );
   });
 
   it('reads nothing without the Catalog', () => {
-    expect(new TsSource().analyse(readFixtureFiles('connections'), readFixtureAssembly('connections')).calls).toBeUndefined();
+    expect(
+      new TsSource().analyse(readFixtureFiles('connections'), readFixtureAssembly('connections')).calls,
+    ).toBeUndefined();
   });
 
   it('leaves calls in a helper, a loop or under a condition read-only, with the reason', () => {
     const files = readFixtureFiles('connections');
-    const text = files.get('lib/wiring-stack.ts')!
+    const text = files
+      .get('lib/wiring-stack.ts')!
       .replace('    uploads.grantRead(handler);', '    if (Math.random() > 2) uploads.grantRead(handler);')
-      .replace("    orders.grantPurge(idle);", "    for (const f of [idle]) { orders.grantPurge(idle); }")
-      .replace('    db.connections.allowDefaultPortFrom(handler);', '    const wire = () => { db.connections.allowDefaultPortFrom(handler); };\n    wire();');
+      .replace('    orders.grantPurge(idle);', '    for (const f of [idle]) { orders.grantPurge(idle); }')
+      .replace(
+        '    db.connections.allowDefaultPortFrom(handler);',
+        '    const wire = () => { db.connections.allowDefaultPortFrom(handler); };\n    wire();',
+      );
     files.set('lib/wiring-stack.ts', text);
     const calls = new TsSource().analyse(files, readFixtureAssembly('connections'), catalog).calls ?? [];
     const why = (m: string) => calls.find((c) => c.method.join('.').endsWith(m))?.reason;
@@ -52,7 +64,10 @@ describe('analyse on the connections fixture', () => {
 
   it('does not read a call whose receiver or argument is not a Node of the code', () => {
     const files = readFixtureFiles('connections');
-    files.set('lib/wiring-stack.ts', files.get('lib/wiring-stack.ts')!.replace('orders.grantPurge(idle);', 'orders.grantPurge(somewhere.else);'));
+    files.set(
+      'lib/wiring-stack.ts',
+      files.get('lib/wiring-stack.ts')!.replace('orders.grantPurge(idle);', 'orders.grantPurge(somewhere.else);'),
+    );
     const calls = new TsSource().analyse(files, readFixtureAssembly('connections'), catalog).calls ?? [];
     expect(calls.some((c) => c.method[0] === 'grantPurge')).toBe(false);
   });

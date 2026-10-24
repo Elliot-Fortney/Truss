@@ -53,7 +53,9 @@ describe('run', () => {
   });
 
   it('refuses to start, saying why, when the app is one Truss cannot open', async () => {
-    const d = deps({ loadCatalog: async () => ({ ok: false, message: 'aws-cdk-lib 2.100.0 is older than the minimum' }) });
+    const d = deps({
+      loadCatalog: async () => ({ ok: false, message: 'aws-cdk-lib 2.100.0 is older than the minimum' }),
+    });
     await expect(run({ open: false, port: 0 }, d)).rejects.toThrow('aws-cdk-lib 2.100.0 is older than the minimum');
     expect(d.open).not.toHaveBeenCalled();
   });
@@ -100,7 +102,9 @@ describe('run', () => {
       ws.send(JSON.stringify({ type: 'open-in-editor', file, ...extra }));
       // A second, valid request is handled after the first, so by then the first has been dropped or acted on.
       ws.send(JSON.stringify({ type: 'open-in-editor', file: 'sentinel.ts' }));
-      await vi.waitFor(() => expect(d.openInEditor).toHaveBeenCalledWith(expect.objectContaining({ file: '/work/app/sentinel.ts' })));
+      await vi.waitFor(() =>
+        expect(d.openInEditor).toHaveBeenCalledWith(expect.objectContaining({ file: '/work/app/sentinel.ts' })),
+      );
       ws.close();
       await running.stop();
     };
@@ -115,7 +119,9 @@ describe('run', () => {
       const d = deps();
       await ask(d, '../outside/secret.ts');
       await ask(d, '/etc/passwd');
-      expect(d.openInEditor).not.toHaveBeenCalledWith(expect.objectContaining({ file: expect.stringContaining('secret') }));
+      expect(d.openInEditor).not.toHaveBeenCalledWith(
+        expect.objectContaining({ file: expect.stringContaining('secret') }),
+      );
       expect(d.openInEditor).not.toHaveBeenCalledWith(expect.objectContaining({ file: '/etc/passwd' }));
     });
   });

@@ -23,7 +23,9 @@ export function runsCompiledJs(command: string): boolean {
 
 async function buildScriptOf(appDir: string): Promise<string | undefined> {
   try {
-    const scripts = (JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }).scripts;
+    const scripts = (
+      JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }
+    ).scripts;
     return typeof scripts?.['build'] === 'string' ? scripts['build'] : undefined;
   } catch {
     return undefined;
@@ -62,10 +64,12 @@ export async function makeShadow(appDir: string, overlay: FileSet): Promise<Shad
   const remove = () => rm(dir, { recursive: true, force: true });
   try {
     await cp(appDir, dir, { recursive: true, filter: (src) => src === appDir || !NOT_COPIED.has(basename(src)) });
-    await symlink(join(appDir, 'node_modules'), join(dir, 'node_modules'), 'junction').catch((err: NodeJS.ErrnoException) => {
-      // An app with no dependencies of its own (a monorepo that hoists them) has nothing to link.
-      if (err.code !== 'ENOENT' && err.code !== 'EEXIST') throw err;
-    });
+    await symlink(join(appDir, 'node_modules'), join(dir, 'node_modules'), 'junction').catch(
+      (err: NodeJS.ErrnoException) => {
+        // An app with no dependencies of its own (a monorepo that hoists them) has nothing to link.
+        if (err.code !== 'ENOENT' && err.code !== 'EEXIST') throw err;
+      },
+    );
     for (const [file, text] of overlay) {
       const rel = relative(dir, join(dir, file));
       if (isAbsolute(file) || rel.startsWith('..')) throw new Error(`${file} is outside the app`);

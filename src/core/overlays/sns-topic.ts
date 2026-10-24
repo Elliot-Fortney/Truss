@@ -21,7 +21,11 @@ const overlay: Overlay = {
       peers: ['aws-cdk-lib.aws_lambda.Function'],
       flow: 'out',
       default: true,
-      primary: { forms: [['addSubscription']], args: ['new LambdaSubscription({peer})'], uses: ['aws-cdk-lib.aws_sns_subscriptions.LambdaSubscription'] },
+      primary: {
+        forms: [['addSubscription']],
+        args: ['new LambdaSubscription({peer})'],
+        uses: ['aws-cdk-lib.aws_sns_subscriptions.LambdaSubscription'],
+      },
     },
     {
       kind: 'integration',
@@ -29,7 +33,11 @@ const overlay: Overlay = {
       peers: ['aws-cdk-lib.aws_sqs.Queue'],
       flow: 'out',
       default: true,
-      primary: { forms: [['addSubscription']], args: ['new SqsSubscription({peer})'], uses: ['aws-cdk-lib.aws_sns_subscriptions.SqsSubscription'] },
+      primary: {
+        forms: [['addSubscription']],
+        args: ['new SqsSubscription({peer})'],
+        uses: ['aws-cdk-lib.aws_sns_subscriptions.SqsSubscription'],
+      },
     },
   ],
 };

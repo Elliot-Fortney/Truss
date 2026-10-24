@@ -11,11 +11,21 @@ const source = new TsSource();
 function spanAt(file: string, text: string, needle: string): NodeFacts['span'] {
   const at = text.indexOf(needle);
   if (at < 0) throw new Error(`no ${needle}`);
-  const pos = (offset: number) => ({ line: text.slice(0, offset).split('\n').length, col: offset - text.lastIndexOf('\n', offset - 1) });
+  const pos = (offset: number) => ({
+    line: text.slice(0, offset).split('\n').length,
+    col: offset - text.lastIndexOf('\n', offset - 1),
+  });
   return { file, start: pos(at), end: pos(at + needle.length) };
 }
 
-const node = (file: string, text: string, needle: string, className: string, literalId: string, extra: Partial<NodeFacts> = {}): NodeFacts => ({
+const node = (
+  file: string,
+  text: string,
+  needle: string,
+  className: string,
+  literalId: string,
+  extra: Partial<NodeFacts> = {},
+): NodeFacts => ({
   span: spanAt(file, text, needle),
   className,
   literalId,
@@ -28,7 +38,12 @@ function run(files: Record<string, string>, facts: Facts, ...intents: Intent[]) 
   const set: FileSet = new Map(Object.entries(files));
   const result = source.plan(set, facts, intents);
   if (!result.ok) return result;
-  return { ok: true as const, files: Object.fromEntries([...set].map(([file, text]) => [file, result.changes[file] ? applyChanges(text, result.changes[file]) : text])) };
+  return {
+    ok: true as const,
+    files: Object.fromEntries(
+      [...set].map(([file, text]) => [file, result.changes[file] ? applyChanges(text, result.changes[file]) : text]),
+    ),
+  };
 }
 
 const out = (r: ReturnType<typeof run>, file: string): string => {
@@ -36,7 +51,14 @@ const out = (r: ReturnType<typeof run>, file: string): string => {
   return r.files[file]!;
 };
 
-const add = (path: string, className: string, literalId: string, fqn: string, id: string, props: Extract<Intent, { type: 'addNode' }>['props'] = []): Intent => ({ type: 'addNode', path, expect: { className, literalId }, fqn, id, props });
+const add = (
+  path: string,
+  className: string,
+  literalId: string,
+  fqn: string,
+  id: string,
+  props: Extract<Intent, { type: 'addNode' }>['props'] = [],
+): Intent => ({ type: 'addNode', path, expect: { className, literalId }, fqn, id, props });
 
 const BUCKET = 'aws-cdk-lib.aws_s3.Bucket';
 
@@ -58,15 +80,25 @@ export class MyStack extends Stack {
   const facts: Facts = {
     nodes: {
       Dev: node('bin/app.ts', app, 'new MyStack', 'MyStack', 'Dev', { binding: 'none' }),
-      'Dev/Uploads': node('lib/stack.ts', stack, 'new s3.Bucket(this, \'Uploads\'', 's3.Bucket', 'Uploads', { enclosingClass: { name: 'MyStack', kind: 'stack' } }),
-      'Dev/Logs': node('lib/stack.ts', stack, 'new s3.Bucket(this, \'Logs\'', 's3.Bucket', 'Logs', { enclosingClass: { name: 'MyStack', kind: 'stack' } }),
+      'Dev/Uploads': node('lib/stack.ts', stack, "new s3.Bucket(this, 'Uploads'", 's3.Bucket', 'Uploads', {
+        enclosingClass: { name: 'MyStack', kind: 'stack' },
+      }),
+      'Dev/Logs': node('lib/stack.ts', stack, "new s3.Bucket(this, 'Logs'", 's3.Bucket', 'Logs', {
+        enclosingClass: { name: 'MyStack', kind: 'stack' },
+      }),
     },
   };
   const files = { 'bin/app.ts': app, 'lib/stack.ts': stack };
 
   it('writes a const after the last editable sibling, keeping its trailing comment, and reuses the file’s alias', () => {
-    const r = run(files, facts, add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive', [{ name: 'versioned', value: { kind: 'boolean', value: true } }]));
-    expect(out(r, 'lib/stack.ts')).toContain(`    const logs = new s3.Bucket(this, 'Logs'); // keep\n    const archive = new s3.Bucket(this, 'Archive', { versioned: true });\n    this.tag();`);
+    const r = run(
+      files,
+      facts,
+      add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive', [{ name: 'versioned', value: { kind: 'boolean', value: true } }]),
+    );
+    expect(out(r, 'lib/stack.ts')).toContain(
+      `    const logs = new s3.Bucket(this, 'Logs'); // keep\n    const archive = new s3.Bucket(this, 'Archive', { versioned: true });\n    this.tag();`,
+    );
     expect(out(r, 'bin/app.ts')).toBe(app);
   });
 
@@ -78,13 +110,19 @@ export class MyStack extends Stack {
   });
 
   it('fills a prop from an Overlay snippet, importing what it names', () => {
-    const r = run(files, facts, add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_lambda.Function', 'Handler', [
-      { name: 'runtime', snippet: { code: 'Runtime.NODEJS_22_X', uses: ['aws-cdk-lib.aws_lambda.Runtime'] } },
-      { name: 'handler', snippet: { code: "'index.handler'" } },
-    ]));
+    const r = run(
+      files,
+      facts,
+      add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_lambda.Function', 'Handler', [
+        { name: 'runtime', snippet: { code: 'Runtime.NODEJS_22_X', uses: ['aws-cdk-lib.aws_lambda.Runtime'] } },
+        { name: 'handler', snippet: { code: "'index.handler'" } },
+      ]),
+    );
     const text = out(r, 'lib/stack.ts');
     expect(text).toContain(`import * as lambda from 'aws-cdk-lib/aws-lambda';`);
-    expect(text).toContain(`const handler = new lambda.Function(this, 'Handler', { runtime: lambda.Runtime.NODEJS_22_X, handler: 'index.handler' });`);
+    expect(text).toContain(
+      `const handler = new lambda.Function(this, 'Handler', { runtime: lambda.Runtime.NODEJS_22_X, handler: 'index.handler' });`,
+    );
   });
 
   it('imports a module once however many of its names are used, in either style', () => {
@@ -92,16 +130,42 @@ export class MyStack extends Stack {
       { name: 'runtime', snippet: { code: 'Runtime.NODEJS_22_X', uses: ['aws-cdk-lib.aws_lambda.Runtime'] } },
       { name: 'code', snippet: { code: "Code.fromInline('x')", uses: ['aws-cdk-lib.aws_lambda.Code'] } },
     ]);
-    const text = out(run(files, facts, lambda, add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_lambda.Function', 'Other')), 'lib/stack.ts');
+    const text = out(
+      run(files, facts, lambda, add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_lambda.Function', 'Other')),
+      'lib/stack.ts',
+    );
     expect(text.match(/aws-cdk-lib\/aws-lambda/g)).toHaveLength(1);
     expect(text).toContain('lambda.Code.fromInline');
-    const named = stack.replace("import * as s3 from 'aws-cdk-lib/aws-s3';", "import { Bucket } from 'aws-cdk-lib/aws-s3';").replaceAll('s3.Bucket', 'Bucket');
-    const namedText = out(run({ ...files, 'lib/stack.ts': named }, { nodes: { ...facts.nodes, 'Dev/Uploads': { ...facts.nodes['Dev/Uploads']!, span: spanAt('lib/stack.ts', named, "new Bucket(this, 'Uploads'") }, 'Dev/Logs': { ...facts.nodes['Dev/Logs']!, span: spanAt('lib/stack.ts', named, "new Bucket(this, 'Logs'") } } }, lambda), 'lib/stack.ts');
+    const named = stack
+      .replace("import * as s3 from 'aws-cdk-lib/aws-s3';", "import { Bucket } from 'aws-cdk-lib/aws-s3';")
+      .replaceAll('s3.Bucket', 'Bucket');
+    const namedText = out(
+      run(
+        { ...files, 'lib/stack.ts': named },
+        {
+          nodes: {
+            ...facts.nodes,
+            'Dev/Uploads': {
+              ...facts.nodes['Dev/Uploads']!,
+              span: spanAt('lib/stack.ts', named, "new Bucket(this, 'Uploads'"),
+            },
+            'Dev/Logs': { ...facts.nodes['Dev/Logs']!, span: spanAt('lib/stack.ts', named, "new Bucket(this, 'Logs'") },
+          },
+        },
+        lambda,
+      ),
+      'lib/stack.ts',
+    );
     expect(namedText).toContain("import { Function, Runtime, Code } from 'aws-cdk-lib/aws-lambda';");
   });
 
   it('adds several in the order given, each with a binding of its own', () => {
-    const r = run(files, facts, add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive'), add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive2'));
+    const r = run(
+      files,
+      facts,
+      add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive'),
+      add('Dev', 'MyStack', 'Dev', BUCKET, 'Archive2'),
+    );
     const text = out(r, 'lib/stack.ts');
     expect(text.indexOf("'Archive')")).toBeLessThan(text.indexOf("'Archive2')"));
     expect(text).toContain('const archive = ');
@@ -141,16 +205,25 @@ export class MyStack extends Stack {
   const facts: Facts = {
     nodes: {
       Dev: node('bin/app.ts', app, 'new MyStack', 'MyStack', 'Dev', { binding: 'none' }),
-      'Dev/Uploads': node('lib/stack.ts', stack, 'new Bucket(this', 'Bucket', 'Uploads', { binding: 'field', enclosingClass: { name: 'MyStack', kind: 'stack' } }),
+      'Dev/Uploads': node('lib/stack.ts', stack, 'new Bucket(this', 'Bucket', 'Uploads', {
+        binding: 'field',
+        enclosingClass: { name: 'MyStack', kind: 'stack' },
+      }),
     },
   };
 
   it('declares a field and assigns it, in the file’s quote and import style', () => {
-    const r = run({ 'bin/app.ts': app, 'lib/stack.ts': stack }, facts, add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_sqs.Queue', 'Jobs'));
+    const r = run(
+      { 'bin/app.ts': app, 'lib/stack.ts': stack },
+      facts,
+      add('Dev', 'MyStack', 'Dev', 'aws-cdk-lib.aws_sqs.Queue', 'Jobs'),
+    );
     const text = out(r, 'lib/stack.ts');
     expect(text).toContain(`import { Queue } from 'aws-cdk-lib/aws-sqs';`);
     expect(text).toContain(`  readonly uploads: Bucket;\n  readonly jobs: Queue;\n`);
-    expect(text).toContain(`    this.uploads = new Bucket(this, "Uploads");\n    this.jobs = new Queue(this, "Jobs");\n  }`);
+    expect(text).toContain(
+      `    this.uploads = new Bucket(this, "Uploads");\n    this.jobs = new Queue(this, "Jobs");\n  }`,
+    );
   });
 });
 
@@ -172,13 +245,19 @@ app.synth();
   it('goes after the last use of the Stack’s variable', () => {
     const r = run({ 'bin/app.ts': app }, facts, add('Dev', 'Stack', 'Dev', BUCKET, 'Data'));
     const text = out(r, 'bin/app.ts');
-    expect(text).toContain(`const queue = new Queue(stack, 'Queue');\nconst data = new s3.Bucket(stack, 'Data');\napp.synth();`);
+    expect(text).toContain(
+      `const queue = new Queue(stack, 'Queue');\nconst data = new s3.Bucket(stack, 'Data');\napp.synth();`,
+    );
     expect(text).toContain(`import * as s3 from 'aws-cdk-lib/aws-s3';`);
   });
 
   it('refuses a Stack that is not kept in a variable', () => {
     const unbound = `new Stack(app, 'Dev');\n`;
-    const r = run({ 'bin/app.ts': unbound }, { nodes: { Dev: node('bin/app.ts', unbound, 'new Stack', 'Stack', 'Dev', { binding: 'none' }) } }, add('Dev', 'Stack', 'Dev', BUCKET, 'Data'));
+    const r = run(
+      { 'bin/app.ts': unbound },
+      { nodes: { Dev: node('bin/app.ts', unbound, 'new Stack', 'Stack', 'Dev', { binding: 'none' }) } },
+      add('Dev', 'Stack', 'Dev', BUCKET, 'Data'),
+    );
     expect(r).toMatchObject({ ok: false });
   });
 });
@@ -206,15 +285,25 @@ export class MyStack extends Stack {
     nodes: {
       Dev: node('bin/app.ts', app, 'new MyStack', 'MyStack', 'Dev', { binding: 'none' }),
       'Dev/Jobs': node('lib/stack.ts', stack, "new sqs.Queue(this, 'Jobs'", 'sqs.Queue', 'Jobs', inClass),
-      'Dev/Dead': node('lib/stack.ts', stack, "new sqs.Queue(this, 'Dead'", 'sqs.Queue', 'Dead', { ...inClass, binding: 'field' }),
+      'Dev/Dead': node('lib/stack.ts', stack, "new sqs.Queue(this, 'Dead'", 'sqs.Queue', 'Dead', {
+        ...inClass,
+        binding: 'field',
+      }),
     },
   };
   const files = { 'bin/app.ts': app, 'lib/stack.ts': stack };
-  const dup = (path: string, className: string, literalId: string, newId: string): Intent => ({ type: 'duplicate', path, expect: { className, literalId }, newId });
+  const dup = (path: string, className: string, literalId: string, newId: string): Intent => ({
+    type: 'duplicate',
+    path,
+    expect: { className, literalId },
+    newId,
+  });
 
   it('copies the statement, with a fresh ID and binding, after the last sibling', () => {
     const text = out(run(files, facts, dup('Dev/Jobs', 'sqs.Queue', 'Jobs', 'Jobs2')), 'lib/stack.ts');
-    expect(text).toContain(`    this.dlq = new sqs.Queue(this, 'Dead');\n    const jobs2 = new sqs.Queue(this, 'Jobs2', {\n      visibilityTimeout: Duration.seconds(30),\n    });\n    this.tag();`);
+    expect(text).toContain(
+      `    this.dlq = new sqs.Queue(this, 'Dead');\n    const jobs2 = new sqs.Queue(this, 'Jobs2', {\n      visibilityTimeout: Duration.seconds(30),\n    });\n    this.tag();`,
+    );
   });
 
   it('copies a field with its declaration', () => {
@@ -224,7 +313,12 @@ export class MyStack extends Stack {
   });
 
   it('refuses a Node that is not editable', () => {
-    const locked: Facts = { nodes: { ...facts.nodes, 'Dev/Jobs': { ...facts.nodes['Dev/Jobs']!, surround: { kind: 'loop' } } } };
-    expect(run(files, locked, dup('Dev/Jobs', 'sqs.Queue', 'Jobs', 'Jobs2'))).toMatchObject({ ok: false, reason: 'Created in a loop' });
+    const locked: Facts = {
+      nodes: { ...facts.nodes, 'Dev/Jobs': { ...facts.nodes['Dev/Jobs']!, surround: { kind: 'loop' } } },
+    };
+    expect(run(files, locked, dup('Dev/Jobs', 'sqs.Queue', 'Jobs', 'Jobs2'))).toMatchObject({
+      ok: false,
+      reason: 'Created in a loop',
+    });
   });
 });

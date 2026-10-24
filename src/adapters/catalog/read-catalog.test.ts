@@ -1,4 +1,13 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -24,13 +33,23 @@ let cacheCount = 0;
 function freshCache(withCdkLib = true): string {
   const dir = join(scratch, `cache${cacheCount++}`);
   mkdirSync(dir);
-  if (withCdkLib) for (const f of readdirSync(cacheDir)) if (f.startsWith('aws-cdk-lib@')) copyFileSync(join(cacheDir, f), join(dir, f));
+  if (withCdkLib)
+    for (const f of readdirSync(cacheDir))
+      if (f.startsWith('aws-cdk-lib@')) copyFileSync(join(cacheDir, f), join(dir, f));
   return dir;
 }
 
 let appCount = 0;
 /** An app folder under the scratch dir with the given package.json and installed packages. */
-function makeApp(pkg: Record<string, unknown>, installed: Record<string, 'real-cdk-lib' | { link: string } | { version: string; files?: Record<string, string | Buffer>; deps?: Record<string, string> }> = {}): string {
+function makeApp(
+  pkg: Record<string, unknown>,
+  installed: Record<
+    string,
+    | 'real-cdk-lib'
+    | { link: string }
+    | { version: string; files?: Record<string, string | Buffer>; deps?: Record<string, string> }
+  > = {},
+): string {
   const dir = join(scratch, `app${appCount++}`);
   mkdirSync(join(dir, 'node_modules'), { recursive: true });
   writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
@@ -90,28 +109,50 @@ describe('loadCatalog on the installed aws-cdk-lib', () => {
   }, 120_000);
 
   it('knows the common constructs, each at its tier', () => {
-    expect(entryFor(catalog, 'aws-cdk-lib.aws_s3.Bucket')).toMatchObject({ tier: 'L2', service: 'S3', cfnType: 'AWS::S3::Bucket' });
+    expect(entryFor(catalog, 'aws-cdk-lib.aws_s3.Bucket')).toMatchObject({
+      tier: 'L2',
+      service: 'S3',
+      cfnType: 'AWS::S3::Bucket',
+    });
     expect(entryFor(catalog, 'aws-cdk-lib.aws_s3.CfnBucket')).toMatchObject({ tier: 'L1', cfnType: 'AWS::S3::Bucket' });
     expect(entryFor(catalog, 'aws-cdk-lib.aws_dynamodb.Table')).toMatchObject({ tier: 'L2' });
-    expect(entryFor(catalog, 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService')).toMatchObject({ tier: 'L3', service: 'ECS' });
+    expect(entryFor(catalog, 'aws-cdk-lib.aws_ecs_patterns.ApplicationLoadBalancedFargateService')).toMatchObject({
+      tier: 'L3',
+      service: 'ECS',
+    });
   });
 
   it('does not offer Stacks, Stages or abstract bases', () => {
-    for (const fqn of ['aws-cdk-lib.Stack', 'aws-cdk-lib.Stage', 'aws-cdk-lib.App', 'aws-cdk-lib.Resource', 'constructs.Construct']) {
+    for (const fqn of [
+      'aws-cdk-lib.Stack',
+      'aws-cdk-lib.Stage',
+      'aws-cdk-lib.App',
+      'aws-cdk-lib.Resource',
+      'constructs.Construct',
+    ]) {
       expect(entryFor(catalog, fqn), fqn).toBeUndefined();
     }
   });
 
   it('does not offer what is no resource at all, such as a template output or a parameter', () => {
-    for (const fqn of ['aws-cdk-lib.CfnOutput', 'aws-cdk-lib.CfnParameter', 'aws-cdk-lib.CfnCondition', 'constructs.RootConstruct']) {
+    for (const fqn of [
+      'aws-cdk-lib.CfnOutput',
+      'aws-cdk-lib.CfnParameter',
+      'aws-cdk-lib.CfnCondition',
+      'constructs.RootConstruct',
+    ]) {
       expect(entryFor(catalog, fqn), fqn).toBeUndefined();
     }
   });
 
   it('flags the props a Function cannot be made without', () => {
-    const required = entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.filter((p) => p.required).map((p) => p.name);
+    const required = entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!
+      .props.filter((p) => p.required)
+      .map((p) => p.name);
     expect(required).toEqual(expect.arrayContaining(['code', 'handler', 'runtime']));
-    expect(entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === 'memorySize')).toMatchObject({ required: false, type: 'number' });
+    expect(
+      entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === 'memorySize'),
+    ).toMatchObject({ required: false, type: 'number' });
   });
 
   it('flattens the props a props struct inherits', () => {
@@ -123,7 +164,9 @@ describe('loadCatalog on the installed aws-cdk-lib', () => {
   });
 
   it('shows CDK defaults as text', () => {
-    expect(entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === 'memorySize')?.default).toMatch(/128/);
+    expect(
+      entryFor(catalog, 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === 'memorySize')?.default,
+    ).toMatch(/128/);
   });
 
   it('resolves every Overlay Truss ships against the CI baseline, so nothing is dropped', () => {
@@ -143,7 +186,9 @@ describe('loadCatalog on the installed aws-cdk-lib', () => {
   });
 
   it('writes a grant in the form the installed aws-cdk-lib has, newest first', () => {
-    const read = entryFor(catalog, 'aws-cdk-lib.aws_s3.Bucket')!.overlay!.connections.find((c) => c.label === 'is read by');
+    const read = entryFor(catalog, 'aws-cdk-lib.aws_s3.Bucket')!.overlay!.connections.find(
+      (c) => c.label === 'is read by',
+    );
     // 2.274.0 has the `grants` facade and still has `grantRead`.
     expect(read?.primary.forms).toEqual([['grants', 'read'], ['grantRead']]);
   });
@@ -151,14 +196,31 @@ describe('loadCatalog on the installed aws-cdk-lib', () => {
   it('features the Overlaid constructs first in the palette, with their friendly names', () => {
     const first = searchCatalog(catalog, '', 15);
     expect(first.every((h) => h.featured)).toBe(true);
-    expect(first.map((h) => h.displayName)).toEqual(expect.arrayContaining(['S3 Bucket', 'Lambda Function', 'DynamoDB Table', 'SQS Queue', 'SNS Topic', 'API Gateway REST API', 'API Gateway HTTP API', 'VPC', 'Fargate Service behind a Load Balancer']));
-    expect(searchCatalog(catalog, 'lambda')[0]).toMatchObject({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Lambda Function' });
+    expect(first.map((h) => h.displayName)).toEqual(
+      expect.arrayContaining([
+        'S3 Bucket',
+        'Lambda Function',
+        'DynamoDB Table',
+        'SQS Queue',
+        'SNS Topic',
+        'API Gateway REST API',
+        'API Gateway HTTP API',
+        'VPC',
+        'Fargate Service behind a Load Balancer',
+      ]),
+    );
+    expect(searchCatalog(catalog, 'lambda')[0]).toMatchObject({
+      fqn: 'aws-cdk-lib.aws_lambda.Function',
+      displayName: 'Lambda Function',
+    });
   });
 
   it('searches by name, service and CloudFormation type, and shows the tier of each hit', () => {
     expect(searchCatalog(catalog, 'bucket')[0]).toMatchObject({ fqn: 'aws-cdk-lib.aws_s3.Bucket', tier: 'L2' });
     expect(searchCatalog(catalog, 'dynamodb').map((h) => h.name)).toContain('Table');
-    expect(searchCatalog(catalog, 'AWS::SQS::Queue').map((h) => h.fqn)).toEqual(expect.arrayContaining(['aws-cdk-lib.aws_sqs.Queue', 'aws-cdk-lib.aws_sqs.CfnQueue']));
+    expect(searchCatalog(catalog, 'AWS::SQS::Queue').map((h) => h.fqn)).toEqual(
+      expect.arrayContaining(['aws-cdk-lib.aws_sqs.Queue', 'aws-cdk-lib.aws_sqs.CfnQueue']),
+    );
     expect(searchCatalog(catalog, 'fargate').some((h) => h.tier === 'L3')).toBe(true);
     expect(searchCatalog(catalog, 'sqs')[0]).toMatchObject({ fqn: 'aws-cdk-lib.aws_sqs.Queue' });
   });
@@ -211,7 +273,10 @@ describe('loadCatalog with other libraries installed', () => {
   it('does not follow a redirect out of the package', async () => {
     const dir = makeApp(direct, {
       'aws-cdk-lib': 'real-cdk-lib',
-      'my-constructs': { version: '1.0.0', files: { '.jsii': JSON.stringify({ schema: 'jsii/file-redirect', filename: '../../package.json' }) } },
+      'my-constructs': {
+        version: '1.0.0',
+        files: { '.jsii': JSON.stringify({ schema: 'jsii/file-redirect', filename: '../../package.json' }) },
+      },
     });
     const { lines, log } = quiet();
     const result = await loadCatalog(dir, { cacheDir: freshCache(), log });
@@ -247,14 +312,23 @@ describe('loadCatalog with other libraries installed', () => {
   it('ignores a library the app only has installed through another package', async () => {
     const dir = makeApp(
       { dependencies: { 'aws-cdk-lib': '^2.274.0' } },
-      { 'aws-cdk-lib': 'real-cdk-lib', 'my-constructs': { version: '1.0.0', files: { '.jsii': lib('my-constructs', '1.0.0', queueish()) } } },
+      {
+        'aws-cdk-lib': 'real-cdk-lib',
+        'my-constructs': { version: '1.0.0', files: { '.jsii': lib('my-constructs', '1.0.0', queueish()) } },
+      },
     );
     const result = await loadCatalog(dir, { cacheDir: freshCache(), log: () => undefined });
     expect(result.ok && result.catalog.entries.some((e) => e.library === 'my-constructs')).toBe(false);
   });
 
   it('finds a package hoisted into a folder above the app', async () => {
-    const root = makeApp({ private: true }, { 'my-constructs': { version: '1.0.0', files: { '.jsii': lib('my-constructs', '1.0.0', queueish()) } }, 'aws-cdk-lib': 'real-cdk-lib' });
+    const root = makeApp(
+      { private: true },
+      {
+        'my-constructs': { version: '1.0.0', files: { '.jsii': lib('my-constructs', '1.0.0', queueish()) } },
+        'aws-cdk-lib': 'real-cdk-lib',
+      },
+    );
     const dir = join(root, 'packages', 'web');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'package.json'), JSON.stringify(direct));
@@ -265,7 +339,10 @@ describe('loadCatalog with other libraries installed', () => {
 
 describe('loadCatalog cache', () => {
   const direct = { dependencies: { 'aws-cdk-lib': '^2.274.0', 'my-constructs': '^1.0.0' } };
-  const install = (version: string, jsii: string) => ({ 'aws-cdk-lib': 'real-cdk-lib' as const, 'my-constructs': { version, files: { '.jsii': jsii } } });
+  const install = (version: string, jsii: string) => ({
+    'aws-cdk-lib': 'real-cdk-lib' as const,
+    'my-constructs': { version, files: { '.jsii': jsii } },
+  });
 
   it('reads a library once per name and version', async () => {
     const cache = freshCache();
@@ -283,8 +360,14 @@ describe('loadCatalog cache', () => {
     const cache = freshCache();
     const dir = makeApp(direct, install('1.0.0', lib('my-constructs', '1.0.0', queueish())));
     await loadCatalog(dir, { cacheDir: cache, log: () => undefined });
-    writeFileSync(join(dir, 'node_modules/my-constructs/package.json'), JSON.stringify({ name: 'my-constructs', version: '1.1.0' }));
-    writeFileSync(join(dir, 'node_modules/my-constructs/.jsii'), lib('my-constructs', '1.1.0', queueish({ docs: { summary: 'Now better.' } })));
+    writeFileSync(
+      join(dir, 'node_modules/my-constructs/package.json'),
+      JSON.stringify({ name: 'my-constructs', version: '1.1.0' }),
+    );
+    writeFileSync(
+      join(dir, 'node_modules/my-constructs/.jsii'),
+      lib('my-constructs', '1.1.0', queueish({ docs: { summary: 'Now better.' } })),
+    );
     const again = await loadCatalog(dir, { cacheDir: cache, log: () => undefined });
     expect(again.ok && entryFor(again.catalog, 'my-constructs.Queueish')?.summary).toBe('Now better.');
   });
@@ -315,7 +398,9 @@ describe('loadCatalog refusals', () => {
     if (result.ok) throw new Error('expected a refusal');
     return result.message;
   };
-  const cdkLib = (version: string, deps?: Record<string, string>) => ({ 'aws-cdk-lib': { version, ...(deps ? { deps } : {}) } });
+  const cdkLib = (version: string, deps?: Record<string, string>) => ({
+    'aws-cdk-lib': { version, ...(deps ? { deps } : {}) },
+  });
 
   it('refuses an aws-cdk-lib below the minimum, before reading anything from it', async () => {
     const dir = makeApp({ dependencies: { 'aws-cdk-lib': '2.100.0' } }, cdkLib('2.100.0'));
@@ -334,12 +419,18 @@ describe('loadCatalog refusals', () => {
   });
 
   it('refuses an app whose aws-cdk-lib writes a newer cloud assembly schema than the bundled toolkit-lib reads', async () => {
-    const dir = makeApp({ dependencies: { 'aws-cdk-lib': '^2.999.0' } }, cdkLib('2.999.0', { '@aws-cdk/cloud-assembly-schema': '^999.0.0' }));
+    const dir = makeApp(
+      { dependencies: { 'aws-cdk-lib': '^2.999.0' } },
+      cdkLib('2.999.0', { '@aws-cdk/cloud-assembly-schema': '^999.0.0' }),
+    );
     expect(await refusal(dir)).toMatch(/upgrade Truss/i);
   });
 
   it('refuses an app whose aws-cdk-lib assembly cannot be read, since nothing could be placed', async () => {
-    const dir = makeApp({ dependencies: { 'aws-cdk-lib': '^2.274.0' } }, { 'aws-cdk-lib': { version: '2.274.0', files: { '.jsii': '{ not json' } } });
+    const dir = makeApp(
+      { dependencies: { 'aws-cdk-lib': '^2.274.0' } },
+      { 'aws-cdk-lib': { version: '2.274.0', files: { '.jsii': '{ not json' } } },
+    );
     expect(await refusal(dir)).toMatch(/aws-cdk-lib/);
   });
 });
@@ -350,24 +441,30 @@ describe('loadCatalog refusals', () => {
  * later than `grantRead`), but never a construct, a prop, a default, a hint or an accessor.
  */
 // In CI the app must be there: a step that fails to set it up fails this test instead of skipping it.
-describe.skipIf(!process.env['TRUSS_MIN_CDK_APP'] && !process.env['CI'])('every Overlay at the minimum supported aws-cdk-lib', () => {
-  it('keeps all its items, losing at most a newer spelling of a call', async () => {
-    const dir = process.env['TRUSS_MIN_CDK_APP'];
-    if (!dir) throw new Error('TRUSS_MIN_CDK_APP is not set: CI has to install the minimum aws-cdk-lib in an app of its own');
-    const result = await loadCatalog(dir, { cacheDir: freshCache(false), log: () => undefined });
-    if (!result.ok) throw new Error(result.message);
-    expect(entryFor(result.catalog, 'aws-cdk-lib.aws_s3.Bucket')).toBeDefined();
-    expect(JSON.parse(readFileSync(join(dir, 'node_modules', 'aws-cdk-lib', 'package.json'), 'utf8')).version).toBe(MIN_CDK_LIB_VERSION);
-    expect(result.catalog.dropped.filter((line) => !/ dropped form /.test(line))).toEqual([]);
-    for (const o of OVERLAYS) {
-      const kept = entryFor(result.catalog, o.fqn)!.overlay!;
-      expect(kept.featuredProps, o.fqn).toEqual(o.featuredProps ?? []);
-      expect(Object.keys(kept.defaults), o.fqn).toEqual(Object.keys(o.defaults ?? {}));
-      expect(kept.connections.length, o.fqn).toBe(o.connections?.length ?? 0);
-      expect(kept.accessors, o.fqn).toEqual(o.accessors ?? []);
-    }
-  }, 120_000);
-});
+describe.skipIf(!process.env['TRUSS_MIN_CDK_APP'] && !process.env['CI'])(
+  'every Overlay at the minimum supported aws-cdk-lib',
+  () => {
+    it('keeps all its items, losing at most a newer spelling of a call', async () => {
+      const dir = process.env['TRUSS_MIN_CDK_APP'];
+      if (!dir)
+        throw new Error('TRUSS_MIN_CDK_APP is not set: CI has to install the minimum aws-cdk-lib in an app of its own');
+      const result = await loadCatalog(dir, { cacheDir: freshCache(false), log: () => undefined });
+      if (!result.ok) throw new Error(result.message);
+      expect(entryFor(result.catalog, 'aws-cdk-lib.aws_s3.Bucket')).toBeDefined();
+      expect(JSON.parse(readFileSync(join(dir, 'node_modules', 'aws-cdk-lib', 'package.json'), 'utf8')).version).toBe(
+        MIN_CDK_LIB_VERSION,
+      );
+      expect(result.catalog.dropped.filter((line) => !/ dropped form /.test(line))).toEqual([]);
+      for (const o of OVERLAYS) {
+        const kept = entryFor(result.catalog, o.fqn)!.overlay!;
+        expect(kept.featuredProps, o.fqn).toEqual(o.featuredProps ?? []);
+        expect(Object.keys(kept.defaults), o.fqn).toEqual(Object.keys(o.defaults ?? {}));
+        expect(kept.connections.length, o.fqn).toBe(o.connections?.length ?? 0);
+        expect(kept.accessors, o.fqn).toEqual(o.accessors ?? []);
+      }
+    }, 120_000);
+  },
+);
 
 describe('Overlays in a different aws-cdk-lib', () => {
   /** An `aws-cdk-lib` with one bucket and nothing else, so no Overlay but the S3 one has its construct. */
@@ -375,21 +472,37 @@ describe('Overlays in a different aws-cdk-lib', () => {
     version,
     files: {
       '.jsii': lib('aws-cdk-lib', version, {
-        'aws-cdk-lib.aws_s3.Bucket': { kind: 'class', fqn: 'aws-cdk-lib.aws_s3.Bucket', name: 'Bucket', namespace: 'aws_s3', base: 'constructs.Construct', docs: { summary } },
+        'aws-cdk-lib.aws_s3.Bucket': {
+          kind: 'class',
+          fqn: 'aws-cdk-lib.aws_s3.Bucket',
+          name: 'Bucket',
+          namespace: 'aws_s3',
+          base: 'constructs.Construct',
+          docs: { summary },
+        },
         ...extraTypes,
       }),
     },
   });
 
   it('drops what does not resolve and says so in the terminal, and still opens', async () => {
-    const dir = makeApp({ dependencies: { 'aws-cdk-lib': '^2.274.0' } }, { 'aws-cdk-lib': tiny('2.274.0', 'A bucket.') });
+    const dir = makeApp(
+      { dependencies: { 'aws-cdk-lib': '^2.274.0' } },
+      { 'aws-cdk-lib': tiny('2.274.0', 'A bucket.') },
+    );
     const { lines, log } = quiet();
     const result = await loadCatalog(dir, { log });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.catalog.entries.map((e) => e.fqn)).toEqual(['aws-cdk-lib.aws_s3.Bucket']);
-    expect(entryFor(result.catalog, 'aws-cdk-lib.aws_s3.Bucket')?.overlay).toMatchObject({ displayName: 'S3 Bucket', connections: [], featuredProps: [] });
-    expect(lines.filter((l) => l.startsWith('Overlay for aws-cdk-lib.aws_lambda.Function'))).toEqual([expect.stringContaining('no such construct')]);
+    expect(entryFor(result.catalog, 'aws-cdk-lib.aws_s3.Bucket')?.overlay).toMatchObject({
+      displayName: 'S3 Bucket',
+      connections: [],
+      featuredProps: [],
+    });
+    expect(lines.filter((l) => l.startsWith('Overlay for aws-cdk-lib.aws_lambda.Function'))).toEqual([
+      expect.stringContaining('no such construct'),
+    ]);
     expect(lines).toEqual(result.catalog.dropped);
   });
 });
@@ -399,7 +512,14 @@ describe('createCatalogLoader', () => {
     version,
     files: {
       '.jsii': lib('aws-cdk-lib', version, {
-        'aws-cdk-lib.aws_s3.Bucket': { kind: 'class', fqn: 'aws-cdk-lib.aws_s3.Bucket', name: 'Bucket', namespace: 'aws_s3', base: 'constructs.Construct', docs: { summary } },
+        'aws-cdk-lib.aws_s3.Bucket': {
+          kind: 'class',
+          fqn: 'aws-cdk-lib.aws_s3.Bucket',
+          name: 'Bucket',
+          namespace: 'aws_s3',
+          base: 'constructs.Construct',
+          docs: { summary },
+        },
       }),
     },
   });
@@ -408,7 +528,8 @@ describe('createCatalogLoader', () => {
     writeFileSync(join(at, 'package.json'), JSON.stringify({ name: 'aws-cdk-lib', version }));
     writeFileSync(join(at, '.jsii'), tiny(version, summary).files['.jsii']);
   };
-  const summaryOf = (r: Awaited<ReturnType<typeof loadCatalog>>) => (r.ok ? entryFor(r.catalog, 'aws-cdk-lib.aws_s3.Bucket')?.summary : r.message);
+  const summaryOf = (r: Awaited<ReturnType<typeof loadCatalog>>) =>
+    r.ok ? entryFor(r.catalog, 'aws-cdk-lib.aws_s3.Bucket')?.summary : r.message;
 
   it('answers again with the very same Catalog while the installed versions are the same, and says nothing more', async () => {
     const dir = makeApp({ dependencies: { 'aws-cdk-lib': '^2.274.0' } }, { 'aws-cdk-lib': tiny('2.274.0', 'one') });

@@ -5,8 +5,14 @@ const parse = (m: unknown) => parseClientMessage(JSON.stringify(m));
 
 describe('parseClientMessage', () => {
   it('reads a move and a note, which name a construct path', () => {
-    expect(parse({ type: 'move', requestId: '1', id: 'A/B', x: 1, y: 2 })).toEqual({ ok: true, message: { type: 'move', requestId: '1', id: 'A/B', x: 1, y: 2 } });
-    expect(parse({ type: 'note', requestId: '2', id: 'A/B', note: 'hi' })).toEqual({ ok: true, message: { type: 'note', requestId: '2', id: 'A/B', note: 'hi' } });
+    expect(parse({ type: 'move', requestId: '1', id: 'A/B', x: 1, y: 2 })).toEqual({
+      ok: true,
+      message: { type: 'move', requestId: '1', id: 'A/B', x: 1, y: 2 },
+    });
+    expect(parse({ type: 'note', requestId: '2', id: 'A/B', note: 'hi' })).toEqual({
+      ok: true,
+      message: { type: 'note', requestId: '2', id: 'A/B', note: 'hi' },
+    });
   });
 
   it('refuses an edit without a construct path, saying which request it was', () => {
@@ -15,15 +21,22 @@ describe('parseClientMessage', () => {
 
   describe('search', () => {
     it('needs no construct path, and may ask for everything with an empty query', () => {
-      expect(parse({ type: 'search', requestId: '3', query: 'queue' })).toEqual({ ok: true, message: { type: 'search', requestId: '3', query: 'queue' } });
+      expect(parse({ type: 'search', requestId: '3', query: 'queue' })).toEqual({
+        ok: true,
+        message: { type: 'search', requestId: '3', query: 'queue' },
+      });
       expect(parse({ type: 'search', requestId: '3', query: '' })).toMatchObject({ ok: true });
     });
 
     it('refuses a query that is not text or is absurdly long', () => {
       expect(parse({ type: 'search', requestId: '3' })).toMatchObject({ ok: false, requestId: '3' });
       expect(parse({ type: 'search', requestId: '3', query: 7 })).toMatchObject({ ok: false });
-      expect(parse({ type: 'search', requestId: '3', query: 'x'.repeat(MAX_QUERY_LENGTH + 1) })).toMatchObject({ ok: false });
-      expect(parse({ type: 'search', requestId: '3', query: 'x'.repeat(MAX_QUERY_LENGTH) })).toMatchObject({ ok: true });
+      expect(parse({ type: 'search', requestId: '3', query: 'x'.repeat(MAX_QUERY_LENGTH + 1) })).toMatchObject({
+        ok: false,
+      });
+      expect(parse({ type: 'search', requestId: '3', query: 'x'.repeat(MAX_QUERY_LENGTH) })).toMatchObject({
+        ok: true,
+      });
     });
   });
 
@@ -31,38 +44,68 @@ describe('parseClientMessage', () => {
     const fqn = 'aws-cdk-lib.aws_s3.Bucket';
 
     it('reads the Stack and the construct, and the values a form gave', () => {
-      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn })).toEqual({ ok: true, message: { type: 'addNode', requestId: '1', scope: 'A', fqn } });
-      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { bucketName: { kind: 'string', value: 'x' } } })).toMatchObject({ ok: true, message: { props: { bucketName: { kind: 'string', value: 'x' } } } });
+      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn })).toEqual({
+        ok: true,
+        message: { type: 'addNode', requestId: '1', scope: 'A', fqn },
+      });
+      expect(
+        parse({
+          type: 'addNode',
+          requestId: '1',
+          scope: 'A',
+          fqn,
+          props: { bucketName: { kind: 'string', value: 'x' } },
+        }),
+      ).toMatchObject({ ok: true, message: { props: { bucketName: { kind: 'string', value: 'x' } } } });
     });
 
     it('refuses a missing Stack, a construct name that is not an FQN, and values that are not values Truss writes', () => {
       expect(parse({ type: 'addNode', requestId: '1', fqn })).toMatchObject({ ok: false, requestId: '1' });
       expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn: 'new Foo()' })).toMatchObject({ ok: false });
-      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { 'a b': { kind: 'string', value: 'x' } } })).toMatchObject({ ok: false });
-      expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { name: { kind: 'code', value: 'x' } } })).toMatchObject({ ok: false });
+      expect(
+        parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { 'a b': { kind: 'string', value: 'x' } } }),
+      ).toMatchObject({ ok: false });
+      expect(
+        parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: { name: { kind: 'code', value: 'x' } } }),
+      ).toMatchObject({ ok: false });
       expect(parse({ type: 'addNode', requestId: '1', scope: 'A', fqn, props: [] })).toMatchObject({ ok: false });
     });
   });
 
   it('reads a removeNode, which names the Node', () => {
-    expect(parse({ type: 'removeNode', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'removeNode', requestId: '1', id: 'A/B' } });
+    expect(parse({ type: 'removeNode', requestId: '1', id: 'A/B' })).toEqual({
+      ok: true,
+      message: { type: 'removeNode', requestId: '1', id: 'A/B' },
+    });
     expect(parse({ type: 'removeNode', requestId: '1' })).toMatchObject({ ok: false });
   });
 
   it('reads a duplicate, which names the Node', () => {
-    expect(parse({ type: 'duplicate', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'duplicate', requestId: '1', id: 'A/B' } });
+    expect(parse({ type: 'duplicate', requestId: '1', id: 'A/B' })).toEqual({
+      ok: true,
+      message: { type: 'duplicate', requestId: '1', id: 'A/B' },
+    });
     expect(parse({ type: 'duplicate', requestId: '1' })).toMatchObject({ ok: false });
   });
 
   describe('renameId', () => {
     it('reads the Node and the new ID', () => {
-      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' })).toEqual({ ok: true, message: { type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' } });
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' })).toEqual({
+        ok: true,
+        message: { type: 'renameId', requestId: '1', id: 'A/B', newId: 'C' },
+      });
     });
 
     it('leaves what an ID may hold to the rules for it, but wants text of a bounded length, and a Node', () => {
       expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: '' })).toMatchObject({ ok: true });
-      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 3 })).toMatchObject({ ok: false, reason: expect.stringContaining('newId') });
-      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'x'.repeat(257) })).toMatchObject({ ok: false, reason: expect.stringContaining('at most') });
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 3 })).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining('newId'),
+      });
+      expect(parse({ type: 'renameId', requestId: '1', id: 'A/B', newId: 'x'.repeat(257) })).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining('at most'),
+      });
       expect(parse({ type: 'renameId', requestId: '1', newId: 'C' })).toMatchObject({ ok: false });
     });
   });
@@ -75,7 +118,8 @@ describe('parseClientMessage', () => {
     });
 
     it('reads a setProp of each kind of value', () => {
-      const set = (value: unknown, prop: unknown = ['versioned']) => parse({ type: 'setProp', requestId: '4', id: 'A/B', prop, value });
+      const set = (value: unknown, prop: unknown = ['versioned']) =>
+        parse({ type: 'setProp', requestId: '4', id: 'A/B', prop, value });
       for (const value of [
         { kind: 'string', value: 'hi' },
         { kind: 'number', value: 3 },
@@ -85,18 +129,27 @@ describe('parseClientMessage', () => {
         { kind: 'duration', unit: 'seconds', amount: 30 },
         { kind: 'size', unit: 'mebibytes', amount: 512 },
       ]) {
-        expect(set(value), JSON.stringify(value)).toEqual({ ok: true, message: { type: 'setProp', requestId: '4', id: 'A/B', prop: ['versioned'], value } });
+        expect(set(value), JSON.stringify(value)).toEqual({
+          ok: true,
+          message: { type: 'setProp', requestId: '4', id: 'A/B', prop: ['versioned'], value },
+        });
       }
-      expect(set({ kind: 'boolean', value: true }, ['partitionKey', 'name'])).toMatchObject({ ok: true, message: { prop: ['partitionKey', 'name'] } });
+      expect(set({ kind: 'boolean', value: true }, ['partitionKey', 'name'])).toMatchObject({
+        ok: true,
+        message: { prop: ['partitionKey', 'name'] },
+      });
     });
 
     it('refuses a value that could be read as code or is not a value Truss writes', () => {
-      const bad = (value: unknown, prop: unknown = ['x']) => parse({ type: 'setProp', requestId: '4', id: 'A/B', prop, value });
+      const bad = (value: unknown, prop: unknown = ['x']) =>
+        parse({ type: 'setProp', requestId: '4', id: 'A/B', prop, value });
       expect(bad({ kind: 'string', value: 5 })).toMatchObject({ ok: false, requestId: '4' });
       expect(bad({ kind: 'string', value: 'x'.repeat(MAX_STRING_VALUE_LENGTH + 1) })).toMatchObject({ ok: false });
       expect(bad({ kind: 'number', value: Infinity })).toMatchObject({ ok: false });
       expect(bad({ kind: 'number', value: '3' })).toMatchObject({ ok: false });
-      expect(bad({ kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY; evil()' })).toMatchObject({ ok: false });
+      expect(bad({ kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY; evil()' })).toMatchObject({
+        ok: false,
+      });
       expect(bad({ kind: 'enum', type: 'evil-lib.Thing', member: 'A' })).toMatchObject({ ok: false });
       expect(bad({ kind: 'duration', unit: 'fortnights', amount: 1 })).toMatchObject({ ok: false });
       expect(bad({ kind: 'size', unit: 'seconds', amount: 1 })).toMatchObject({ ok: false });
@@ -126,27 +179,50 @@ describe('parseClientMessage', () => {
 
 describe('parseClientMessage for References', () => {
   it('reads a connectable question, which names one Node', () => {
-    expect(parse({ type: 'connectable', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'connectable', requestId: '1', id: 'A/B' } });
+    expect(parse({ type: 'connectable', requestId: '1', id: 'A/B' })).toEqual({
+      ok: true,
+      message: { type: 'connectable', requestId: '1', id: 'A/B' },
+    });
     expect(parse({ type: 'connectable', requestId: '1' })).toMatchObject({ ok: false, requestId: '1' });
   });
 
   it('reads a connect, a disconnect and a repoint, each naming both Nodes and the prop', () => {
-    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' })).toEqual({ ok: true, message: { type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' } });
-    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc', replace: true })).toMatchObject({ ok: true, message: { replace: true } });
-    expect(parse({ type: 'disconnect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: true, message: { type: 'disconnect' } });
-    expect(parse({ type: 'repoint', requestId: '1', from: 'A/B', was: 'A/C', to: 'A/D', prop: 'vpc' })).toEqual({ ok: true, message: { type: 'repoint', requestId: '1', from: 'A/B', was: 'A/C', to: 'A/D', prop: 'vpc' } });
+    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' })).toEqual({
+      ok: true,
+      message: { type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' },
+    });
+    expect(
+      parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc', replace: true }),
+    ).toMatchObject({ ok: true, message: { replace: true } });
+    expect(parse({ type: 'disconnect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' })).toMatchObject({
+      ok: true,
+      message: { type: 'disconnect' },
+    });
+    expect(parse({ type: 'repoint', requestId: '1', from: 'A/B', was: 'A/C', to: 'A/D', prop: 'vpc' })).toEqual({
+      ok: true,
+      message: { type: 'repoint', requestId: '1', from: 'A/B', was: 'A/C', to: 'A/D', prop: 'vpc' },
+    });
   });
 
   it('refuses one that lacks a Node, has a prop that is not a name, or leaves out what a repoint moves from', () => {
-    expect(parse({ type: 'connect', requestId: '1', to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: false, requestId: '1' });
+    expect(parse({ type: 'connect', requestId: '1', to: 'A/C', prop: 'vpc' })).toMatchObject({
+      ok: false,
+      requestId: '1',
+    });
     expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: '', prop: 'vpc' })).toMatchObject({ ok: false });
-    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc; drop' })).toMatchObject({ ok: false });
+    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc; drop' })).toMatchObject({
+      ok: false,
+    });
     expect(parse({ type: 'disconnect', requestId: '1', from: 'A/B', to: 'A/C' })).toMatchObject({ ok: false });
-    expect(parse({ type: 'repoint', requestId: '1', from: 'A/B', to: 'A/D', prop: 'vpc' })).toMatchObject({ ok: false });
+    expect(parse({ type: 'repoint', requestId: '1', from: 'A/B', to: 'A/D', prop: 'vpc' })).toMatchObject({
+      ok: false,
+    });
   });
 
   it('refuses a path that is absurdly long', () => {
-    expect(parse({ type: 'connect', requestId: '1', from: 'A'.repeat(5000), to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: false });
+    expect(parse({ type: 'connect', requestId: '1', from: 'A'.repeat(5000), to: 'A/C', prop: 'vpc' })).toMatchObject({
+      ok: false,
+    });
   });
 });
 
@@ -155,9 +231,18 @@ describe('Connection requests', () => {
   const hint = 'aws-cdk-lib.aws_s3.Bucket#0';
 
   it('takes an addConnection with the hint and, optionally, the environment variable', () => {
-    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint })).toMatchObject({ ok: true, message: { type: 'addConnection', hint } });
-    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: null })).toMatchObject({ ok: true, message: { env: null } });
-    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: 'MY_VAR' })).toMatchObject({ ok: true, message: { env: 'MY_VAR' } });
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint })).toMatchObject({
+      ok: true,
+      message: { type: 'addConnection', hint },
+    });
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: null })).toMatchObject({
+      ok: true,
+      message: { env: null },
+    });
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: 'MY_VAR' })).toMatchObject({
+      ok: true,
+      message: { env: 'MY_VAR' },
+    });
   });
 
   it('refuses a hint or an environment variable that is not a name, and calls that are not ids', () => {

@@ -7,7 +7,15 @@ const queueUrlEnv: HintCall = { on: 'peer', forms: [['addEnvironment']], args: [
 const overlay: Overlay = {
   fqn: 'aws-cdk-lib.aws_sqs.Queue',
   displayName: 'SQS Queue',
-  featuredProps: ['queueName', 'visibilityTimeout', 'retentionPeriod', 'deadLetterQueue', 'fifo', 'encryption', 'removalPolicy'],
+  featuredProps: [
+    'queueName',
+    'visibilityTimeout',
+    'retentionPeriod',
+    'deadLetterQueue',
+    'fifo',
+    'encryption',
+    'removalPolicy',
+  ],
   connections: [
     {
       kind: 'grant',

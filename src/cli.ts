@@ -31,7 +31,11 @@ function loadUi(dir: string): Record<string, Asset> {
     for (const name of readdirSync(join(dir, sub))) {
       const rel = join(sub, name);
       if (statSync(join(dir, rel)).isDirectory()) walk(rel);
-      else assets['/' + rel.split('\\').join('/')] = { type: TYPES[extname(name)] ?? 'application/octet-stream', body: readFileSync(join(dir, rel)) };
+      else
+        assets['/' + rel.split('\\').join('/')] = {
+          type: TYPES[extname(name)] ?? 'application/octet-stream',
+          body: readFileSync(join(dir, rel)),
+        };
     }
   };
   walk('');
@@ -40,12 +44,18 @@ function loadUi(dir: string): Record<string, Asset> {
 }
 
 function launch(cmd: string, args: string[]): void {
-  spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => undefined).unref();
+  spawn(cmd, args, { stdio: 'ignore', detached: true })
+    .on('error', () => undefined)
+    .unref();
 }
 
 function openBrowser(url: string): void {
   const [cmd, args]: [string, string[]] =
-    process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['cmd', ['/c', 'start', '', url]]
+        : ['xdg-open', [url]];
   launch(cmd, args);
 }
 
@@ -63,7 +73,10 @@ async function main(): Promise<void> {
     synth,
     files: (appDir) => new NodeFiles(appDir),
     source: new TsSource(),
-    loadCatalog: createCatalogLoader({ cacheDir: join(homedir(), '.cache', 'truss', 'catalog'), log: (line) => console.log(line) }),
+    loadCatalog: createCatalogLoader({
+      cacheDir: join(homedir(), '.cache', 'truss', 'catalog'),
+      log: (line) => console.log(line),
+    }),
     token: randomBytes(24).toString('base64url'),
     ui: loadUi(fileURLToPath(new URL('./ui', import.meta.url))),
     open: openBrowser,

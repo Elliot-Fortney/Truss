@@ -74,9 +74,22 @@ async function readAssembly(pkgDir: string): Promise<unknown> {
 }
 
 const isDigest = (v: unknown, name: string, version: string): v is AssemblyDigest =>
-  isObject(v) && v['format'] === DIGEST_FORMAT && v['name'] === name && v['version'] === version && Array.isArray(v['classes']) && Array.isArray(v['structs']) && Array.isArray(v['interfaces']) && Array.isArray(v['enums']) && isObject(v['enumMembers']);
+  isObject(v) &&
+  v['format'] === DIGEST_FORMAT &&
+  v['name'] === name &&
+  v['version'] === version &&
+  Array.isArray(v['classes']) &&
+  Array.isArray(v['structs']) &&
+  Array.isArray(v['interfaces']) &&
+  Array.isArray(v['enums']) &&
+  isObject(v['enumMembers']);
 
-async function digestOf(pkgDir: string, name: string, version: string, cacheDir: string | undefined): Promise<AssemblyDigest> {
+async function digestOf(
+  pkgDir: string,
+  name: string,
+  version: string,
+  cacheDir: string | undefined,
+): Promise<AssemblyDigest> {
   const cacheFile = cacheDir && join(cacheDir, `${name.replace(/[\\/]/g, '__')}@${version}.json`);
   if (cacheFile) {
     const cached = await readJsonIfThere(cacheFile);
@@ -144,24 +157,37 @@ async function scanApp(appDir: string): Promise<Scan> {
     // Without an assembly it is a plain TypeScript library, which needs no word.
     if (await exists(join(dir, '.jsii'))) others.push({ name, version: libVersion, dir });
   }
-  return { ok: true, cdkLib: { name: CDK_LIB, version: cdkLibVersion, dir: cdkDir }, others, schemaUnknown: schemaMajor === Infinity };
+  return {
+    ok: true,
+    cdkLib: { name: CDK_LIB, version: cdkLibVersion, dir: cdkDir },
+    others,
+    schemaUnknown: schemaMajor === Infinity,
+  };
 }
 
 /** Builds the Catalog of a scanned app, with the Overlays laid over it. A library that won't load is logged and left out, except `aws-cdk-lib`, without which nothing could be placed. */
 async function buildFrom(scan: Extract<Scan, { ok: true }>, opts: LoadCatalogOptions): Promise<CatalogLoad> {
-  if (scan.schemaUnknown) opts.log("Couldn't find the cloud assembly schema Truss bundles, so Truss can't tell whether this app's CDK is too new for it.");
+  if (scan.schemaUnknown)
+    opts.log(
+      "Couldn't find the cloud assembly schema Truss bundles, so Truss can't tell whether this app's CDK is too new for it.",
+    );
   const { cdkLib } = scan;
   const digests: AssemblyDigest[] = [];
   try {
     digests.push(await digestOf(cdkLib.dir, cdkLib.name, cdkLib.version, opts.cacheDir));
   } catch (err) {
-    return { ok: false, message: `Couldn't read the constructs of ${CDK_LIB} ${cdkLib.version}: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      ok: false,
+      message: `Couldn't read the constructs of ${CDK_LIB} ${cdkLib.version}: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   for (const { dir, name, version } of scan.others) {
     try {
       digests.push(await digestOf(dir, name, version, opts.cacheDir));
     } catch (err) {
-      opts.log(`Couldn't read the constructs of ${name} ${version}, so Truss treats it as plain TypeScript: ${err instanceof Error ? err.message : String(err)}`);
+      opts.log(
+        `Couldn't read the constructs of ${name} ${version}, so Truss treats it as plain TypeScript: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
   const catalog = buildCatalog(digests, OVERLAYS);

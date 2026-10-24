@@ -1,11 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import type { Assembly } from './assembly.ts';
 import type { Facts } from './facts.ts';
-import { annotationProblems, badgesFor, buildReport, cycleProblems, findCycles, nodeAt, sourcePosition, type Problem } from './problems.ts';
+import {
+  annotationProblems,
+  badgesFor,
+  buildReport,
+  cycleProblems,
+  findCycles,
+  nodeAt,
+  sourcePosition,
+  type Problem,
+} from './problems.ts';
 
-const assembly = (extra: Partial<Assembly> = {}): Assembly => ({ schemaVersion: '1', tree: { id: '', path: '', fqn: 'x', children: [] }, stacks: [], creation: {}, resourceRefs: [], ...extra });
+const assembly = (extra: Partial<Assembly> = {}): Assembly => ({
+  schemaVersion: '1',
+  tree: { id: '', path: '', fqn: 'x', children: [] },
+  stacks: [],
+  creation: {},
+  resourceRefs: [],
+  ...extra,
+});
 const refs = (...pairs: [string, string][]) => pairs.map(([from, to]) => ({ from, to }));
-const problem = (p: Partial<Problem>): Problem => ({ id: 'p', severity: 'error', source: 'annotation', message: 'm', draft: false, blocking: false, ...p });
+const problem = (p: Partial<Problem>): Problem => ({
+  id: 'p',
+  severity: 'error',
+  source: 'annotation',
+  message: 'm',
+  draft: false,
+  blocking: false,
+  ...p,
+});
 
 describe('dependency cycles', () => {
   it('finds a cycle and walks it in order', () => {
@@ -45,28 +69,53 @@ describe('annotations', () => {
 describe('badges', () => {
   const visible = new Set(['S', 'S/Q', 'S/F']);
   it('bubbles to the nearest visible ancestor with a count, once per Problem', () => {
-    const badges = badgesFor([problem({ path: 'S/Q/Resource' }), problem({ path: 'S/Q/Policy/Resource' }), problem({ path: 'S/F' })], visible);
+    const badges = badgesFor(
+      [problem({ path: 'S/Q/Resource' }), problem({ path: 'S/Q/Policy/Resource' }), problem({ path: 'S/F' })],
+      visible,
+    );
     expect(badges.get('S/Q')).toEqual({ errors: 2, warnings: 0 });
     expect(badges.get('S/F')).toEqual({ errors: 1, warnings: 0 });
   });
 
   it('badges every error but only the warnings the Draft introduced, and never info', () => {
-    const badges = badgesFor([problem({ path: 'S/Q', severity: 'warning' }), problem({ path: 'S/F', severity: 'warning', draft: true }), problem({ path: 'S/F', severity: 'info', draft: true })], visible);
+    const badges = badgesFor(
+      [
+        problem({ path: 'S/Q', severity: 'warning' }),
+        problem({ path: 'S/F', severity: 'warning', draft: true }),
+        problem({ path: 'S/F', severity: 'info', draft: true }),
+      ],
+      visible,
+    );
     expect(badges.has('S/Q')).toBe(false);
     expect(badges.get('S/F')).toEqual({ errors: 0, warnings: 1 });
   });
 
   it('badges each Node of a cycle once', () => {
-    const [cycle] = cycleProblems(assembly({ resourceRefs: refs(['S/Q/A', 'S/Q/B'], ['S/Q/B', 'S/Q/A'], ['S/Q/A', 'S/F/C'], ['S/F/C', 'S/Q/A']) }));
-    expect([...badgesFor([cycle!], visible)].sort()).toEqual([['S/F', { errors: 1, warnings: 0 }], ['S/Q', { errors: 1, warnings: 0 }]]);
+    const [cycle] = cycleProblems(
+      assembly({ resourceRefs: refs(['S/Q/A', 'S/Q/B'], ['S/Q/B', 'S/Q/A'], ['S/Q/A', 'S/F/C'], ['S/F/C', 'S/Q/A']) }),
+    );
+    expect([...badgesFor([cycle!], visible)].sort()).toEqual([
+      ['S/F', { errors: 1, warnings: 0 }],
+      ['S/Q', { errors: 1, warnings: 0 }],
+    ]);
   });
 });
 
 describe('tracing an error to a Node', () => {
-  const span = (file: string, l1: number, c1: number, l2: number, c2: number) => ({ file, start: { line: l1, col: c1 }, end: { line: l2, col: c2 } });
+  const span = (file: string, l1: number, c1: number, l2: number, c2: number) => ({
+    file,
+    start: { line: l1, col: c1 },
+    end: { line: l2, col: c2 },
+  });
   const node = (s: ReturnType<typeof span>) => ({ span: s, className: 'X', pathsOnSpan: 1, binding: 'none' as const });
   it('finds the innermost span holding the place', () => {
-    const facts: Facts = { nodes: { Outer: node(span('a.ts', 1, 1, 20, 2)), Inner: node(span('a.ts', 5, 3, 8, 4)), Other: node(span('b.ts', 1, 1, 20, 2)) } };
+    const facts: Facts = {
+      nodes: {
+        Outer: node(span('a.ts', 1, 1, 20, 2)),
+        Inner: node(span('a.ts', 5, 3, 8, 4)),
+        Other: node(span('b.ts', 1, 1, 20, 2)),
+      },
+    };
     expect(nodeAt(facts, { file: 'a.ts', line: 6, col: 9 })).toBe('Inner');
     expect(nodeAt(facts, { file: 'a.ts', line: 12, col: 1 })).toBe('Outer');
     expect(nodeAt(facts, { file: 'c.ts', line: 1, col: 1 })).toBeUndefined();
@@ -85,8 +134,21 @@ describe('tracing an error to a Node', () => {
 describe('the report', () => {
   it('has the intents, the changed lines and the failures, and none of the code around them', () => {
     const report = buildReport(
-      [{ type: 'setProp', path: 'S/Q', expect: { className: 'sqs.Queue', literalId: 'Q' }, prop: ['fifo'], value: { kind: 'boolean', value: true } }],
-      [{ file: 'lib/s.ts', diff: '--- a/lib/s.ts\n+++ b/lib/s.ts\n@@ -1,3 +1,3 @@\n secret line\n-  fifo: false,\n+  fifo: true,\n more secret\n' }],
+      [
+        {
+          type: 'setProp',
+          path: 'S/Q',
+          expect: { className: 'sqs.Queue', literalId: 'Q' },
+          prop: ['fifo'],
+          value: { kind: 'boolean', value: true },
+        },
+      ],
+      [
+        {
+          file: 'lib/s.ts',
+          diff: '--- a/lib/s.ts\n+++ b/lib/s.ts\n@@ -1,3 +1,3 @@\n secret line\n-  fifo: false,\n+  fifo: true,\n more secret\n',
+        },
+      ],
       ['The edit changes S/Z, which it should not touch'],
     );
     expect(report).toContain('setProp S/Q');

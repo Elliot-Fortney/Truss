@@ -4,12 +4,29 @@ import type { DraftView } from '../core/view.ts';
 
 /** One line of a unified diff, coloured by what it does. */
 function DiffLine({ line }: { line: string }) {
-  const kind = line.startsWith('+++') || line.startsWith('---') ? 'meta' : line.startsWith('@@') ? 'hunk' : line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : 'ctx';
+  const kind =
+    line.startsWith('+++') || line.startsWith('---')
+      ? 'meta'
+      : line.startsWith('@@')
+        ? 'hunk'
+        : line.startsWith('+')
+          ? 'add'
+          : line.startsWith('-')
+            ? 'del'
+            : 'ctx';
   return <div className={`diff-line ${kind}`}>{line === '' ? ' ' : line}</div>;
 }
 
 /** Each check that stops Save, linked to the Problems panel. A bug in Truss says so and offers the report to file. */
-function Blockers({ blockers, report, onShow }: { blockers: readonly Problem[]; report: string | undefined; onShow(id: string): void }) {
+function Blockers({
+  blockers,
+  report,
+  onShow,
+}: {
+  blockers: readonly Problem[];
+  report: string | undefined;
+  onShow(id: string): void;
+}) {
   const [copied, setCopied] = useState(false);
   if (blockers.length === 0) return null;
   return (
@@ -27,7 +44,10 @@ function Blockers({ blockers, report, onShow }: { blockers: readonly Problem[]; 
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(report).then(() => setCopied(true), () => setCopied(false));
+                    navigator.clipboard.writeText(report).then(
+                      () => setCopied(true),
+                      () => setCopied(false),
+                    );
                   }}
                 >
                   {copied ? 'Copied' : 'Copy report'}
@@ -113,14 +133,25 @@ export function DraftBar({
         <button type="button" onClick={onRedo} disabled={!draft.canRedo || held} title="Redo (Ctrl+Shift+Z)">
           Redo
         </button>
-        <button type="button" onClick={() => setReviewing(!reviewing)} aria-expanded={reviewing && count > 0} disabled={count === 0}>
+        <button
+          type="button"
+          onClick={() => setReviewing(!reviewing)}
+          aria-expanded={reviewing && count > 0}
+          disabled={count === 0}
+        >
           {reviewing && count > 0 ? 'Hide changes' : 'Review changes'}
         </button>
         <span className="draft-spacer" />
         <button type="button" onClick={onDiscard} disabled={count === 0 && !draft.canRedo}>
           Discard
         </button>
-        <button type="button" className="primary" onClick={onSave} disabled={count === 0 || busy || !canSave} title={canSave ? 'Write the Draft to your files' : 'Fix the Problems first'}>
+        <button
+          type="button"
+          className="primary"
+          onClick={onSave}
+          disabled={count === 0 || busy || !canSave}
+          title={canSave ? 'Write the Draft to your files' : 'Fix the Problems first'}
+        >
           Save
         </button>
       </div>
@@ -136,7 +167,12 @@ export function DraftBar({
           {draft.items.map((item, i) => (
             <li key={`${item.id}:${i}`}>
               <strong>{item.label}</strong> <code>{item.summary}</code>
-              {item.suspect ? <span className="suspect" title="Staged since the app last synthed with the Draft"> suspect</span> : null}
+              {item.suspect ? (
+                <span className="suspect" title="Staged since the app last synthed with the Draft">
+                  {' '}
+                  suspect
+                </span>
+              ) : null}
               {item.error ? <div className="suspect-error">{item.error}</div> : null}
               {item.undoable ? (
                 <button type="button" onClick={onUndo}>

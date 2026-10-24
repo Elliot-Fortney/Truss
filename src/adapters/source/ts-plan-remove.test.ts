@@ -10,11 +10,21 @@ const source = new TsSource();
 function spanAt(file: string, text: string, needle: string): NodeFacts['span'] {
   const at = text.indexOf(needle);
   if (at < 0) throw new Error(`no ${needle}`);
-  const pos = (offset: number) => ({ line: text.slice(0, offset).split('\n').length, col: offset - text.lastIndexOf('\n', offset - 1) });
+  const pos = (offset: number) => ({
+    line: text.slice(0, offset).split('\n').length,
+    col: offset - text.lastIndexOf('\n', offset - 1),
+  });
   return { file, start: pos(at), end: pos(at + needle.length) };
 }
 
-const node = (file: string, text: string, needle: string, className: string, literalId: string, extra: Partial<NodeFacts> = {}): NodeFacts => ({
+const node = (
+  file: string,
+  text: string,
+  needle: string,
+  className: string,
+  literalId: string,
+  extra: Partial<NodeFacts> = {},
+): NodeFacts => ({
   span: spanAt(file, text, needle),
   className,
   literalId,
@@ -24,13 +34,22 @@ const node = (file: string, text: string, needle: string, className: string, lit
   ...extra,
 });
 
-const remove = (path: string, className: string, literalId: string): Intent => ({ type: 'removeNode', path, expect: { className, literalId } });
+const remove = (path: string, className: string, literalId: string): Intent => ({
+  type: 'removeNode',
+  path,
+  expect: { className, literalId },
+});
 
 function run(files: Record<string, string>, facts: Facts, ...intents: Intent[]) {
   const set: FileSet = new Map(Object.entries(files));
   const result = source.plan(set, facts, intents);
   if (!result.ok) return result;
-  return { ok: true as const, files: Object.fromEntries([...set].map(([file, text]) => [file, result.changes[file] ? applyChanges(text, result.changes[file]) : text])) };
+  return {
+    ok: true as const,
+    files: Object.fromEntries(
+      [...set].map(([file, text]) => [file, result.changes[file] ? applyChanges(text, result.changes[file]) : text]),
+    ),
+  };
 }
 
 const out = (r: ReturnType<typeof run>, file: string): string => {
@@ -101,9 +120,20 @@ describe('removeNode', () => {
 
   it('refuses while another statement uses it, and lists the uses', () => {
     const used = stack.replace('this.tag();', 'logs.grantRead(uploads);\n    this.tag();');
-    const r = run({ ...files, 'lib/stack.ts': used }, { nodes: { ...facts.nodes, 'Dev/Uploads': node('lib/stack.ts', used, "new s3.Bucket(this, 'Uploads'", 's3.Bucket', 'Uploads') } }, remove('Dev/Uploads', 's3.Bucket', 'Uploads'));
+    const r = run(
+      { ...files, 'lib/stack.ts': used },
+      {
+        nodes: {
+          ...facts.nodes,
+          'Dev/Uploads': node('lib/stack.ts', used, "new s3.Bucket(this, 'Uploads'", 's3.Bucket', 'Uploads'),
+        },
+      },
+      remove('Dev/Uploads', 's3.Bucket', 'Uploads'),
+    );
     expect(r).toMatchObject({ ok: false, uses: [{ file: 'lib/stack.ts', text: 'logs.grantRead(uploads);' }] });
-    expect((r as { uses: Array<{ line: number }> }).uses[0]!.line).toBe(used.split('\n').findIndex((l) => l.includes('grantRead')) + 1);
+    expect((r as { uses: Array<{ line: number }> }).uses[0]!.line).toBe(
+      used.split('\n').findIndex((l) => l.includes('grantRead')) + 1,
+    );
   });
 
   it('refuses a field used in another file', () => {
@@ -113,13 +143,23 @@ describe('removeNode', () => {
   });
 
   it('refuses a Node that is not editable, or that no longer matches', () => {
-    const looped: Facts = { nodes: { ...facts.nodes, 'Dev/Logs': { ...facts.nodes['Dev/Logs']!, surround: { kind: 'loop' } } } };
-    expect(run(files, looped, remove('Dev/Logs', 's3.Bucket', 'Logs'))).toMatchObject({ ok: false, reason: 'Created in a loop' });
+    const looped: Facts = {
+      nodes: { ...facts.nodes, 'Dev/Logs': { ...facts.nodes['Dev/Logs']!, surround: { kind: 'loop' } } },
+    };
+    expect(run(files, looped, remove('Dev/Logs', 's3.Bucket', 'Logs'))).toMatchObject({
+      ok: false,
+      reason: 'Created in a loop',
+    });
     expect(run(files, facts, remove('Dev/Logs', 's3.Bucket', 'Other'))).toMatchObject({ ok: false });
   });
 
   it('leaves a renamed Node’s rename out: the statement goes whole', () => {
-    const rename: Intent = { type: 'renameId', path: 'Dev/Logs', expect: { className: 's3.Bucket', literalId: 'Logs' }, newId: 'Audit' };
+    const rename: Intent = {
+      type: 'renameId',
+      path: 'Dev/Logs',
+      expect: { className: 's3.Bucket', literalId: 'Logs' },
+      newId: 'Audit',
+    };
     const text = out(run(files, facts, rename, remove('Dev/Audit', 's3.Bucket', 'Audit')), 'lib/stack.ts');
     expect(text).not.toContain('Logs');
     expect(text).not.toContain('Audit');

@@ -24,7 +24,13 @@ const READ_ONLY: Partial<Record<ReferenceForm, string>> = {
 
 /** Strips the wrappers that don't change what an expression is: parentheses, a cast, a non-null `!`. */
 export function bare(e: ts.Expression): ts.Expression {
-  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e)) e = e.expression;
+  while (
+    ts.isParenthesizedExpression(e) ||
+    ts.isAsExpression(e) ||
+    ts.isSatisfiesExpression(e) ||
+    ts.isNonNullExpression(e)
+  )
+    e = e.expression;
   return e;
 }
 
@@ -66,7 +72,14 @@ export class ReferenceReader {
     return out;
   }
 
-  private fact(sf: ts.SourceFile, node: NodeFacts, from: string, to: string, prop: ts.ObjectLiteralElementLike, found: Found): ReferenceFacts {
+  private fact(
+    sf: ts.SourceFile,
+    node: NodeFacts,
+    from: string,
+    to: string,
+    prop: ts.ObjectLiteralElementLike,
+    found: Found,
+  ): ReferenceFacts {
     const { expression, form } = found;
     const start = sf.getLineAndCharacterOfPosition(expression.getStart(sf));
     const end = sf.getLineAndCharacterOfPosition(expression.getEnd());
@@ -80,7 +93,11 @@ export class ReferenceReader {
       ...(readOnly ? { reason: readOnly } : {}),
       ...(found.index !== undefined ? { index: found.index } : {}),
       text: expression.getText(sf),
-      span: { file: node.span.file, start: { line: start.line + 1, col: start.character + 1 }, end: { line: end.line + 1, col: end.character + 1 } },
+      span: {
+        file: node.span.file,
+        start: { line: start.line + 1, col: start.character + 1 },
+        end: { line: end.line + 1, col: end.character + 1 },
+      },
     };
   }
 
@@ -118,7 +135,10 @@ export class ReferenceReader {
     }
     if (!ts.isPropertyAssignment(p) || !(ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) return [];
     const value = bare(p.initializer);
-    if (ts.isArrayLiteralExpression(value)) return value.elements.flatMap((e, index) => (ts.isSpreadElement(e) ? [] : this.inExpression(e).map((f) => ({ ...f, index }))));
+    if (ts.isArrayLiteralExpression(value))
+      return value.elements.flatMap((e, index) =>
+        ts.isSpreadElement(e) ? [] : this.inExpression(e).map((f) => ({ ...f, index })),
+      );
     return this.inExpression(value);
   }
 
@@ -131,8 +151,15 @@ export class ReferenceReader {
       const base = this.inExpression(e.expression);
       return base.length > 0 ? [{ ...base[0]!, form: 'accessor', expression: e }] : [];
     }
-    if (ts.isConditionalExpression(e)) return [...this.inExpression(e.whenTrue), ...this.inExpression(e.whenFalse)].map((f) => ({ ...f, form: 'conditional' as const }));
-    if (ts.isCallExpression(e)) return [e.expression, ...e.arguments].flatMap((a) => this.inExpression(a)).map((f) => ({ ...f, form: 'call' as const }));
+    if (ts.isConditionalExpression(e))
+      return [...this.inExpression(e.whenTrue), ...this.inExpression(e.whenFalse)].map((f) => ({
+        ...f,
+        form: 'conditional' as const,
+      }));
+    if (ts.isCallExpression(e))
+      return [e.expression, ...e.arguments]
+        .flatMap((a) => this.inExpression(a))
+        .map((f) => ({ ...f, form: 'call' as const }));
     return [];
   }
 
@@ -151,7 +178,8 @@ export class ReferenceReader {
     if (depth > 0 && (ts.isNewExpression(e) || ts.isCallExpression(e))) return this.keyOf(e);
     let init: ts.Expression | undefined;
     if (ts.isIdentifier(e)) init = this.declaredAs(e, e.text);
-    else if (ts.isPropertyAccessExpression(e) && e.expression.kind === ts.SyntaxKind.ThisKeyword) init = this.fieldAs(e, e.name.text);
+    else if (ts.isPropertyAccessExpression(e) && e.expression.kind === ts.SyntaxKind.ThisKeyword)
+      init = this.fieldAs(e, e.name.text);
     if (!init) return undefined;
     const value = bare(init);
     return ts.isNewExpression(value) || ts.isCallExpression(value) ? this.keyOf(value) : this.valueOf(value, depth + 1);
@@ -168,8 +196,14 @@ export class ReferenceReader {
   /** What the variable `name` in scope at `at` is initialised with; undefined for a parameter, an import or anything not a `const`/`let`. */
   private declaredAs(at: ts.Node, name: string): ts.Expression | undefined {
     for (let p: ts.Node | undefined = at.parent; p; p = p.parent) {
-      if (ts.isFunctionLike(p) && p.parameters.some((param) => ts.isIdentifier(param.name) && param.name.text === name)) return undefined;
-      const statements = ts.isBlock(p) || ts.isSourceFile(p) || ts.isModuleBlock(p) ? p.statements : ts.isCaseClause(p) || ts.isDefaultClause(p) ? p.statements : undefined;
+      if (ts.isFunctionLike(p) && p.parameters.some((param) => ts.isIdentifier(param.name) && param.name.text === name))
+        return undefined;
+      const statements =
+        ts.isBlock(p) || ts.isSourceFile(p) || ts.isModuleBlock(p)
+          ? p.statements
+          : ts.isCaseClause(p) || ts.isDefaultClause(p)
+            ? p.statements
+            : undefined;
       if (!statements) continue;
       for (const s of statements) {
         if (!ts.isVariableStatement(s)) continue;
@@ -185,12 +219,22 @@ export class ReferenceReader {
     let cls: ts.Node | undefined = at.parent;
     while (cls && !ts.isClassLike(cls)) cls = cls.parent;
     if (!cls || !ts.isClassLike(cls)) return undefined;
-    const declared = cls.members.find((m): m is ts.PropertyDeclaration => ts.isPropertyDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === name && m.initializer !== undefined);
+    const declared = cls.members.find(
+      (m): m is ts.PropertyDeclaration =>
+        ts.isPropertyDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === name && m.initializer !== undefined,
+    );
     if (declared) return declared.initializer;
     let found: ts.Expression | undefined;
     const visit = (n: ts.Node) => {
       if (found) return;
-      if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(n.left) && n.left.expression.kind === ts.SyntaxKind.ThisKeyword && n.left.name.text === name) found = n.right;
+      if (
+        ts.isBinaryExpression(n) &&
+        n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(n.left) &&
+        n.left.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        n.left.name.text === name
+      )
+        found = n.right;
       else ts.forEachChild(n, visit);
     };
     visit(cls);

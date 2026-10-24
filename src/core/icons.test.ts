@@ -17,8 +17,12 @@ describe('iconFor', () => {
   });
 
   it('shares one service icon between a service and the modules built on it', () => {
-    expect(iconFor('aws-cdk-lib.aws_ecs_patterns.QueueProcessingEc2Service')).toBe(iconFor('aws-cdk-lib.aws_ecs.Cluster'));
-    expect(iconFor('aws-cdk-lib.aws_lambda_event_sources.SqsEventSource')).toBe(iconFor('aws-cdk-lib.aws_lambda.Layer'));
+    expect(iconFor('aws-cdk-lib.aws_ecs_patterns.QueueProcessingEc2Service')).toBe(
+      iconFor('aws-cdk-lib.aws_ecs.Cluster'),
+    );
+    expect(iconFor('aws-cdk-lib.aws_lambda_event_sources.SqsEventSource')).toBe(
+      iconFor('aws-cdk-lib.aws_lambda.Layer'),
+    );
   });
 
   it('prefers a construct’s own icon over its service icon', () => {
@@ -45,7 +49,8 @@ describe('iconFor', () => {
       fqns.add(n.fqn);
       n.children.forEach(walk);
     };
-    for (const name of ['straight-line', 'shapes']) walk((JSON.parse(readFileSync(`test/fixtures/${name}/assembly.json`, 'utf8')) as Assembly).tree);
+    for (const name of ['straight-line', 'shapes'])
+      walk((JSON.parse(readFileSync(`test/fixtures/${name}/assembly.json`, 'utf8')) as Assembly).tree);
     expect(fqns.size).toBeGreaterThan(5);
     for (const fqn of fqns) {
       const icon = iconFor(fqn);
@@ -60,7 +65,8 @@ describe('the icon map', () => {
   const vendored = 'assets/aws-architecture-icons';
 
   it('only names icons it has a file for', () => {
-    for (const id of [...Object.values(CONSTRUCT_ICONS), ...Object.values(SERVICE_ICONS)]) expect(ICON_FILES, id).toHaveProperty(id);
+    for (const id of [...Object.values(CONSTRUCT_ICONS), ...Object.values(SERVICE_ICONS)])
+      expect(ICON_FILES, id).toHaveProperty(id);
   });
 
   it('has every one of those files vendored, and nothing else, so the set stays curated', () => {

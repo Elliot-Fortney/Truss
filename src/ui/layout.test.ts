@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { LayerChildView, NodeView, View } from '../core/view.ts';
-import { LAYER_HEADER, LAYER_HEIGHT, LAYER_PADDING, LAYER_WIDTH, layoutView, NODE_HEIGHT, NODE_WIDTH, STACK_HEADER, STACK_PADDING } from './layout.ts';
+import {
+  LAYER_HEADER,
+  LAYER_HEIGHT,
+  LAYER_PADDING,
+  LAYER_WIDTH,
+  layoutView,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+  STACK_HEADER,
+  STACK_PADDING,
+} from './layout.ts';
 
 const node = (id: string, stackId: string): NodeView => ({
   id,
@@ -17,7 +27,12 @@ const view = (nodes: NodeView[], stackIds: string[], nested: Record<string, stri
   synthing: false,
   hasDesign: true,
   stages: [],
-  stacks: stackIds.map((id) => ({ id, label: id, env: 'env-agnostic', ...(nested[id] ? { parentId: nested[id] } : {}) })),
+  stacks: stackIds.map((id) => ({
+    id,
+    label: id,
+    env: 'env-agnostic',
+    ...(nested[id] ? { parentId: nested[id] } : {}),
+  })),
   nodes,
   edges: [],
   problems: [],
@@ -44,7 +59,8 @@ describe('layoutView', () => {
 
   it('keeps Stack boxes from overlapping', () => {
     const [a, b] = layout.stacks;
-    const apart = a!.x + a!.width <= b!.x || b!.x + b!.width <= a!.x || a!.y + a!.height <= b!.y || b!.y + b!.height <= a!.y;
+    const apart =
+      a!.x + a!.width <= b!.x || b!.x + b!.width <= a!.x || a!.y + a!.height <= b!.y || b!.y + b!.height <= a!.y;
     expect(apart).toBe(true);
   });
 
@@ -56,7 +72,15 @@ describe('layoutView', () => {
 });
 
 describe('layoutView with References', () => {
-  const edge = (from: string, to: string) => ({ id: `${from}->${to}`, kind: 'reference' as const, from, to, prop: 'p', text: 'x', source: { file: 'a.ts', line: 1, col: 1 } });
+  const edge = (from: string, to: string) => ({
+    id: `${from}->${to}`,
+    kind: 'reference' as const,
+    from,
+    to,
+    prop: 'p',
+    text: 'x',
+    source: { file: 'a.ts', line: 1, col: 1 },
+  });
   const nodes = [node('A/fn', 'A'), node('A/other', 'A'), node('A/vpc', 'A')];
   const laid = layoutView({ ...view(nodes, ['A']), edges: [edge('A/fn', 'A/vpc')] });
 
@@ -72,7 +96,10 @@ describe('layoutView with References', () => {
   });
 
   it('copes with References that go in a circle, and with one to a Node that is not in the Stack', () => {
-    const l = layoutView({ ...view(nodes, ['A']), edges: [edge('A/fn', 'A/vpc'), edge('A/vpc', 'A/fn'), edge('A/fn', 'B/gone'), edge('A/fn', 'A/fn')] });
+    const l = layoutView({
+      ...view(nodes, ['A']),
+      edges: [edge('A/fn', 'A/vpc'), edge('A/vpc', 'A/fn'), edge('A/fn', 'B/gone'), edge('A/fn', 'A/fn')],
+    });
     expect(l.nodes).toHaveLength(3);
   });
 });
@@ -87,17 +114,32 @@ describe('layoutView with saved positions', () => {
   };
 
   it('puts a Node with a saved position at exactly that canvas position', () => {
-    const l = layoutView(view(nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 300 } } : n)), ['A', 'B']));
+    const l = layoutView(
+      view(
+        nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 300 } } : n)),
+        ['A', 'B'],
+      ),
+    );
     expect(at(l, 'A/two')).toEqual({ x: 500, y: 300 });
   });
 
   it('still lays out the Nodes that have no saved position with dagre', () => {
-    const l = layoutView(view(nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 300 } } : n)), ['A', 'B']));
+    const l = layoutView(
+      view(
+        nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 300 } } : n)),
+        ['A', 'B'],
+      ),
+    );
     expect(at(l, 'A/one')).toEqual(at(auto, 'A/one'));
   });
 
   it('grows the Stack box to wrap a Node dragged outside it, with room for the header and padding', () => {
-    const l = layoutView(view(nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: -200 } } : n)), ['A', 'B']));
+    const l = layoutView(
+      view(
+        nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: -200 } } : n)),
+        ['A', 'B'],
+      ),
+    );
     const box = l.stacks.find((s) => s.id === 'A')!;
     expect(box.x + box.width).toBeGreaterThanOrEqual(500 + NODE_WIDTH + STACK_PADDING);
     expect(box.y).toBeLessThanOrEqual(-200 - STACK_HEADER);
@@ -111,7 +153,12 @@ describe('layoutView with saved positions', () => {
   });
 
   it('keeps the next Stack clear of a box that grew', () => {
-    const l = layoutView(view(nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 0 } } : n)), ['A', 'B']));
+    const l = layoutView(
+      view(
+        nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 0 } } : n)),
+        ['A', 'B'],
+      ),
+    );
     const [a, b] = l.stacks;
     expect(a!.x + a!.width).toBeLessThanOrEqual(b!.x);
   });
@@ -119,19 +166,36 @@ describe('layoutView with saved positions', () => {
   it('does not move a saved Node when another one is dragged', () => {
     const base = nodes.map((n) => (n.id === 'A/two' ? { ...n, position: { x: 500, y: 300 } } : n));
     const before = layoutView(view(base, ['A', 'B']));
-    const after = layoutView(view(base.map((n) => (n.id === 'A/one' ? { ...n, position: { x: 900, y: 10 } } : n)), ['A', 'B']));
+    const after = layoutView(
+      view(
+        base.map((n) => (n.id === 'A/one' ? { ...n, position: { x: 900, y: 10 } } : n)),
+        ['A', 'B'],
+      ),
+    );
     expect(at(after, 'A/two')).toEqual(at(before, 'A/two'));
   });
 });
 
 describe('layoutView with nested stacks', () => {
-  const nodes = [node('P/own', 'P'), node('P/child/a', 'P/child'), node('P/child/b', 'P/child'), node('P/other/c', 'P/other'), node('Q/d', 'Q')];
+  const nodes = [
+    node('P/own', 'P'),
+    node('P/child/a', 'P/child'),
+    node('P/child/b', 'P/child'),
+    node('P/other/c', 'P/other'),
+    node('Q/d', 'Q'),
+  ];
   const layout = layoutView(view(nodes, ['P', 'P/child', 'P/other', 'Q'], { 'P/child': 'P', 'P/other': 'P' }));
   const box = (id: string) => layout.stacks.find((s) => s.id === id)!;
-  const rect = (b: { x: number; y: number; width: number; height: number }) => ({ left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height });
-  const apart = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+  const rect = (b: { x: number; y: number; width: number; height: number }) => ({
+    left: b.x,
+    top: b.y,
+    right: b.x + b.width,
+    bottom: b.y + b.height,
+  });
+  const apart = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) =>
+    a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
 
-  it('draws a nested stack\'s box inside its parent\'s, below the parent\'s header and clear of its edge', () => {
+  it("draws a nested stack's box inside its parent's, below the parent's header and clear of its edge", () => {
     for (const id of ['P/child', 'P/other']) {
       const inner = rect(box(id));
       const outer = rect(box('P'));
@@ -142,7 +206,7 @@ describe('layoutView with nested stacks', () => {
     }
   });
 
-  it('keeps a nested stack clear of its parent\'s own Nodes and of its sibling', () => {
+  it("keeps a nested stack clear of its parent's own Nodes and of its sibling", () => {
     const own = layout.nodes.find((n) => n.id === 'P/own')!;
     const ownRect = rect({ x: box('P').x + own.x, y: box('P').y + own.y, width: NODE_WIDTH, height: NODE_HEIGHT });
     expect(apart(ownRect, rect(box('P/child')))).toBe(true);
@@ -150,7 +214,7 @@ describe('layoutView with nested stacks', () => {
     expect(apart(rect(box('P/child')), rect(box('P/other')))).toBe(true);
   });
 
-  it('places a nested stack\'s Nodes inside its own box', () => {
+  it("places a nested stack's Nodes inside its own box", () => {
     for (const n of layout.nodes.filter((x) => x.id.startsWith('P/child/'))) {
       const b = box('P/child');
       expect(n.x).toBeGreaterThanOrEqual(STACK_PADDING);
@@ -184,7 +248,7 @@ describe('layoutView with nested stacks', () => {
 });
 
 describe('layoutView with nested stacks and saved positions', () => {
-  it('keeps a nested stack clear of a parent\'s Node dragged far to the right', () => {
+  it("keeps a nested stack clear of a parent's Node dragged far to the right", () => {
     const nodes = [{ ...node('P/own', 'P'), position: { x: 900, y: 40 } }, node('P/child/a', 'P/child')];
     const l = layoutView(view(nodes, ['P', 'P/child'], { 'P/child': 'P' }));
     const own = l.nodes.find((n) => n.id === 'P/own')!;
@@ -196,21 +260,40 @@ describe('layoutView with nested stacks and saved positions', () => {
 });
 
 describe('layoutView with expanded Nodes', () => {
-  const child = (id: string, parentId: string): LayerChildView => ({ id, parentId, label: id, fqn: 'x', icon: 'generic' });
+  const child = (id: string, parentId: string): LayerChildView => ({
+    id,
+    parentId,
+    label: id,
+    fqn: 'x',
+    icon: 'generic',
+  });
   const bucket: NodeView = {
     ...node('A/bucket', 'A'),
-    children: [child('A/bucket/Resource', 'A/bucket'), child('A/bucket/Policy', 'A/bucket'), child('A/bucket/Policy/Resource', 'A/bucket/Policy')],
+    children: [
+      child('A/bucket/Resource', 'A/bucket'),
+      child('A/bucket/Policy', 'A/bucket'),
+      child('A/bucket/Policy/Resource', 'A/bucket/Policy'),
+    ],
   };
   const queue = node('A/queue', 'A');
   const v = view([bucket, queue], ['A']);
-  const rect = (b: { x: number; y: number; width: number; height: number }) => ({ left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height });
-  const apart = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+  const rect = (b: { x: number; y: number; width: number; height: number }) => ({
+    left: b.x,
+    top: b.y,
+    right: b.x + b.width,
+    bottom: b.y + b.height,
+  });
+  const apart = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) =>
+    a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
   const find = (l: ReturnType<typeof layoutView>, id: string) => l.nodes.find((n) => n.id === id)!;
 
   it('draws every Node at the usual size, and shows no children, while nothing is expanded', () => {
     const l = layoutView(v);
     expect(l.layers).toEqual([]);
-    expect(l.nodes.map((n) => [n.width, n.height])).toEqual([[NODE_WIDTH, NODE_HEIGHT], [NODE_WIDTH, NODE_HEIGHT]]);
+    expect(l.nodes.map((n) => [n.width, n.height])).toEqual([
+      [NODE_WIDTH, NODE_HEIGHT],
+      [NODE_WIDTH, NODE_HEIGHT],
+    ]);
   });
 
   it('ignores an expanded id that has no children to show', () => {

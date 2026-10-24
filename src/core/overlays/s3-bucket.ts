@@ -3,12 +3,25 @@ import type { HintCall, Overlay } from '../overlay.ts';
 const FUNCTION = 'aws-cdk-lib.aws_lambda.Function';
 const QUEUE = 'aws-cdk-lib.aws_sqs.Queue';
 
-const bucketNameEnv: HintCall = { on: 'peer', forms: [['addEnvironment']], args: ["'BUCKET_NAME'", '{self}.bucketName'] };
+const bucketNameEnv: HintCall = {
+  on: 'peer',
+  forms: [['addEnvironment']],
+  args: ["'BUCKET_NAME'", '{self}.bucketName'],
+};
 
 const overlay: Overlay = {
   fqn: 'aws-cdk-lib.aws_s3.Bucket',
   displayName: 'S3 Bucket',
-  featuredProps: ['bucketName', 'versioned', 'encryption', 'blockPublicAccess', 'enforceSSL', 'lifecycleRules', 'removalPolicy', 'autoDeleteObjects'],
+  featuredProps: [
+    'bucketName',
+    'versioned',
+    'encryption',
+    'blockPublicAccess',
+    'enforceSSL',
+    'lifecycleRules',
+    'removalPolicy',
+    'autoDeleteObjects',
+  ],
   connections: [
     {
       kind: 'grant',
