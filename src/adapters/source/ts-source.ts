@@ -186,6 +186,7 @@ export class TsSource implements Source {
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && /^from[A-Z]/.test(n.expression.name.text)) {
         const [scope, id] = n.arguments;
         const enclosingClass = this.enclosingClassOf(files, n);
+        const identifiers = identifiersOf(n.arguments.slice(2));
         if (scope?.kind === ts.SyntaxKind.ThisKeyword && id && isStringLike(id) && enclosingClass && !surroundOf(n)) {
           found.push({
             literalId: id.text,
@@ -197,7 +198,7 @@ export class TsSource implements Source {
               binding: bindingOf(n),
               enclosingClass,
               external: true,
-              ...(identifiersOf(n.arguments.slice(2)).length > 0 ? { identifiers: identifiersOf(n.arguments.slice(2)) } : {}),
+              ...(identifiers.length > 0 ? { identifiers } : {}),
             },
           });
         }

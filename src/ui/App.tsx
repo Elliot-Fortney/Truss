@@ -444,17 +444,18 @@ const KIND_NAME: Record<EdgeView['kind'], string> = { reference: 'Reference', gr
 
 /** The panel of a Connection: what it is, where the code writes it, and a way to take it out. */
 function EdgePanel({ edge, names, paused, onRemove, onOpen }: { edge: EdgeView; names: ReadonlyMap<string, string>; paused: boolean; onRemove(): void; onOpen(at: SourceLocation): void }) {
+  const at = edge.source;
   return (
     <aside className="note-panel">
       <h2>
         {names.get(edge.from) ?? edge.from}.{edgeLabel(edge)} → {names.get(edge.to) ?? edge.to}
       </h2>
-      {edge.effects ? (
+      {edge.fromSynth ? (
         <>
-          <p className="lock-reason">{KIND_NAME[edge.kind]} · from the synthesized app</p>
+          <p className="lock-reason">{KIND_NAME[edge.kind]} · from the synthesized app{edge.effects ? '' : <> (<code>{edge.text}</code>)</>}</p>
           <ul className="edge-effects">
-            {edge.effects.map((e) => (
-              <li key={`${e.at}:${e.summary}`} title={e.at}>
+            {edge.effects?.map((e, i) => (
+              <li key={`${i}:${e.at}`} title={e.at}>
                 {e.summary}
               </li>
             ))}
@@ -466,8 +467,8 @@ function EdgePanel({ edge, names, paused, onRemove, onOpen }: { edge: EdgeView; 
         </p>
       )}
       {edge.readOnly ? <p className="lock-reason">Read-only: {edge.readOnly}</p> : null}
-      {edge.source ? (
-        <button type="button" className="open-in-editor" onClick={() => onOpen(edge.source!)}>
+      {at ? (
+        <button type="button" className="open-in-editor" onClick={() => onOpen(at)}>
           Open in editor
         </button>
       ) : null}

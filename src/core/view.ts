@@ -109,7 +109,9 @@ export interface EdgeView {
   readOnly?: string;
   /** Where the code writes it; for one read from synth, where the code makes its `from` Node. Absent when neither end has code. */
   source?: { file: string; line: number; col: number };
-  /** For a Connection read from synth, every effect that makes it. */
+  /** Read from what synth produced rather than written in the code (a Grant, Integration, Network Connection, or a Reference across Stacks). */
+  fromSynth?: true;
+  /** For a Grant, Integration or Network Connection, every effect that makes it. */
   effects?: EffectView[];
   /** The Draft changes the code that makes it. */
   changed?: true;

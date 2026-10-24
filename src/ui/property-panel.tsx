@@ -80,7 +80,6 @@ function ConstructIdField({ panel, onRename }: { panel: PanelView; onRename(newI
   );
 }
 
-/** The props of a Node or Stack: required and featured first, the rest one click away. */
 /** What the synthesized app grants or triggers on this Node with no Node at the other end. Read-only: Truss doesn't edit these. */
 function OtherEffects({ title, effects }: { title: string; effects: PanelView['otherPermissions'] }) {
   if (!effects?.length) return null;
@@ -88,8 +87,8 @@ function OtherEffects({ title, effects }: { title: string; effects: PanelView['o
     <section className="other-effects" aria-label={title}>
       <h3>{title}</h3>
       <ul>
-        {effects.map((e) => (
-          <li key={`${e.at}:${e.summary}`} title={e.at}>
+        {effects.map((e, i) => (
+          <li key={`${i}:${e.at}`} title={e.at}>
             {e.summary}
           </li>
         ))}
@@ -98,6 +97,7 @@ function OtherEffects({ title, effects }: { title: string; effects: PanelView['o
   );
 }
 
+/** The props of a Node or Stack: required and featured first, the rest one click away. */
 export function PropertyPanel({ state, onSet, onRename, pick }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; pick?: PickNodes }) {
   const [showMore, setShowMore] = useState(false);
   if (state.status === 'loading') return null;

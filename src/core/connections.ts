@@ -27,6 +27,8 @@ export interface ConnectionEdge {
   prop: string;
   text: string;
   readOnly: string;
+  /** Read from what synth produced, not written in the code. */
+  fromSynth: true;
   source?: { file: string; line: number; col: number };
   effects?: EffectView[];
 }
@@ -110,6 +112,7 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
       prop: effects.length === 1 ? effects[0]!.detail : `${effects.length} ${many}`,
       text: effects.length === 1 ? effects[0]!.summary : `${effects.length} ${effects.length === 1 ? one : many}`,
       readOnly: READ_ONLY,
+      fromSynth: true as const,
       ...(source ? { source } : {}),
       effects,
     };
@@ -123,7 +126,7 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
     const id = `${from}->${to}:${r.prop}`;
     if (out.some((e) => e.id === id)) continue;
     const source = nodeById.get(from)?.source;
-    out.push({ id, kind: 'reference', from, to, prop: r.prop, text: 'Fn::ImportValue', readOnly: CROSS_STACK, ...(source ? { source } : {}) });
+    out.push({ id, kind: 'reference', from, to, prop: r.prop, text: 'Fn::ImportValue', readOnly: CROSS_STACK, fromSynth: true, ...(source ? { source } : {}) });
   }
   return { edges: out, other };
 }
