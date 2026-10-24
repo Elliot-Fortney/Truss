@@ -35,7 +35,9 @@ function fakeSource(initial: View): ViewSource & { push(v: View): void; handled:
     subscribe: (l) => (listeners.add(l), () => listeners.delete(l)),
     push(v) {
       current = v;
-      listeners.forEach((l) => l(v));
+      listeners.forEach((l) => {
+        l(v);
+      });
     },
   };
 }
@@ -44,9 +46,17 @@ function fakeSource(initial: View): ViewSource & { push(v: View): void; handled:
 function connect(url: string, origin?: string): Promise<{ ws: WebSocket; first: Promise<View> } | { status: number }> {
   return new Promise((resolve) => {
     const ws = new WebSocket(url, origin ? { origin } : {});
-    const first = new Promise<View>((res) => ws.once('message', (d) => res(JSON.parse(String(d)).view)));
-    ws.once('open', () => resolve({ ws, first }));
-    ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode ?? 0 }));
+    const first = new Promise<View>((res) =>
+      ws.once('message', (d) => {
+        res(JSON.parse(String(d)).view);
+      }),
+    );
+    ws.once('open', () => {
+      resolve({ ws, first });
+    });
+    ws.once('unexpected-response', (_req, res) => {
+      resolve({ status: res.statusCode ?? 0 });
+    });
     ws.once('error', () => undefined);
   });
 }
@@ -86,7 +96,11 @@ describe('startServer', () => {
     const conn = await connect(wsUrl(server), `http://127.0.0.1:${server.port}`);
     if ('status' in conn) throw new Error(`refused with ${conn.status}`);
     expect((await conn.first).version).toBe(1);
-    const next = new Promise<View>((res) => conn.ws.once('message', (d) => res(JSON.parse(String(d)).view)));
+    const next = new Promise<View>((res) =>
+      conn.ws.once('message', (d) => {
+        res(JSON.parse(String(d)).view);
+      }),
+    );
     source.push(view(2));
     expect((await next).version).toBe(2);
     conn.ws.close();
@@ -148,14 +162,18 @@ describe('startServer', () => {
     it('hands a request from the page to the handler', async () => {
       const { ws, onOpenInEditor } = await open();
       ws.send(JSON.stringify({ type: 'open-in-editor', file: 'lib/a.ts', line: 4, col: 2 }));
-      await vi.waitFor(() => expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'lib/a.ts', line: 4, col: 2 }));
+      await vi.waitFor(() => {
+        expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'lib/a.ts', line: 4, col: 2 });
+      });
       ws.close();
     });
 
     it('accepts a request with no position', async () => {
       const { ws, onOpenInEditor } = await open();
       ws.send(JSON.stringify({ type: 'open-in-editor', file: 'lib/a.ts' }));
-      await vi.waitFor(() => expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'lib/a.ts' }));
+      await vi.waitFor(() => {
+        expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'lib/a.ts' });
+      });
       ws.close();
     });
 
@@ -174,7 +192,9 @@ describe('startServer', () => {
         ws.send(frame);
       }
       ws.send(JSON.stringify({ type: 'open-in-editor', file: 'ok.ts' }));
-      await vi.waitFor(() => expect(onOpenInEditor).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => {
+        expect(onOpenInEditor).toHaveBeenCalledTimes(1);
+      });
       expect(onOpenInEditor).toHaveBeenCalledWith({ file: 'ok.ts' });
       ws.close();
     });
@@ -185,7 +205,9 @@ describe('startServer', () => {
       });
       const { ws } = await open(throwing);
       ws.send(JSON.stringify({ type: 'open-in-editor', file: 'a.ts' }));
-      await vi.waitFor(() => expect(throwing).toHaveBeenCalled());
+      await vi.waitFor(() => {
+        expect(throwing).toHaveBeenCalled();
+      });
       expect(ws.readyState).toBe(ws.OPEN);
       ws.close();
     });
@@ -207,7 +229,11 @@ describe('startServer', () => {
       const conn = await connect(wsUrl(server), `http://127.0.0.1:${server.port}`);
       if ('status' in conn) throw new Error(`refused with ${conn.status}`);
       await conn.first;
-      const reply = new Promise<Reply>((res) => conn.ws.once('message', (d) => res(JSON.parse(String(d)))));
+      const reply = new Promise<Reply>((res) =>
+        conn.ws.once('message', (d) => {
+          res(JSON.parse(String(d)));
+        }),
+      );
       conn.ws.send(payload);
       const got = await reply;
       conn.ws.close();

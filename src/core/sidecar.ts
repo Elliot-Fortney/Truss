@@ -37,15 +37,15 @@ const isCoordinate = (v: unknown): v is number => typeof v === 'number' && Numbe
 function readEntry(path: string, raw: unknown): SidecarEntry | string {
   if (!isObject(raw)) return `"${path}" is not an object`;
   const entry: SidecarEntry = {};
-  if (raw['position'] !== undefined) {
-    const p = raw['position'];
-    if (!isObject(p) || !isCoordinate(p['x']) || !isCoordinate(p['y']))
+  if (raw.position !== undefined) {
+    const p = raw.position;
+    if (!isObject(p) || !isCoordinate(p.x) || !isCoordinate(p.y))
       return `"${path}" has a position without numeric x and y`;
-    entry.position = { x: p['x'], y: p['y'] };
+    entry.position = { x: p.x, y: p.y };
   }
-  if (raw['note'] !== undefined) {
-    if (typeof raw['note'] !== 'string') return `"${path}" has a note that is not text`;
-    entry.note = raw['note'];
+  if (raw.note !== undefined) {
+    if (typeof raw.note !== 'string') return `"${path}" has a note that is not text`;
+    entry.note = raw.note;
   }
   return entry;
 }
@@ -62,7 +62,7 @@ export function parseSidecar(text: string, migrations: readonly Migration[] = MI
     };
   }
   if (!isObject(raw)) return { ok: false, message: `${SIDECAR_FILE} is not a JSON object` };
-  const version = raw['formatVersion'];
+  const version = raw.formatVersion;
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     return { ok: false, message: `${SIDECAR_FILE} has no valid "formatVersion"` };
   }
@@ -82,9 +82,9 @@ export function parseSidecar(text: string, migrations: readonly Migration[] = MI
       message: `${SIDECAR_FILE} could not be upgraded from format ${version}: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-  if (!isObject(migrated['nodes'])) return { ok: false, message: `${SIDECAR_FILE} has no "nodes" object` };
+  if (!isObject(migrated.nodes)) return { ok: false, message: `${SIDECAR_FILE} has no "nodes" object` };
   const nodes: Record<string, SidecarEntry> = {};
-  for (const [path, value] of Object.entries(migrated['nodes'])) {
+  for (const [path, value] of Object.entries(migrated.nodes)) {
     const entry = readEntry(path, value);
     if (typeof entry === 'string') return { ok: false, message: `${SIDECAR_FILE}: ${entry}` };
     nodes[path] = entry;

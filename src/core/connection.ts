@@ -141,10 +141,10 @@ function fitting(
   ctx: HintContext,
   a: NodeView,
   b: NodeView,
-): Array<{ hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }> {
+): { hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }[] {
   const catalog = ctx.catalog;
   if (!catalog) return [];
-  const out: Array<{ hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }> = [];
+  const out: { hint: ConnectionHint; id: string; self: NodeView; peer: NodeView }[] = [];
   for (const [self, peer] of [
     [a, b],
     [b, a],

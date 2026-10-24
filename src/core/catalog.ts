@@ -151,7 +151,7 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
 
 /** Keeps from a jsii assembly what the Catalog needs: classes and the structs that hold their props. Throws when `raw` isn't an assembly. */
 export function digestAssembly(raw: unknown): AssemblyDigest {
-  if (!isObject(raw) || !str(raw['name']) || !str(raw['version']) || !isObject(raw['types'])) {
+  if (!isObject(raw) || !str(raw.name) || !str(raw.version) || !isObject(raw.types)) {
     throw new Error('Not a jsii assembly: it has no name, version and types');
   }
   const classes: DigestClass[] = [];
@@ -160,29 +160,29 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
   const enums: string[] = [];
   const enumMembers: Record<string, string[]> = {};
 
-  for (const t of Object.values(raw['types'])) {
-    if (!isObject(t) || !str(t['fqn'])) continue;
-    const fqn = t['fqn'] as string;
-    const docs = isObject(t['docs']) ? t['docs'] : {};
-    if (t['kind'] === 'class') {
-      const init = isObject(t['initializer']) ? t['initializer'] : undefined;
-      const third = init && Array.isArray(init['parameters']) ? init['parameters'][2] : undefined;
-      const propsType = isObject(third) && isObject(third['type']) ? str(third['type']['fqn']) : undefined;
-      const custom = isObject(docs['custom']) ? docs['custom'] : {};
-      const namespace = str(t['namespace']);
-      const base = str(t['base']);
-      const summary = str(docs['summary']);
-      const cfnType = str(custom['cloudformationResource']);
+  for (const t of Object.values(raw.types)) {
+    if (!isObject(t) || !str(t.fqn)) continue;
+    const fqn = t.fqn as string;
+    const docs = isObject(t.docs) ? t.docs : {};
+    if (t.kind === 'class') {
+      const init = isObject(t.initializer) ? t.initializer : undefined;
+      const third = init && Array.isArray(init.parameters) ? init.parameters[2] : undefined;
+      const propsType = isObject(third) && isObject(third.type) ? str(third.type.fqn) : undefined;
+      const custom = isObject(docs.custom) ? docs.custom : {};
+      const namespace = str(t.namespace);
+      const base = str(t.base);
+      const summary = str(docs.summary);
+      const cfnType = str(custom.cloudformationResource);
       const { methods, grantMethods, properties } = digestMembers(t);
-      const implemented = stringList(t['interfaces']);
+      const implemented = stringList(t.interfaces);
       classes.push({
         fqn,
-        name: str(t['name']) ?? fqn.split('.').at(-1)!,
+        name: str(t.name) ?? fqn.split('.').at(-1)!,
         ...(namespace ? { namespace } : {}),
         ...(base ? { base } : {}),
-        ...(t['abstract'] === true ? { abstract: true as const } : {}),
-        ...(init?.['protected'] === true ? { protected: true as const } : {}),
-        ...(docs['stability'] === 'deprecated' ? { deprecated: true as const } : {}),
+        ...(t.abstract === true ? { abstract: true as const } : {}),
+        ...(init?.protected === true ? { protected: true as const } : {}),
+        ...(docs.stability === 'deprecated' ? { deprecated: true as const } : {}),
         ...(summary ? { summary } : {}),
         ...(cfnType ? { cfnType } : {}),
         ...(propsType ? { propsFqn: propsType } : {}),
@@ -191,26 +191,26 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
         ...(grantMethods ? { grantMethods } : {}),
         ...(properties ? { properties } : {}),
       });
-    } else if (t['kind'] === 'enum') {
+    } else if (t.kind === 'enum') {
       enums.push(fqn);
-      enumMembers[fqn] = (Array.isArray(t['members']) ? t['members'] : []).flatMap((m) =>
-        isObject(m) && str(m['name']) ? [m['name'] as string] : [],
+      enumMembers[fqn] = (Array.isArray(t.members) ? t.members : []).flatMap((m) =>
+        isObject(m) && str(m.name) ? [m.name as string] : [],
       );
-    } else if (t['kind'] === 'interface') {
-      const bases = stringList(t['interfaces']);
-      if (t['datatype'] === true)
+    } else if (t.kind === 'interface') {
+      const bases = stringList(t.interfaces);
+      if (t.datatype === true)
         structs.push({
           fqn,
           bases,
-          props: (Array.isArray(t['properties']) ? t['properties'] : []).flatMap(digestProp),
+          props: (Array.isArray(t.properties) ? t.properties : []).flatMap(digestProp),
         });
       else interfaces.push({ fqn, bases, ...digestMembers(t) });
     }
   }
   return {
     format: DIGEST_FORMAT,
-    name: raw['name'] as string,
-    version: raw['version'] as string,
+    name: raw.name as string,
+    version: raw.version as string,
     classes,
     structs,
     interfaces,
@@ -224,12 +224,12 @@ const stringList = (v: unknown): string[] =>
 
 /** The instance methods and properties of a class or interface, left out when it has none. */
 function digestMembers(t: Json): { methods?: string[]; grantMethods?: string[]; properties?: Record<string, string> } {
-  const callable = (Array.isArray(t['methods']) ? t['methods'] : []).filter(isCallable);
-  const methods = callable.map((m) => m['name'] as string);
-  const grantMethods = callable.filter(grantsToIdentity).map((m) => m['name'] as string);
+  const callable = (Array.isArray(t.methods) ? t.methods : []).filter(isCallable);
+  const methods = callable.map((m) => m.name as string);
+  const grantMethods = callable.filter(grantsToIdentity).map((m) => m.name as string);
   const properties = Object.fromEntries(
-    (Array.isArray(t['properties']) ? t['properties'] : []).flatMap((p) =>
-      isCallable(p) ? [[p['name'] as string, isObject(p['type']) ? (str(p['type']['fqn']) ?? '') : '']] : [],
+    (Array.isArray(t.properties) ? t.properties : []).flatMap((p) =>
+      isCallable(p) ? [[p.name as string, isObject(p.type) ? (str(p.type.fqn) ?? '') : '']] : [],
     ),
   );
   return {
@@ -244,26 +244,26 @@ const GRANT = 'aws-cdk-lib.aws_iam.Grant';
 
 /** Whether a method takes an `IGrantable` as its first parameter and returns a `Grant`. */
 function grantsToIdentity(m: Json): boolean {
-  const first = Array.isArray(m['parameters']) ? m['parameters'][0] : undefined;
-  const returns = isObject(m['returns']) && isObject(m['returns']['type']) ? m['returns']['type']['fqn'] : undefined;
-  return isObject(first) && isObject(first['type']) && first['type']['fqn'] === GRANTABLE && returns === GRANT;
+  const first = Array.isArray(m.parameters) ? m.parameters[0] : undefined;
+  const returns = isObject(m.returns) && isObject(m.returns.type) ? m.returns.type.fqn : undefined;
+  return isObject(first) && isObject(first.type) && first.type.fqn === GRANTABLE && returns === GRANT;
 }
 
 /** A method or property a caller can use on an instance: named, and neither static nor protected. */
 function isCallable(m: unknown): m is Json {
-  return isObject(m) && !!str(m['name']) && m['static'] !== true && m['protected'] !== true;
+  return isObject(m) && !!str(m.name) && m.static !== true && m.protected !== true;
 }
 
 function digestProp(p: unknown): DigestProp[] {
-  if (!isObject(p) || !str(p['name']) || !isObject(p['type'])) return [];
-  const docs = isObject(p['docs']) ? p['docs'] : {};
-  const summary = str(docs['summary']);
-  const def = str(docs['default']);
+  if (!isObject(p) || !str(p.name) || !isObject(p.type)) return [];
+  const docs = isObject(p.docs) ? p.docs : {};
+  const summary = str(docs.summary);
+  const def = str(docs.default);
   return [
     {
-      name: p['name'] as string,
-      type: p['type'] as unknown as TypeRef,
-      ...(p['optional'] === true ? { optional: true as const } : {}),
+      name: p.name as string,
+      type: p.type as unknown as TypeRef,
+      ...(p.optional === true ? { optional: true as const } : {}),
       ...(summary ? { summary } : {}),
       ...(def ? { default: def } : {}),
     },
@@ -520,12 +520,12 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
 /** What the installed libraries say exists, for checking the items of an Overlay. */
 interface World {
   /** A class or an enum. */
-  hasType(fqn: string): boolean;
-  hasClass(fqn: string): boolean;
+  hasType: (fqn: string) => boolean;
+  hasClass: (fqn: string) => boolean;
   /** An instance method on the class or one of its bases. */
-  hasMethod(fqn: string, name: string): boolean;
+  hasMethod: (fqn: string, name: string) => boolean;
   /** The FQN of a property's type (`''` when it isn't a class or interface), or undefined when the class and its bases have no such property. */
-  propertyType(fqn: string, name: string): string | undefined;
+  propertyType: (fqn: string, name: string) => string | undefined;
 }
 
 /** The type and everything it inherits members from, nearest first; a cycle in the data ends the walk instead of looping. */

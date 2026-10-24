@@ -55,7 +55,7 @@ async function bundledSchemaMajor(): Promise<number> {
   const here = dirname(fileURLToPath(import.meta.url));
   const toolkit = await findPackageDir(here, '@aws-cdk/toolkit-lib');
   const schema = toolkit && (await findPackageDir(toolkit, '@aws-cdk/cloud-assembly-schema'));
-  const version = schema && (await readJsonIfThere(join(schema, 'package.json')))?.['version'];
+  const version = schema && (await readJsonIfThere(join(schema, 'package.json')))?.version;
   const major = typeof version === 'string' ? Number(version.split('.')[0]) : NaN;
   return Number.isInteger(major) ? major : Infinity;
 }
@@ -64,25 +64,25 @@ async function bundledSchemaMajor(): Promise<number> {
 async function readAssembly(pkgDir: string): Promise<unknown> {
   const file = await readFile(join(pkgDir, '.jsii'));
   const first: unknown = JSON.parse(file.toString('utf8'));
-  if (!isObject(first) || first['schema'] !== 'jsii/file-redirect') return first;
-  const filename = first['filename'];
+  if (!isObject(first) || first.schema !== 'jsii/file-redirect') return first;
+  const filename = first.filename;
   if (typeof filename !== 'string' || isAbsolute(filename) || normalize(filename).startsWith('..')) {
     throw new Error(`.jsii redirects to ${JSON.stringify(filename)}, outside the package`);
   }
   const target = await readFile(join(pkgDir, filename));
-  return JSON.parse((first['compression'] === 'gzip' ? await gunzipAsync(target) : target).toString('utf8'));
+  return JSON.parse((first.compression === 'gzip' ? await gunzipAsync(target) : target).toString('utf8'));
 }
 
 const isDigest = (v: unknown, name: string, version: string): v is AssemblyDigest =>
   isObject(v) &&
-  v['format'] === DIGEST_FORMAT &&
-  v['name'] === name &&
-  v['version'] === version &&
-  Array.isArray(v['classes']) &&
-  Array.isArray(v['structs']) &&
-  Array.isArray(v['interfaces']) &&
-  Array.isArray(v['enums']) &&
-  isObject(v['enumMembers']);
+  v.format === DIGEST_FORMAT &&
+  v.name === name &&
+  v.version === version &&
+  Array.isArray(v.classes) &&
+  Array.isArray(v.structs) &&
+  Array.isArray(v.interfaces) &&
+  Array.isArray(v.enums) &&
+  isObject(v.enumMembers);
 
 async function digestOf(
   pkgDir: string,
@@ -133,9 +133,9 @@ async function scanApp(appDir: string): Promise<Scan> {
 
   const cdkDir = await findPackageDir(appDir, CDK_LIB);
   const cdkPackage = cdkDir ? await readJsonIfThere(join(cdkDir, 'package.json')) : undefined;
-  const cdkDeps = cdkPackage?.['dependencies'];
+  const cdkDeps = cdkPackage?.dependencies;
   const schemaRange = isObject(cdkDeps) ? cdkDeps['@aws-cdk/cloud-assembly-schema'] : undefined;
-  const version = cdkPackage?.['version'];
+  const version = cdkPackage?.version;
   const schemaMajor = await bundledSchemaMajor();
   const cdkLibVersion = typeof version === 'string' ? version : undefined;
   const support = checkSupported(
@@ -152,7 +152,7 @@ async function scanApp(appDir: string): Promise<Scan> {
   const others: Library[] = [];
   for (const name of [...dependencyNames].filter((n) => n !== CDK_LIB).sort()) {
     const dir = await findPackageDir(appDir, name);
-    const libVersion = dir && (await readJsonIfThere(join(dir, 'package.json')))?.['version'];
+    const libVersion = dir && (await readJsonIfThere(join(dir, 'package.json')))?.version;
     if (!dir || typeof libVersion !== 'string') continue;
     // Without an assembly it is a plain TypeScript library, which needs no word.
     if (await exists(join(dir, '.jsii'))) others.push({ name, version: libVersion, dir });

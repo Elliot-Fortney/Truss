@@ -74,7 +74,7 @@ function endOf(value: Json, scope: Scope): EffectEnd {
 const NOTHING: EffectEnd = { paths: [], text: '' };
 
 /** The logical IDs a value points at with `Ref` or `Fn::GetAtt`. */
-function idsIn(value: Json, out: Set<string> = new Set()): Set<string> {
+function idsIn(value: Json, out = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => idsIn(v, out));
   else if (typeof value === 'object' && value !== null) {
     const obj = value as Record<string, Json>;
@@ -93,7 +93,7 @@ const list = (v: Json): Json[] => (v === undefined ? [] : Array.isArray(v) ? v :
 /** The effects of one IAM policy document attached to `source`: one per allowed resource. */
 function grantsOf(at: string, document: Json, source: EffectEnd, scope: Scope): Effect[] {
   const out: Effect[] = [];
-  const statements = list((document as { Statement?: Json } | undefined)?.Statement) as Array<Record<string, Json>>;
+  const statements = list((document as { Statement?: Json } | undefined)?.Statement) as Record<string, Json>[];
   for (const statement of statements) {
     if (statement.Effect !== 'Allow' || statement.Resource === undefined) continue;
     const actions = list(statement.Action).filter((a): a is string => typeof a === 'string');
@@ -184,7 +184,7 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
           break;
         }
         case 'AWS::IAM::Role':
-          for (const inline of list(props.Policies) as Array<Record<string, Json>>) {
+          for (const inline of list(props.Policies) as Record<string, Json>[]) {
             effects.push(...grantsOf(r.path, inline.PolicyDocument, { paths: [r.path], text: `{${r.path}}` }, scope));
           }
           break;
@@ -207,7 +207,7 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
           });
           break;
         case 'AWS::Events::Rule':
-          for (const target of list(props.Targets) as Array<Record<string, Json>>) {
+          for (const target of list(props.Targets) as Record<string, Json>[]) {
             effects.push({
               kind: 'integration',
               at: r.path,
@@ -242,7 +242,7 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
           break;
         case 'AWS::EC2::SecurityGroup': {
           const self: EffectEnd = { paths: [r.path], text: `{${r.path}}` };
-          for (const rule of list(props.SecurityGroupIngress) as Array<Record<string, Json>>) {
+          for (const rule of list(props.SecurityGroupIngress) as Record<string, Json>[]) {
             effects.push({
               kind: 'network',
               at: r.path,
@@ -251,7 +251,7 @@ export function templateEffects(templates: readonly EffectTemplate[]): { effects
               detail: ports(rule),
             });
           }
-          for (const rule of list(props.SecurityGroupEgress) as Array<Record<string, Json>>) {
+          for (const rule of list(props.SecurityGroupEgress) as Record<string, Json>[]) {
             if (isDefaultEgress(rule)) continue;
             effects.push({
               kind: 'network',

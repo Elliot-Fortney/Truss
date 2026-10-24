@@ -79,7 +79,7 @@ function matches(pattern: ts.Expression, actual: ts.Expression, bound: Bound, re
     return (pattern.arguments ?? []).every(
       (a, i) =>
         !mentionsPlaceholder(a) ||
-        (actual.arguments?.[i] !== undefined && matches(a, actual.arguments[i]!, bound, reading)),
+        (actual.arguments?.[i] !== undefined && matches(a, actual.arguments[i], bound, reading)),
     );
   }
   if (ts.isCallExpression(pattern)) {
@@ -87,7 +87,7 @@ function matches(pattern: ts.Expression, actual: ts.Expression, bound: Bound, re
     return pattern.arguments.every(
       (a, i) =>
         !mentionsPlaceholder(a) ||
-        (actual.arguments[i] !== undefined && matches(a, actual.arguments[i]!, bound, reading)),
+        (actual.arguments[i] !== undefined && matches(a, actual.arguments[i], bound, reading)),
     );
   }
   return false;
@@ -169,7 +169,7 @@ interface Found {
 }
 
 /** The ways to read a call's callee as a receiver, then a method: `a.b.c(…)` is `a` then `b.c`, or `a.b` then `c`. The longest receiver first. */
-function splits(call: ts.CallExpression): Array<{ receiver: ts.Expression; method: string[] }> {
+function splits(call: ts.CallExpression): { receiver: ts.Expression; method: string[] }[] {
   const chain: ts.Expression[] = [];
   const names: string[] = [];
   let at = bare(call.expression);
@@ -340,7 +340,7 @@ export class CallReader {
     if (f.self === f.peer) return;
     const selfs = this.resolver.bySpan.get(f.self) ?? [];
     const peers = this.resolver.bySpan.get(f.peer) ?? [];
-    let pairs: Array<[string, string]>;
+    let pairs: [string, string][];
     let ambiguous = f.ambiguous;
     if (selfs.length === 1 && peers.length === 1) pairs = [[selfs[0]!, peers[0]!]];
     else {

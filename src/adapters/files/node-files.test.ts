@@ -52,7 +52,7 @@ describe('NodeFiles.readText and writeText', () => {
 });
 
 describe('NodeFiles.watch', () => {
-  const stops: Array<() => void> = [];
+  const stops: (() => void)[] = [];
   const dirs: string[] = [];
   afterEach(() => {
     for (const stop of stops.splice(0)) stop();
@@ -81,7 +81,12 @@ describe('NodeFiles.watch', () => {
   ])('reports a change to %s', async (_name, file) => {
     const { dir, onChange } = await watched();
     writeFileSync(join(dir, file), 'changed');
-    await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000 });
+    await vi.waitFor(
+      () => {
+        expect(onChange).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
   });
 
   it('reports a burst of writes once', async () => {

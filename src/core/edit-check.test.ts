@@ -15,7 +15,7 @@ const node = (line: number): NodeFacts => ({
   binding: 'none',
 });
 const facts: Facts = { nodes: { 'S/A': node(2), 'S/B': { ...node(3), literalId: 'B' }, 'T/A': node(2) } };
-const A: Array<[string, string]> = [
+const A: [string, string][] = [
   ['S/A', 'x'],
   ['T/A', 'x'],
 ];
@@ -26,7 +26,7 @@ const intent = (path: string): Intent => ({
   prop: ['p'],
   value: { kind: 'boolean', value: true },
 });
-const tree = (...paths: Array<[string, string]>): TreeNode => ({
+const tree = (...paths: [string, string][]): TreeNode => ({
   id: '',
   path: '',
   fqn: 'App',
@@ -109,7 +109,7 @@ describe('judgeEdit', () => {
 describe('judgeEdit of a rename', () => {
   const rename: Intent = { type: 'renameId', path: 'S/A', expect: { className: 'X', literalId: 'A' }, newId: 'C' };
   const base = assembly(tree(...A, ['S/B', 'x'], ['S/A/Resource', 'r']));
-  const moved = (...rest: Array<[string, string]>) => assembly(tree(['T/A', 'x'], ['S/B', 'x'], ...rest));
+  const moved = (...rest: [string, string][]) => assembly(tree(['T/A', 'x'], ['S/B', 'x'], ...rest));
   const judge = (after: Assembly, over: Partial<Parameters<typeof judgeEdit>[0]> = {}) =>
     judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents: [rename], before: base, after, ...over });
 

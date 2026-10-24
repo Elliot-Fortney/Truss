@@ -13,8 +13,8 @@ export function AddForm({
 }: {
   name: string;
   props: readonly CatalogProp[];
-  onAdd(values: Record<string, PropValue>): void;
-  onCancel(): void;
+  onAdd: (values: Record<string, PropValue>) => void;
+  onCancel: () => void;
 }) {
   const [values, setValues] = useState<Record<string, PropValue>>({});
   const complete = props.every((p) => values[p.name] !== undefined);
@@ -46,7 +46,13 @@ export function AddForm({
         </div>
       ))}
       <div className="add-form-actions">
-        <button type="button" disabled={!complete} onClick={() => onAdd(values)}>
+        <button
+          type="button"
+          disabled={!complete}
+          onClick={() => {
+            onAdd(values);
+          }}
+        >
           Add
         </button>
         <button type="button" onClick={onCancel}>

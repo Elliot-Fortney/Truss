@@ -26,7 +26,12 @@ function useTypedText(shown: string, commit: (text: string) => Staged | undefine
   useEffect(() => {
     if (document.activeElement !== field.current) setText(shown);
   }, [shown]);
-  useEffect(() => () => clearTimeout(pending.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(pending.current);
+    },
+    [],
+  );
 
   const flush = (): boolean => {
     clearTimeout(pending.current);
@@ -62,7 +67,7 @@ function TextInput({
   label: string;
   shown: string;
   numeric: boolean;
-  onValue(v: PropValue): Staged;
+  onValue: (v: PropValue) => Staged;
 }) {
   const typed = useTypedText(shown, (text) => {
     if (!numeric) return onValue({ kind: 'string', value: text });
@@ -76,7 +81,9 @@ function TextInput({
       type={numeric ? 'number' : 'text'}
       aria-label={label}
       value={typed.value}
-      onChange={(e) => typed.onChange(e.target.value)}
+      onChange={(e) => {
+        typed.onChange(e.target.value);
+      }}
       onBlur={typed.onBlur}
     />
   );
@@ -91,7 +98,7 @@ function Quantity({
   label: string;
   kind: 'duration' | 'size';
   written: WrittenValue | undefined;
-  onValue(v: PropValue): Staged;
+  onValue: (v: PropValue) => Staged;
 }) {
   const units: readonly string[] = kind === 'duration' ? DURATION_UNITS : SIZE_UNITS;
   const quantity = written?.kind === 'expression' ? written.quantity : undefined;
@@ -113,7 +120,9 @@ function Quantity({
         min={0}
         aria-label={`${label} amount`}
         value={typed.value}
-        onChange={(e) => typed.onChange(e.target.value)}
+        onChange={(e) => {
+          typed.onChange(e.target.value);
+        }}
         onBlur={typed.onBlur}
       />
       <select
@@ -150,14 +159,16 @@ function Choice<T extends string | boolean>({
   render,
 }: {
   written: WrittenValue | undefined;
-  read(w: WrittenValue): T;
+  read: (w: WrittenValue) => T;
   initial: T;
-  onValue(v: PropValue): Staged;
+  onValue: (v: PropValue) => Staged;
   render(value: T, change: (value: T, staged: PropValue) => void): ReactNode;
 }) {
   const code = written ? read(written) : initial;
   const [picked, setPicked] = useState(code);
-  useEffect(() => setPicked(code), [code]);
+  useEffect(() => {
+    setPicked(code);
+  }, [code]);
   return (
     <>
       {render(
@@ -180,7 +191,7 @@ export function PropEditor({
   input: PropInput;
   written: WrittenValue | undefined;
   path: readonly string[];
-  onSet(prop: string[], value: PropValue): Staged;
+  onSet: (prop: string[], value: PropValue) => Staged;
 }) {
   const label = path.join('.');
   const set = (value: PropValue): Staged => onSet([...path], value);
@@ -208,7 +219,9 @@ export function PropEditor({
                 type="checkbox"
                 aria-label={label}
                 checked={checked}
-                onChange={(e) => change(e.target.checked, { kind: 'boolean', value: e.target.checked })}
+                onChange={(e) => {
+                  change(e.target.checked, { kind: 'boolean', value: e.target.checked });
+                }}
               />
               {written ? null : <span className="prop-unset-hint">not set</span>}
             </label>
@@ -265,7 +278,7 @@ function FieldRow({
   field: CatalogProp;
   parent: WrittenValue | undefined;
   path: readonly string[];
-  onSet(prop: string[], value: PropValue): Staged;
+  onSet: (prop: string[], value: PropValue) => Staged;
 }) {
   const written = parent?.kind === 'object' ? parent.fields.find((f) => f.name === field.name)?.written : undefined;
   const mine = [...path, field.name];

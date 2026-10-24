@@ -79,7 +79,7 @@ export function checkEditOn(
   base: Base,
   intents: readonly Intent[],
   after: SynthResult,
-  baseDiagnostics: Map<string, Diagnostic[]> = new Map(),
+  baseDiagnostics = new Map<string, Diagnostic[]>(),
 ): EditChecked {
   const planned = planEdit(app.source, base, intents);
   if (!planned.ok) {

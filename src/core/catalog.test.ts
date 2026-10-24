@@ -358,9 +358,9 @@ describe('buildCatalog', () => {
 
     it('offers an input for a Duration, a Size and an enum of CDK itself with its members', () => {
       const inputs = withInputs();
-      expect(inputs['visibilityTimeout']).toEqual({ kind: 'duration' });
-      expect(inputs['maxMessageSize']).toEqual({ kind: 'size' });
-      expect(inputs['removalPolicy']).toEqual({
+      expect(inputs.visibilityTimeout).toEqual({ kind: 'duration' });
+      expect(inputs.maxMessageSize).toEqual({ kind: 'size' });
+      expect(inputs.removalPolicy).toEqual({
         kind: 'enum',
         fqn: 'aws-cdk-lib.RemovalPolicy',
         members: ['DESTROY', 'RETAIN'],
@@ -368,7 +368,7 @@ describe('buildCatalog', () => {
     });
 
     it('lists the fields of a struct that Truss can write a literal for, and leaves out the rest', () => {
-      const dead = withInputs()['deadLetter'];
+      const dead = withInputs().deadLetter;
       expect(dead).toEqual({
         kind: 'struct',
         fields: [expect.objectContaining({ name: 'maxReceiveCount', required: true, input: { kind: 'number' } })],
@@ -377,9 +377,9 @@ describe('buildCatalog', () => {
 
     it('offers nothing for an enum of another library, a union of several types, or a struct that contains itself', () => {
       const inputs = withInputs();
-      expect(inputs['color']).toBeUndefined();
-      expect(inputs['either']).toBeUndefined();
-      expect(inputs['self']).toBeUndefined();
+      expect(inputs.color).toBeUndefined();
+      expect(inputs.either).toBeUndefined();
+      expect(inputs.self).toBeUndefined();
     });
 
     it('digests the members of an enum', () => {

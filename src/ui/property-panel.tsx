@@ -18,7 +18,7 @@ function PropRow({
 }: {
   row: PropRowView;
   unset: string;
-  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  onSet: (prop: string[], value: PropValue) => Promise<boolean>;
   pick?: PickNodes;
 }) {
   return (
@@ -56,7 +56,7 @@ function PropList({
 }: {
   rows: readonly PropRowView[];
   unset: string;
-  onSet(prop: string[], value: PropValue): Promise<boolean>;
+  onSet: (prop: string[], value: PropValue) => Promise<boolean>;
   pick?: PickNodes;
 }) {
   return (
@@ -87,7 +87,9 @@ function ConstructIdField({ panel, onRename }: { panel: PanelView; onRename(newI
           spellCheck={false}
           aria-invalid={problem !== undefined}
           aria-describedby="id-field-message"
-          onChange={(e) => setTyped(e.currentTarget.value)}
+          onChange={(e) => {
+            setTyped(e.currentTarget.value);
+          }}
           onBlur={stage}
           onKeyDown={(e) => {
             if (e.key === 'Enter') stage();
@@ -126,8 +128,8 @@ export function PropertyPanel({
   pick,
 }: {
   state: PanelState;
-  onSet(prop: string[], value: PropValue): Promise<boolean>;
-  onRename(newId: string): Promise<boolean>;
+  onSet: (prop: string[], value: PropValue) => Promise<boolean>;
+  onRename: (newId: string) => Promise<boolean>;
   pick?: PickNodes;
 }) {
   const [showMore, setShowMore] = useState(false);
@@ -158,7 +160,14 @@ export function PropertyPanel({
       <PropList rows={panel.rows} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} />
       {panel.more.length > 0 ? (
         <>
-          <button type="button" className="prop-more" aria-expanded={showMore} onClick={() => setShowMore(!showMore)}>
+          <button
+            type="button"
+            className="prop-more"
+            aria-expanded={showMore}
+            onClick={() => {
+              setShowMore(!showMore);
+            }}
+          >
             {moreLabel(panel.more.length, showMore)}
           </button>
           {showMore ? (

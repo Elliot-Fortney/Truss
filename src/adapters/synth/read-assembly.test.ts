@@ -97,7 +97,9 @@ describe('templateRefs', () => {
 });
 
 describe('readAssembly', () => {
-  const write = (dir: string, name: string, json: unknown) => writeFileSync(join(dir, name), JSON.stringify(json));
+  const write = (dir: string, name: string, json: unknown) => {
+    writeFileSync(join(dir, name), JSON.stringify(json));
+  };
 
   it('reads the Stacks of a Stage from its nested assembly, under their construct paths', () => {
     const root = mkdtempSync(join(tmpdir(), 'truss-assembly-'));

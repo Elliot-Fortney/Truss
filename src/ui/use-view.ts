@@ -30,16 +30,16 @@ export function useView(): {
   view: View | undefined;
   connection: Connection;
   /** Sends a request and resolves with the server's answer. Never rejects. */
-  send(request: ClientRequest): Promise<Outcome>;
+  send: (request: ClientRequest) => Promise<Outcome>;
   /** Searches the Catalog by name, service or CloudFormation type. Never rejects. */
-  search(query: string): Promise<SearchOutcome>;
+  search: (query: string) => Promise<SearchOutcome>;
   /** Asks for the property panel of a Node or Stack. Never rejects. */
-  panel(id: string): Promise<PanelOutcome>;
+  panel: (id: string) => Promise<PanelOutcome>;
   /** Asks, for the Node `id`, which other Nodes would take a Reference from it. Never rejects. */
-  connectable(id: string): Promise<ConnectableOutcome>;
+  connectable: (id: string) => Promise<ConnectableOutcome>;
   /** Adds the construct `fqn` to the Stack `scope`. Never rejects. */
-  addNode(scope: string, fqn: string, props?: Record<string, PropValue>): Promise<AddOutcome>;
-  openInEditor(at: SourceLocation): void;
+  addNode: (scope: string, fqn: string, props?: Record<string, PropValue>) => Promise<AddOutcome>;
+  openInEditor: (at: SourceLocation) => void;
 } {
   const [view, setView] = useState<View>();
   const [connection, setConnection] = useState<Connection>('connecting');
@@ -52,7 +52,9 @@ export function useView(): {
     const ws = new WebSocket(`ws://${location.host}/ws?token=${encodeURIComponent(token)}`);
     const waiting = pending.current;
     socket.current = ws;
-    ws.onopen = () => setConnection('open');
+    ws.onopen = () => {
+      setConnection('open');
+    };
     ws.onclose = () => {
       setConnection('closed');
       for (const resolve of waiting.values()) resolve(DISCONNECTED);

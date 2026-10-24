@@ -79,7 +79,7 @@ interface LayerNodeData extends Record<string, unknown> {
   expandable: boolean;
   expanded: boolean;
   badge?: Badge;
-  onToggle(id: string): void;
+  onToggle: (id: string) => void;
 }
 
 /** What a badge says: errors win the colour, warnings the Draft introduced follow. */
@@ -137,7 +137,7 @@ function ExpandToggle({
   id: string;
   label: string;
   expanded: boolean;
-  onToggle(id: string): void;
+  onToggle: (id: string) => void;
 }) {
   return (
     <button
@@ -417,13 +417,18 @@ function StagePicker({
 }: {
   stages: View['stages'];
   value: string | undefined;
-  onChange(id: string): void;
+  onChange: (id: string) => void;
 }) {
   return (
     <div className="stage-bar">
       <label>
         Stage
-        <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <select
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+          }}
+        >
           {stages.map((s) => (
             <option key={s.id} value={s.id}>
               {s.label}
@@ -454,11 +459,11 @@ function NodePanel({
   paused: boolean;
   pick: PickNodes;
   onSave: (note: string) => void;
-  onSet(prop: string[], value: PropValue): Promise<boolean>;
-  onRename(newId: string): Promise<boolean>;
-  onDuplicate(): void;
-  onRemove(): void;
-  onOpen(at: SourceLocation): void;
+  onSet: (prop: string[], value: PropValue) => Promise<boolean>;
+  onRename: (newId: string) => Promise<boolean>;
+  onDuplicate: () => void;
+  onRemove: () => void;
+  onOpen: (at: SourceLocation) => void;
 }) {
   if (node.removed) {
     return (
@@ -477,7 +482,13 @@ function NodePanel({
       {node.lock ? <p className="lock-reason">Read-only: {node.lock}</p> : null}
       {causers.length > 0 ? <p className="lock-reason">Caused by {causers.join(', ')}</p> : null}
       {node.source ? (
-        <button type="button" className="open-in-editor" onClick={() => onOpen(node.source!)}>
+        <button
+          type="button"
+          className="open-in-editor"
+          onClick={() => {
+            onOpen(node.source!);
+          }}
+        >
           Open in editor
         </button>
       ) : null}
@@ -521,9 +532,9 @@ function StackPanel({
 }: {
   stack: StackBoxView;
   props: PanelState;
-  onSet(prop: string[], value: PropValue): Promise<boolean>;
-  onRename(newId: string): Promise<boolean>;
-  onOpen(at: SourceLocation): void;
+  onSet: (prop: string[], value: PropValue) => Promise<boolean>;
+  onRename: (newId: string) => Promise<boolean>;
+  onOpen: (at: SourceLocation) => void;
 }) {
   const source = props.status === 'ready' ? props.panel.source : undefined;
   return (
@@ -531,7 +542,13 @@ function StackPanel({
       <h2>{stack.label}</h2>
       <p className="lock-reason">Stack · {stack.env}</p>
       {source ? (
-        <button type="button" className="open-in-editor" onClick={() => onOpen(source)}>
+        <button
+          type="button"
+          className="open-in-editor"
+          onClick={() => {
+            onOpen(source);
+          }}
+        >
           Open in editor
         </button>
       ) : null}
@@ -588,16 +605,18 @@ function EdgePanel({
   edge: EdgeView;
   names: ReadonlyMap<string, string>;
   paused: boolean;
-  onRemove(): void;
-  onOpen(at: SourceLocation): void;
-  onChange(change: { hint?: string; env?: string | null }): void;
-  onRemoveCalls(ids: string[]): void;
+  onRemove: () => void;
+  onOpen: (at: SourceLocation) => void;
+  onChange: (change: { hint?: string; env?: string | null }) => void;
+  onRemoveCalls: (ids: string[]) => void;
 }) {
   const at = edge.source;
   const props = edge.connection;
   const callIds = edge.calls?.map((c) => c.id) ?? [];
   const [env, setEnv] = useState(props?.env?.name ?? '');
-  useEffect(() => setEnv(props?.env?.name ?? ''), [props?.env?.name]);
+  useEffect(() => {
+    setEnv(props?.env?.name ?? '');
+  }, [props?.env?.name]);
   return (
     <aside className="note-panel">
       <h2>
@@ -639,7 +658,9 @@ function EdgePanel({
                 className="prop-input"
                 value={props.access.current}
                 disabled={paused}
-                onChange={(e) => onChange({ hint: e.currentTarget.value })}
+                onChange={(e) => {
+                  onChange({ hint: e.currentTarget.value });
+                }}
               >
                 {props.access.options.map((o) => (
                   <option key={o.hint} value={o.hint}>
@@ -650,7 +671,13 @@ function EdgePanel({
             </label>
           ) : null}
           {props.combine ? (
-            <button type="button" disabled={paused} onClick={() => onChange({ hint: props.combine!.hint })}>
+            <button
+              type="button"
+              disabled={paused}
+              onClick={() => {
+                onChange({ hint: props.combine!.hint });
+              }}
+            >
               Combine into: {props.combine.text}
             </button>
           ) : null}
@@ -661,7 +688,9 @@ function EdgePanel({
                   type="checkbox"
                   checked={props.env.on}
                   disabled={paused}
-                  onChange={(e) => onChange({ env: e.currentTarget.checked ? env || props.env!.default : null })}
+                  onChange={(e) => {
+                    onChange({ env: e.currentTarget.checked ? env || props.env!.default : null });
+                  }}
                 />{' '}
                 Environment variable
               </label>
@@ -670,7 +699,9 @@ function EdgePanel({
                 aria-label="Environment variable name"
                 value={env}
                 disabled={paused || !props.env.on}
-                onChange={(e) => setEnv(e.currentTarget.value)}
+                onChange={(e) => {
+                  setEnv(e.currentTarget.value);
+                }}
                 onBlur={() => env !== props.env!.name && env !== '' && onChange({ env })}
               />
             </div>
@@ -688,7 +719,9 @@ function EdgePanel({
                   className="picked-remove"
                   aria-label={`Remove ${c.text}`}
                   disabled={paused}
-                  onClick={() => onRemoveCalls([c.id])}
+                  onClick={() => {
+                    onRemoveCalls([c.id]);
+                  }}
                 >
                   ✕
                 </button>
@@ -700,7 +733,13 @@ function EdgePanel({
         </ul>
       ) : null}
       {at ? (
-        <button type="button" className="open-in-editor" onClick={() => onOpen(at)}>
+        <button
+          type="button"
+          className="open-in-editor"
+          onClick={() => {
+            onOpen(at);
+          }}
+        >
           Open in editor
         </button>
       ) : null}
@@ -719,7 +758,13 @@ function RefusalTip({ tip, onOpen, onClose }: { tip: Tip; onOpen(at: SourceLocat
     <div className="refusal-tip" role="alert" style={{ left: tip.x, top: tip.y }}>
       <span>{tip.reason}</span>
       {tip.at ? (
-        <button type="button" className="open-in-editor" onClick={() => onOpen(tip.at!)}>
+        <button
+          type="button"
+          className="open-in-editor"
+          onClick={() => {
+            onOpen(tip.at!);
+          }}
+        >
           Open in editor
         </button>
       ) : null}
@@ -738,9 +783,9 @@ function ConnectMenu({
   onClose,
 }: {
   choice: Choice;
-  onPick(prop: string, replace: boolean): void;
-  onHint(hint: HintOption, env: string | null | undefined): void;
-  onClose(): void;
+  onPick: (prop: string, replace: boolean) => void;
+  onHint: (hint: HintOption, env: string | null | undefined) => void;
+  onClose: () => void;
 }) {
   const hints = choice.kind === 'choose' ? choice.hints : [];
   const [picked, setPicked] = useState(0);
@@ -754,7 +799,12 @@ function ConnectMenu({
           <p>
             Replace {choice.current} with {choice.to} as <code>{choice.prop}</code>?
           </p>
-          <button type="button" onClick={() => onPick(choice.prop, true)}>
+          <button
+            type="button"
+            onClick={() => {
+              onPick(choice.prop, true);
+            }}
+          >
             Replace
           </button>
         </>
@@ -764,7 +814,13 @@ function ConnectMenu({
             Connect {choice.from} to {choice.to} as:
           </p>
           {choice.options.map((o) => (
-            <button key={o.prop} type="button" onClick={() => onPick(o.prop, o.replaces !== undefined)}>
+            <button
+              key={o.prop}
+              type="button"
+              onClick={() => {
+                onPick(o.prop, o.replaces !== undefined);
+              }}
+            >
               <code>{o.prop}</code> <span className="muted">{o.type}</span>
               {o.replaces ? <span className="muted"> · replaces {o.replaces.label}</span> : null}
             </button>
@@ -773,7 +829,15 @@ function ConnectMenu({
             <fieldset className="hint-choice">
               {hints.map((h, i) => (
                 <label key={h.hint}>
-                  <input type="radio" name="hint" checked={picked === i} onChange={() => setPicked(i)} /> {h.text}
+                  <input
+                    type="radio"
+                    name="hint"
+                    checked={picked === i}
+                    onChange={() => {
+                      setPicked(i);
+                    }}
+                  />{' '}
+                  {h.text}
                   {h.default ? <span className="muted"> · default</span> : null}
                   {h.replaces ? <span className="muted"> · replaces the grant it completes</span> : null}
                 </label>
@@ -781,15 +845,23 @@ function ConnectMenu({
               {chosen?.env ? (
                 <div className="hint-env">
                   <label>
-                    <input type="checkbox" checked={envOn} onChange={(e) => setEnvOn(e.currentTarget.checked)} /> Set
-                    environment variable
+                    <input
+                      type="checkbox"
+                      checked={envOn}
+                      onChange={(e) => {
+                        setEnvOn(e.currentTarget.checked);
+                      }}
+                    />{' '}
+                    Set environment variable
                   </label>
                   <input
                     className="prop-input"
                     aria-label="Environment variable"
                     disabled={!envOn}
                     value={env ?? chosen.env}
-                    onChange={(e) => setEnv(e.currentTarget.value)}
+                    onChange={(e) => {
+                      setEnv(e.currentTarget.value);
+                    }}
                   />
                 </div>
               ) : null}
@@ -818,7 +890,12 @@ function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceL
       <code>
         {file}:{line}:{col}
       </code>{' '}
-      <button type="button" onClick={() => onOpen(error.location!)}>
+      <button
+        type="button"
+        onClick={() => {
+          onOpen(error.location!);
+        }}
+      >
         Open in editor
       </button>
     </p>
@@ -876,15 +953,13 @@ export function App() {
   const shown = useMemo(() => (view ? showStage(view, stageId) : undefined), [view, stageId]);
   // Which Nodes are open is this connection's own view state: it is not in the Sidecar, and no other browser sees it.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const toggle = useCallback(
-    (id: string) =>
-      setExpanded((current) => {
-        const next = new Set(current);
-        if (!next.delete(id)) next.add(id);
-        return next;
-      }),
-    [],
-  );
+  const toggle = useCallback((id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
   const layout = useMemo(() => (shown ? layoutView(shown, expanded) : undefined), [shown, expanded]);
   const editable = view !== undefined && view.error === undefined;
   const flowNodes = useMemo(
@@ -897,11 +972,9 @@ export function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
   const [shownNotice, setShownNotice] = useState<{ text: string; uses?: SourceUse[]; at?: SourceLocation }>();
   const notice = shownNotice?.text;
-  const setNotice = useCallback(
-    (text?: string, uses?: readonly SourceUse[], at?: SourceLocation) =>
-      setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}), ...(at ? { at } : {}) } : undefined),
-    [],
-  );
+  const setNotice = useCallback((text?: string, uses?: readonly SourceUse[], at?: SourceLocation) => {
+    setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}), ...(at ? { at } : {}) } : undefined);
+  }, []);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [linkedProblem, setLinkedProblem] = useState<string>();
   // Opening a Node must not move the viewport, so only the Nodes and boxes of the Design decide when to fit it again.
@@ -918,11 +991,12 @@ export function App() {
     (all: Node[]) => all.map((n) => (n.id === selectedRef.current ? { ...n, selected: true } : n)),
     [],
   );
-  useEffect(() => setNodes(keepSelection(flowNodes)), [flowNodes, keepSelection]);
-  const onNodesChange = useCallback<OnNodesChange>(
-    (changes) => setNodes((current) => applyNodeChanges(changes, current)),
-    [],
-  );
+  useEffect(() => {
+    setNodes(keepSelection(flowNodes));
+  }, [flowNodes, keepSelection]);
+  const onNodesChange = useCallback<OnNodesChange>((changes) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  }, []);
 
   const request = useCallback(
     async (req: ClientRequest) => {
@@ -973,9 +1047,9 @@ export function App() {
       setChoice(undefined);
       if (from === null) return;
       setDrag({ from });
-      void connectable(from).then((answer) =>
-        setDrag((now) => (now?.from === from ? (answer.ok ? { from, targets: answer.targets } : { from }) : now)),
-      );
+      void connectable(from).then((answer) => {
+        setDrag((now) => (now?.from === from ? (answer.ok ? { from, targets: answer.targets } : { from }) : now));
+      });
     },
     [connectable],
   );
@@ -1172,7 +1246,9 @@ export function App() {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+    };
   }, [unsaved]);
 
   // Undo and redo step through the Draft, but not while the user is typing in a field, which has its own.
@@ -1188,7 +1264,9 @@ export function App() {
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
   }, [undo, redo]);
   // Delete takes the selected Reference out, unless the user is typing.
   useEffect(() => {
@@ -1201,7 +1279,9 @@ export function App() {
       removeEdge(selectedEdge);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
   }, [selectedEdge, editable, removeEdge]);
   const addScope = shown ? addScopeOf(shown.stacks, openStack?.id, selected?.stackId) : undefined;
   const panelState = usePanel(selected?.id ?? openStack?.id, view?.version, panel);
@@ -1293,7 +1373,13 @@ export function App() {
               {shownNotice?.at ? (
                 <>
                   {' '}
-                  <button type="button" className="open-in-editor" onClick={() => openInEditor(shownNotice.at!)}>
+                  <button
+                    type="button"
+                    className="open-in-editor"
+                    onClick={() => {
+                      openInEditor(shownNotice.at!);
+                    }}
+                  >
                     Open in editor
                   </button>
                 </>
@@ -1302,7 +1388,13 @@ export function App() {
                 <ul className="uses">
                   {shownNotice.uses.map((u) => (
                     <li key={`${u.file}:${u.line}:${u.col}`}>
-                      <button type="button" className="open-in-editor" onClick={() => openInEditor(u)}>
+                      <button
+                        type="button"
+                        className="open-in-editor"
+                        onClick={() => {
+                          openInEditor(u);
+                        }}
+                      >
                         {u.file}:{u.line}
                       </button>{' '}
                       <code>{u.text}</code>
@@ -1331,11 +1423,19 @@ export function App() {
           nodesConnectable={!error}
           nodesDraggable={!error}
           // The line is drawn by React Flow, but where it ends and what it means is Truss's to say: see endDrag.
-          onConnectStart={(_event, params) => startDrag(params.nodeId)}
-          onConnectEnd={(event, state) => endDrag(event, state.fromNode?.id)}
+          onConnectStart={(_event, params) => {
+            startDrag(params.nodeId);
+          }}
+          onConnectEnd={(event, state) => {
+            endDrag(event, state.fromNode?.id);
+          }}
           onReconnect={() => undefined}
-          onReconnectStart={(_event, edge) => startDrag(edge.source)}
-          onReconnectEnd={(event, edge) => endReconnect(event, edge)}
+          onReconnectStart={(_event, edge) => {
+            startDrag(edge.source);
+          }}
+          onReconnectEnd={(event, edge) => {
+            endReconnect(event, edge);
+          }}
           // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
           deleteKeyCode={null}
           fitView
@@ -1354,10 +1454,18 @@ export function App() {
             onJump={jumpTo}
             locate={locate}
             onOpen={openInEditor}
-            onClose={() => setProblemsOpen(false)}
+            onClose={() => {
+              setProblemsOpen(false);
+            }}
           />
         ) : (
-          <button type="button" className="problems-toggle" onClick={() => setProblemsOpen(true)}>
+          <button
+            type="button"
+            className="problems-toggle"
+            onClick={() => {
+              setProblemsOpen(true);
+            }}
+          >
             Problems · {view.problems.filter(isBadged).length}
           </button>
         )}
@@ -1395,7 +1503,9 @@ export function App() {
             name={asking.name}
             props={asking.props}
             onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)}
-            onCancel={() => setAsking(undefined)}
+            onCancel={() => {
+              setAsking(undefined);
+            }}
           />
         ) : null}
         {openStack ? (
@@ -1413,7 +1523,9 @@ export function App() {
             edge={selectedEdge}
             names={names}
             paused={error !== undefined}
-            onRemove={() => removeEdge(selectedEdge)}
+            onRemove={() => {
+              removeEdge(selectedEdge);
+            }}
             onOpen={openInEditor}
             onChange={(change) =>
               void request({ type: 'changeConnection', calls: selectedEdge.calls?.map((c) => c.id) ?? [], ...change })
@@ -1421,7 +1533,15 @@ export function App() {
             onRemoveCalls={(calls) => void request({ type: 'removeConnection', calls })}
           />
         ) : null}
-        {tip ? <RefusalTip tip={tip} onOpen={openInEditor} onClose={() => setTip(undefined)} /> : null}
+        {tip ? (
+          <RefusalTip
+            tip={tip}
+            onOpen={openInEditor}
+            onClose={() => {
+              setTip(undefined);
+            }}
+          />
+        ) : null}
         {choice ? (
           <ConnectMenu
             choice={choice}
@@ -1443,7 +1563,9 @@ export function App() {
                 { x: choice.x, y: choice.y },
               )
             }
-            onClose={() => setChoice(undefined)}
+            onClose={() => {
+              setChoice(undefined);
+            }}
           />
         ) : null}
       </div>

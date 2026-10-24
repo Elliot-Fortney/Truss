@@ -33,7 +33,7 @@ export function referencesTo(
   service: ts.LanguageService,
   file: string,
   position: number,
-): Array<{ file: string; start: number; end: number }> {
+): { file: string; start: number; end: number }[] {
   const found = service.findReferences(ROOT + file, position) ?? [];
   return found.flatMap((symbol) =>
     symbol.references.map((r) => ({

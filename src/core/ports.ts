@@ -16,7 +16,7 @@ export interface Synth {
    * `overlay`, synths a shadow copy of the app in which those files (by path relative to the app folder)
    * have that text, and the real files are left alone.
    */
-  synth(appDir: string, opts?: { signal?: AbortSignal; overlay?: FileSet }): Promise<SynthResult>;
+  synth: (appDir: string, opts?: { signal?: AbortSignal; overlay?: FileSet }) => Promise<SynthResult>;
   /** Whether `synth` can be given an `overlay` for this app. Absent: it always can. */
   draftSupport?(appDir: string): Promise<DraftSupport>;
 }
@@ -45,20 +45,20 @@ export interface Diagnostic {
 
 export interface Source {
   /** What the code says about the Design. With the Catalog, also the calls that make Grants, Integrations and Network Connections. */
-  analyse(files: FileSet, assembly: Assembly, catalog?: Catalog): Facts;
+  analyse: (files: FileSet, assembly: Assembly, catalog?: Catalog) => Facts;
   /** Plans the text changes for `intents` against `files`, which `facts` were read from. Writes nothing. */
-  plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult;
+  plan: (files: FileSet, facts: Facts, intents: readonly Intent[]) => PlanResult;
   /** The TypeScript diagnostics of the `touched` files, type-checked as part of the app in `appDir` with `files` in place of what is on disk. */
-  diagnostics(appDir: string, files: FileSet, touched: readonly string[]): Diagnostic[];
+  diagnostics: (appDir: string, files: FileSet, touched: readonly string[]) => Diagnostic[];
 }
 
 export interface Files {
   /** Reads the app's TypeScript sources, keyed by path relative to the app folder. */
-  read(): Promise<FileSet>;
+  read: () => Promise<FileSet>;
   /** Reads one file next to `cdk.json` as text, or `undefined` when it doesn't exist. */
-  readText(name: string): Promise<string | undefined>;
+  readText: (name: string) => Promise<string | undefined>;
   /** Writes one file next to `cdk.json`, whole or not at all. */
-  writeText(name: string, text: string): Promise<void>;
+  writeText: (name: string, text: string) => Promise<void>;
 
   /**
    * Calls `onChange` when anything in the app folder that can change the Design is touched: an

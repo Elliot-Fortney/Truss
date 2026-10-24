@@ -7,7 +7,7 @@ export interface MemoryFiles extends Files {
   writes: string[];
 }
 
-export function memoryFiles(sources: Map<string, string> = new Map(), texts: Record<string, string> = {}): MemoryFiles {
+export function memoryFiles(sources = new Map<string, string>(), texts: Record<string, string> = {}): MemoryFiles {
   const store = new Map(Object.entries(texts));
   const writes: string[] = [];
   return {

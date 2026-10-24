@@ -31,7 +31,10 @@ let n = 0;
 const ask = (s: Session, message: Record<string, unknown>): Promise<Reply> =>
   s.handle({ requestId: `r${++n}`, ...message } as never);
 const P = (id: string) => `Wiring/${id}`;
-const settled = (s: Session) => vi.waitFor(() => expect(s.view().synthing).toBe(false));
+const settled = (s: Session) =>
+  vi.waitFor(() => {
+    expect(s.view().synthing).toBe(false);
+  });
 
 describe('Connections of a Design', () => {
   it('draws the edges the code makes with their calls, editable when the calls are, and read-only when none is recognised', async () => {
@@ -71,8 +74,8 @@ describe('Connections of a Design', () => {
       { type: 'connectable' }
     >;
     const toHandler = connected.targets[P('Handler')]!;
-    expect(toHandler.ok && toHandler.hints?.find((h) => /read and written/.test(h.text))?.replaces).toHaveLength(2);
-    expect(toHandler.ok && toHandler.hints?.some((h) => /is read by/.test(h.text))).toBe(false);
+    expect(toHandler.ok && toHandler.hints?.find((h) => h.text.includes('read and written'))?.replaces).toHaveLength(2);
+    expect(toHandler.ok && toHandler.hints?.some((h) => h.text.includes('is read by'))).toBe(false);
   });
 
   it('stages a Connection, shows it in the Draft, and takes it back with Undo', async () => {

@@ -118,9 +118,9 @@ describe('buildPanel for a construct in the Catalog', () => {
 
   it('shows a literal as its value and anything else as its source text', () => {
     const byName = Object.fromEntries(panel.rows.map((r) => [r.name, r.written]));
-    expect(byName['bucketName']).toEqual({ kind: 'literal', value: 'logs', text: "'logs'" });
-    expect(byName['encryption']).toEqual({ kind: 'expression', text: 'BucketEncryption.KMS' });
-    expect(byName['versioned']).toBeUndefined();
+    expect(byName.bucketName).toEqual({ kind: 'literal', value: 'logs', text: "'logs'" });
+    expect(byName.encryption).toEqual({ kind: 'expression', text: 'BucketEncryption.KMS' });
+    expect(byName.versioned).toBeUndefined();
   });
 
   it('names the class and carries the construct summary and where it is written', () => {
@@ -660,7 +660,7 @@ describe('buildPanel Node picker', () => {
   };
 
   it('lists the Nodes a prop could point at, those that fit its type', () => {
-    expect(rowsOf(world({ props: object() }))['encryptionKey']).toEqual({
+    expect(rowsOf(world({ props: object() })).encryptionKey).toEqual({
       many: false,
       current: [],
       choices: [
@@ -675,7 +675,7 @@ describe('buildPanel Node picker', () => {
       world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'key' }) }, [
         ref('Key', 'encryptionKey'),
       ]),
-    )['encryptionKey'];
+    ).encryptionKey;
     expect(picker).toMatchObject({
       current: [{ id: 'App/Key', label: 'Key' }],
       choices: [{ id: 'App/Spare', label: 'Spare' }],
@@ -688,7 +688,7 @@ describe('buildPanel Node picker', () => {
         ref('Spare', 'replicas', { index: 0 }),
         ref('Key', 'replicas', { index: 1 }),
       ]),
-    )['replicas'];
+    ).replicas;
     expect(picker).toMatchObject({ many: true, current: [{ id: 'App/Spare' }, { id: 'App/Key' }], choices: [] });
   });
 
@@ -697,21 +697,19 @@ describe('buildPanel Node picker', () => {
       world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'pick(key)' }) }, [
         ref('Key', 'encryptionKey', { form: 'call', editable: false, reason: 'Passed through a call' }),
       ]),
-    )['encryptionKey'];
+    ).encryptionKey;
     expect(picker?.current).toEqual([{ id: 'App/Key', label: 'Key', readOnly: 'Passed through a call' }]);
   });
 
   it('has no picker for a prop written as an expression that is no Node', () => {
     expect(
-      rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'props.key' }) }))[
-        'encryptionKey'
-      ],
+      rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'props.key' }) })).encryptionKey,
     ).toBeUndefined();
   });
 
   it('has none while the panel is read-only', () => {
     expect(
-      rowsOf(world({ props: object() }), { intents: [], blocked: 'Editing is paused' })['encryptionKey'],
+      rowsOf(world({ props: object() }), { intents: [], blocked: 'Editing is paused' }).encryptionKey,
     ).toBeUndefined();
     const readOnly = buildPanel('App/Logs', nodes(), world({ props: object() }), withKeys)!;
     expect([...readOnly.rows, ...readOnly.more].every((r) => r.nodes === undefined)).toBe(true);

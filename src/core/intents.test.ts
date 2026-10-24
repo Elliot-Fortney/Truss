@@ -57,16 +57,13 @@ describe('the Draft', () => {
 });
 
 describe('describeIntent', () => {
-  it.each([
+  it.each<[PropValue, string]>([
     [bool(true), 'versioned → true'],
-    [{ kind: 'string', value: 'a b' } as PropValue, 'versioned → "a b"'],
-    [{ kind: 'number', value: 3 } as PropValue, 'versioned → 3'],
-    [
-      { kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY' } as PropValue,
-      'versioned → RemovalPolicy.DESTROY',
-    ],
-    [{ kind: 'duration', unit: 'seconds', amount: 30 } as PropValue, 'versioned → 30 seconds'],
-    [{ kind: 'size', unit: 'mebibytes', amount: 512 } as PropValue, 'versioned → 512 mebibytes'],
+    [{ kind: 'string', value: 'a b' }, 'versioned → "a b"'],
+    [{ kind: 'number', value: 3 }, 'versioned → 3'],
+    [{ kind: 'enum', type: 'aws-cdk-lib.RemovalPolicy', member: 'DESTROY' }, 'versioned → RemovalPolicy.DESTROY'],
+    [{ kind: 'duration', unit: 'seconds', amount: 30 }, 'versioned → 30 seconds'],
+    [{ kind: 'size', unit: 'mebibytes', amount: 512 }, 'versioned → 512 mebibytes'],
   ])('writes %j as %s', (value, text) => {
     expect(describeIntent(set(['versioned'], value))).toBe(text);
   });

@@ -25,7 +25,7 @@ function Blockers({
 }: {
   blockers: readonly Problem[];
   report: string | undefined;
-  onShow(id: string): void;
+  onShow: (id: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   if (blockers.length === 0) return null;
@@ -34,7 +34,13 @@ function Blockers({
       {blockers.map((p) => (
         <li key={p.id}>
           {p.message}{' '}
-          <button type="button" className="link" onClick={() => onShow(p.id)}>
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              onShow(p.id);
+            }}
+          >
             Show in Problems
           </button>
           {p.trussBug ? (
@@ -45,8 +51,12 @@ function Blockers({
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(report).then(
-                      () => setCopied(true),
-                      () => setCopied(false),
+                      () => {
+                        setCopied(true);
+                      },
+                      () => {
+                        setCopied(false);
+                      },
                     );
                   }}
                 >
@@ -114,11 +124,11 @@ export function DraftBar({
   blockers: readonly Problem[];
   /** The app doesn't synth, so the Draft is kept as it was and only Discard can change it. */
   held: boolean;
-  onUndo(): void;
-  onRedo(): void;
-  onSave(): void;
-  onDiscard(): void;
-  onShowProblem(id: string): void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onSave: () => void;
+  onDiscard: () => void;
+  onShowProblem: (id: string) => void;
 }) {
   const canSave = blockers.length === 0 && !held;
   const [reviewing, setReviewing] = useState(false);
@@ -135,7 +145,9 @@ export function DraftBar({
         </button>
         <button
           type="button"
-          onClick={() => setReviewing(!reviewing)}
+          onClick={() => {
+            setReviewing(!reviewing);
+          }}
           aria-expanded={reviewing && count > 0}
           disabled={count === 0}
         >

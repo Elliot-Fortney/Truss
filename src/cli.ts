@@ -75,13 +75,17 @@ async function main(): Promise<void> {
     source: new TsSource(),
     loadCatalog: createCatalogLoader({
       cacheDir: join(homedir(), '.cache', 'truss', 'catalog'),
-      log: (line) => console.log(line),
+      log: (line) => {
+        console.log(line);
+      },
     }),
     token: randomBytes(24).toString('base64url'),
     ui: loadUi(fileURLToPath(new URL('./ui', import.meta.url))),
     open: openBrowser,
     openInEditor,
-    log: (line) => console.log(line),
+    log: (line) => {
+      console.log(line);
+    },
   });
 
   let stopping = false;
@@ -93,7 +97,10 @@ async function main(): Promise<void> {
   /** Asks on the terminal. Without one there is nobody to ask, and Truss quits. */
   const ask = (question: string) =>
     new Promise<string>((resolve) => {
-      if (!process.stdin.isTTY) return resolve('y');
+      if (!process.stdin.isTTY) {
+        resolve('y');
+        return;
+      }
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       // Ctrl+C again at the question means it.
       rl.on('SIGINT', () => (rl.close(), resolve('y')));

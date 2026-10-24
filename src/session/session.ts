@@ -302,9 +302,15 @@ export class Session {
     const base = this.draft.base!;
     this.draft.rebase(base);
     // The base synthed, so an error shown from before it did is over, whatever the rebase left of the Draft.
-    if (this.draft.intents.length === 0) return this.serialised(async () => this.showBase(true));
+    if (this.draft.intents.length === 0)
+      return this.serialised(async () => {
+        this.showBase(true);
+      });
     const planned = this.draft.plan()!;
-    if (!planned.ok) return this.failDraft({ message: planned.reason });
+    if (!planned.ok) {
+      this.failDraft({ message: planned.reason });
+      return;
+    }
     const intents = this.draft.intents;
     const result = await this.deps.synth.synth(this.deps.appDir, { overlay: planned.overlay });
     if (this.stopped || this.isStale()) return;
@@ -366,7 +372,10 @@ export class Session {
     // The Draft was changed while this was synthing (discarded, say): the result is of a Draft that is gone.
     if (shown.intents !== this.draft.intents) return;
     if (!(await this.readSidecar())) return;
-    if (!result.ok) return this.failDraft(result.error, { ...shown, merged: files });
+    if (!result.ok) {
+      this.failDraft(result.error, { ...shown, merged: files });
+      return;
+    }
     const facts = this.deps.source.analyse(files, result.assembly, this.catalog);
     this.snapshot = { facts, assembly: result.assembly };
     this.draft.checked(shown.intents, [

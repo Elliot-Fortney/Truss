@@ -116,13 +116,27 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
   server.on('upgrade', (req, socket: Socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (url.pathname !== '/ws') return refuse(socket, 404, 'Not Found');
-    if (!hostOk(req)) return refuse(socket, 403, 'Forbidden');
-    if (!sameToken(url.searchParams.get('token') ?? '', opts.token)) return refuse(socket, 401, 'Unauthorized');
-    if (!originOk(req)) return refuse(socket, 403, 'Forbidden');
+    if (url.pathname !== '/ws') {
+      refuse(socket, 404, 'Not Found');
+      return;
+    }
+    if (!hostOk(req)) {
+      refuse(socket, 403, 'Forbidden');
+      return;
+    }
+    if (!sameToken(url.searchParams.get('token') ?? '', opts.token)) {
+      refuse(socket, 401, 'Unauthorized');
+      return;
+    }
+    if (!originOk(req)) {
+      refuse(socket, 403, 'Forbidden');
+      return;
+    }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const send = (view: View) => ws.send(JSON.stringify({ type: 'view', view }));
+      const send = (view: View) => {
+        ws.send(JSON.stringify({ type: 'view', view }));
+      };
       send(opts.source.view());
       const off = opts.source.subscribe(send);
       ws.once('close', off);
@@ -149,7 +163,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         );
       });
       // A malformed frame or a reset must drop that client, not crash Truss.
-      ws.on('error', () => ws.terminate());
+      ws.on('error', () => {
+        ws.terminate();
+      });
     });
   });
 
@@ -160,7 +176,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       new Promise<void>((resolve) => {
         for (const client of wss.clients) client.terminate();
         for (const s of sockets) s.destroy();
-        server.close(() => resolve());
+        server.close(() => {
+          resolve();
+        });
       }),
   };
 }

@@ -18,9 +18,9 @@ export function Palette({
   scope,
   onAdd,
 }: {
-  search(query: string): Promise<SearchOutcome>;
+  search: (query: string) => Promise<SearchOutcome>;
   scope: string | undefined;
-  onAdd(hit: SearchHit): void;
+  onAdd: (hit: SearchHit) => void;
 }) {
   const [query, setQuery] = useState('');
   const [outcome, setOutcome] = useState<SearchOutcome>();
@@ -41,7 +41,9 @@ export function Palette({
         placeholder="Search constructs, services, AWS::…"
         aria-label="Search constructs"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+        }}
       />
       {outcome && !outcome.ok ? <p className="palette-empty">{outcome.reason}</p> : null}
       {outcome?.ok && outcome.hits.length === 0 ? <p className="palette-empty">No constructs match.</p> : null}
@@ -69,7 +71,9 @@ export function Palette({
                 disabled={scope === undefined}
                 title={scope === undefined ? 'Select a Stack to add to, or drag this onto one' : `Add to ${scope}`}
                 aria-label={`Add ${hit.displayName ?? hit.name}`}
-                onClick={() => onAdd(hit)}
+                onClick={() => {
+                  onAdd(hit);
+                }}
               >
                 +
               </button>

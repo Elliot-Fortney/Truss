@@ -23,7 +23,7 @@ describe('TsSource.analyse on the straight-line fixture', () => {
   });
 
   it('gives the stack its own facts at the call in bin/', () => {
-    expect(facts.nodes['ShopStack']).toMatchObject({
+    expect(facts.nodes.ShopStack).toMatchObject({
       span: { file: 'bin/app.ts', start: { line: 5, col: 1 } },
       className: 'ShopStack',
       literalId: 'ShopStack',
@@ -159,7 +159,7 @@ describe('TsSource.analyse on the shapes fixture', () => {
       creation: { T: [{ file: 'lib/x.ts', line: 1, col: 1 }] },
       resourceRefs: [],
     };
-    const props = new TsSource().analyse(files, assembly).nodes['T']?.props;
+    const props = new TsSource().analyse(files, assembly).nodes.T?.props;
     expect(props).toEqual({
       form: 'object',
       props: [

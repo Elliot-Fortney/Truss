@@ -10,15 +10,21 @@ const app = resolve(root, 'test/fixtures/references');
 function startTruss(cwd: string): Promise<{ child: ChildProcess; url: string; exited: Promise<number | null> }> {
   return new Promise((resolveStart, reject) => {
     const child = spawn('node', [cli, '--no-open'], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-    const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
+    const exited = new Promise<number | null>((r) =>
+      child.once('exit', (code) => {
+        r(code);
+      }),
+    );
     let out = '';
-    child.stdout!.on('data', (d) => {
+    child.stdout.on('data', (d) => {
       out += d;
       const url = /http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/.exec(out)?.[0];
       if (url) resolveStart({ child, url, exited });
     });
-    child.stderr!.on('data', (d) => (out += d));
-    child.once('exit', () => reject(new Error(`truss exited before printing a URL:\n${out}`)));
+    child.stderr.on('data', (d) => (out += d));
+    child.once('exit', () => {
+      reject(new Error(`truss exited before printing a URL:\n${out}`));
+    });
   });
 }
 

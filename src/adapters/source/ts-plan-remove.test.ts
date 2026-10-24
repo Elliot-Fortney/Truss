@@ -93,7 +93,7 @@ const facts: Facts = {
     'Dev/Loose': node('lib/stack.ts', stack, "new sqs.Queue(this, 'Loose'", 'sqs.Queue', 'Loose', { binding: 'none' }),
   },
 };
-delete (facts.nodes['Dev'] as { enclosingClass?: unknown }).enclosingClass;
+delete (facts.nodes.Dev as { enclosingClass?: unknown }).enclosingClass;
 
 describe('removeNode', () => {
   it('removes the statement with the comment above it and the one trailing it', () => {
@@ -131,7 +131,7 @@ describe('removeNode', () => {
       remove('Dev/Uploads', 's3.Bucket', 'Uploads'),
     );
     expect(r).toMatchObject({ ok: false, uses: [{ file: 'lib/stack.ts', text: 'logs.grantRead(uploads);' }] });
-    expect((r as { uses: Array<{ line: number }> }).uses[0]!.line).toBe(
+    expect((r as { uses: { line: number }[] }).uses[0]!.line).toBe(
       used.split('\n').findIndex((l) => l.includes('grantRead')) + 1,
     );
   });

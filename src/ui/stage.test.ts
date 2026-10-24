@@ -118,7 +118,9 @@ describe('the remembered Stage', () => {
         throw new Error('blocked');
       },
     };
-    expect(() => rememberStage('Prod', refusing)).not.toThrow();
+    expect(() => {
+      rememberStage('Prod', refusing);
+    }).not.toThrow();
     expect(rememberedStage(refusing)).toBeUndefined();
     expect(rememberedStage(undefined)).toBeUndefined();
   });

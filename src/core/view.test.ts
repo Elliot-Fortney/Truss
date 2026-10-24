@@ -469,7 +469,7 @@ describe('buildView edges', () => {
   };
   const edgeFacts = (references: NonNullable<Facts['references']>): Facts => ({
     nodes: {
-      Api: facts.nodes['Api']!,
+      Api: facts.nodes.Api!,
       'Api/Jobs': facts.nodes['Api/Jobs']!,
       'Api/Site': { span: span(20), className: 's3.Bucket', literalId: 'Site', pathsOnSpan: 1, binding: 'const' },
     },

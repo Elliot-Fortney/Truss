@@ -28,7 +28,7 @@ async function rig(): Promise<{ session: Session; files: MemoryFiles & { sources
   const files = Object.assign(memory, { sources, read: async () => new Map(sources) }) as MemoryFiles & {
     sources: Map<string, string>;
   };
-  const session = new Session({ appDir: '/app', synth, files: files as Files, source: new TsSource(), catalog });
+  const session = new Session({ appDir: '/app', synth, files: files, source: new TsSource(), catalog });
   await session.start();
   return { session, files };
 }
@@ -37,7 +37,10 @@ let n = 0;
 const ask = (s: Session, message: Record<string, unknown>): Promise<Reply> =>
   s.handle({ requestId: `r${++n}`, ...message } as never);
 const refusal = (reply: Reply) => (reply.type === 'refused' ? reply.reason : `not refused: ${reply.type}`);
-const settled = (s: Session) => vi.waitFor(() => expect(s.view().synthing).toBe(false));
+const settled = (s: Session) =>
+  vi.waitFor(() => {
+    expect(s.view().synthing).toBe(false);
+  });
 const P = (id: string) => `Refs/${id}`;
 
 describe('the References of a Design', () => {

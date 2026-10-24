@@ -30,7 +30,7 @@ export interface EdgeCallView {
 /** What the panel of an edge offers to change about the Connection it is: the props of the Connection. */
 export interface ConnectionPropsView {
   /** What the Connection is, among the ways the Overlay offers to make it. Featured first. */
-  access?: { current: string; options: Array<{ hint: string; text: string }> };
+  access?: { current: string; options: { hint: string; text: string }[] };
   /** Two Grants on the pair that the Overlay has one Grant for. */
   combine?: { hint: string; text: string };
   /** The environment variable the Connection sets, and whether it does. */

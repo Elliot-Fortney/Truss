@@ -26,7 +26,9 @@ beforeAll(() => {
   scratch = mkdtempSync(join(tmpdir(), 'truss-catalog-'));
   cacheDir = join(scratch, 'cache');
 });
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
+});
 
 /** A cache of its own, so a test can't be answered by what another left; `aws-cdk-lib`'s digest is carried over, because reading it takes seconds. */
 let cacheCount = 0;
@@ -441,11 +443,11 @@ describe('loadCatalog refusals', () => {
  * later than `grantRead`), but never a construct, a prop, a default, a hint or an accessor.
  */
 // In CI the app must be there: a step that fails to set it up fails this test instead of skipping it.
-describe.skipIf(!process.env['TRUSS_MIN_CDK_APP'] && !process.env['CI'])(
+describe.skipIf(!process.env.TRUSS_MIN_CDK_APP && !process.env.CI)(
   'every Overlay at the minimum supported aws-cdk-lib',
   () => {
     it('keeps all its items, losing at most a newer spelling of a call', async () => {
-      const dir = process.env['TRUSS_MIN_CDK_APP'];
+      const dir = process.env.TRUSS_MIN_CDK_APP;
       if (!dir)
         throw new Error('TRUSS_MIN_CDK_APP is not set: CI has to install the minimum aws-cdk-lib in an app of its own');
       const result = await loadCatalog(dir, { cacheDir: freshCache(false), log: () => undefined });
@@ -454,7 +456,7 @@ describe.skipIf(!process.env['TRUSS_MIN_CDK_APP'] && !process.env['CI'])(
       expect(JSON.parse(readFileSync(join(dir, 'node_modules', 'aws-cdk-lib', 'package.json'), 'utf8')).version).toBe(
         MIN_CDK_LIB_VERSION,
       );
-      expect(result.catalog.dropped.filter((line) => !/ dropped form /.test(line))).toEqual([]);
+      expect(result.catalog.dropped.filter((line) => !line.includes(' dropped form '))).toEqual([]);
       for (const o of OVERLAYS) {
         const kept = entryFor(result.catalog, o.fqn)!.overlay!;
         expect(kept.featuredProps, o.fqn).toEqual(o.featuredProps ?? []);
@@ -565,6 +567,6 @@ describe('createCatalogLoader', () => {
     install(dir, '2.100.0', 'old');
     const again = await load(dir);
     expect(again.ok).toBe(false);
-    expect(again.ok === false && again.message).toContain('2.100.0');
+    expect(!again.ok && again.message).toContain('2.100.0');
   });
 });

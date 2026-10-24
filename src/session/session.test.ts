@@ -43,7 +43,7 @@ class FakeFiles implements Files {
 
 /** A Synth whose every call waits for the test to settle it. */
 class ScriptedSynth implements Synth {
-  calls: Array<{ settle(result: SynthResult): void }> = [];
+  calls: { settle(result: SynthResult): void }[] = [];
   synth(): Promise<SynthResult> {
     return new Promise((resolve) => this.calls.push({ settle: resolve }));
   }
@@ -719,18 +719,22 @@ describe('Session Sidecar', () => {
 
     files.texts.set('truss.json', saved({ 'ShopStack/Uploads': { position: { x: 30, y: 40 } } }));
     files.change();
-    await vi.waitFor(() => expect(uploads()?.position).toEqual({ x: 30, y: 40 }));
+    await vi.waitFor(() => {
+      expect(uploads()?.position).toEqual({ x: 30, y: 40 });
+    });
 
     files.texts.set('truss.json', saved({}, 9));
     files.change();
-    await vi.waitFor(() =>
-      expect(session.view()).toMatchObject({ hasDesign: false, nodes: [], error: { kind: 'sidecar' } }),
-    );
+    await vi.waitFor(() => {
+      expect(session.view()).toMatchObject({ hasDesign: false, nodes: [], error: { kind: 'sidecar' } });
+    });
     expect(files.texts.get('truss.json')).toBe(saved({}, 9));
 
     files.texts.set('truss.json', saved({ 'ShopStack/Uploads': { note: 'back' } }));
     files.change();
-    await vi.waitFor(() => expect(session.view()).toMatchObject({ hasDesign: true, nodes: expect.any(Array) }));
+    await vi.waitFor(() => {
+      expect(session.view()).toMatchObject({ hasDesign: true, nodes: expect.any(Array) });
+    });
     expect(session.view().error).toBeUndefined();
     expect(uploads()?.note).toBe('back');
   });

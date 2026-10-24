@@ -75,18 +75,20 @@ export class ToolkitSynth implements Synth {
         killTree(child);
         resolve(result);
       };
-      const timer = setTimeout(
-        () =>
-          settle({ ok: false, error: { message: `synth timed out after ${this.timeoutMs / 1000} s`, output: log } }),
-        this.timeoutMs,
-      );
-      const onAbort = () => settle({ ok: false, error: { message: 'synth was cancelled', output: log } });
+      const timer = setTimeout(() => {
+        settle({ ok: false, error: { message: `synth timed out after ${this.timeoutMs / 1000} s`, output: log } });
+      }, this.timeoutMs);
+      const onAbort = () => {
+        settle({ ok: false, error: { message: 'synth was cancelled', output: log } });
+      };
 
       child.on('message', (result: SynthResult) => {
         if (!result.ok && log) result.error.output = [result.error.output, log].filter(Boolean).join('\n');
         settle(result);
       });
-      child.on('error', (err) => settle({ ok: false, error: { message: err.message, output: log } }));
+      child.on('error', (err) => {
+        settle({ ok: false, error: { message: err.message, output: log } });
+      });
       // A crash is reported once every message has been delivered (`disconnect`) and the exit code and
       // output are known (`close`); `exit` alone can come before the last message.
       let disconnected = false;
@@ -105,7 +107,10 @@ export class ToolkitSynth implements Synth {
         settleIfCrashed();
       });
 
-      if (opts.signal?.aborted) return onAbort();
+      if (opts.signal?.aborted) {
+        onAbort();
+        return;
+      }
       opts.signal?.addEventListener('abort', onAbort);
       child.send({ appDir, ...(build ? { build } : {}) } satisfies WorkerRequest);
     });

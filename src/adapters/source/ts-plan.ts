@@ -297,7 +297,7 @@ function quoteStyle(sf: ts.SourceFile): string {
   let single = 0;
   let double = 0;
   const visit = (n: ts.Node) => {
-    if (ts.isStringLiteral(n)) n.getText(sf)[0] === '"' ? double++ : single++;
+    if (ts.isStringLiteral(n)) n.getText(sf).startsWith('"') ? double++ : single++;
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -420,7 +420,10 @@ function append(edit: FileEdit, obj: ts.ObjectLiteralExpression | ts.ArrayLitera
   const props: ts.NodeArray<ts.Node> = ts.isObjectLiteralExpression(obj) ? obj.properties : obj.elements;
   const last = props.at(-1);
   const [opening, closing] = ts.isObjectLiteralExpression(obj) ? ['{ ', ' }'] : ['[', ']'];
-  if (!last) return edit.change(obj.getStart(sf), obj.getEnd(), `${opening}${entries.join(', ')}${closing}`);
+  if (!last) {
+    edit.change(obj.getStart(sf), obj.getEnd(), `${opening}${entries.join(', ')}${closing}`);
+    return;
+  }
   const open = sf.getLineAndCharacterOfPosition(obj.getStart(sf)).line;
   const multiline = sf.getLineAndCharacterOfPosition(props[0]!.getStart(sf)).line !== open;
   const comma = props.hasTrailingComma
@@ -432,9 +435,10 @@ function append(edit: FileEdit, obj: ts.ObjectLiteralExpression | ts.ArrayLitera
     : undefined;
   const afterLast = comma ? comma.getEnd() : last.getEnd();
   if (!multiline) {
-    return comma
+    comma
       ? edit.change(afterLast, afterLast, ` ${entries.join(', ')},`)
       : edit.change(afterLast, afterLast, `, ${entries.join(', ')}`);
+    return;
   }
   const indent = edit.indentOf(last);
   // A comment after the last prop stays with it, on its line.
@@ -474,7 +478,10 @@ function editNew(edit: FileEdit, target: Target): void {
   for (const [prop, r] of target.refs)
     target.assigns.set(prop, { refs: refEdit(edit, found, target, prop, r), intent: r.intent });
   if (target.assigns.size === 0) return;
-  if (!props) return edit.change(id.getEnd(), id.getEnd(), `, ${renderObject(edit, target.assigns)}`);
+  if (!props) {
+    edit.change(id.getEnd(), id.getEnd(), `, ${renderObject(edit, target.assigns)}`);
+    return;
+  }
   if (!ts.isObjectLiteralExpression(props))
     throw new Refusal(intent, `The props are passed as ${props.getText(edit.sf)}, not written out in the call`);
   editObject(edit, props, target.assigns);
@@ -674,7 +681,10 @@ function declareField(edit: FileEdit, cls: ts.ClassDeclaration, name: string, ty
       .join(' ') ?? 'readonly';
   const declaration = `${modifiers ? modifiers + ' ' : ''}${name}: ${type};`;
   const last = properties.at(-1);
-  if (last) return insertAfter(edit, last, declaration);
+  if (last) {
+    insertAfter(edit, last, declaration);
+    return;
+  }
   const ctor = cls.members.find(ts.isConstructorDeclaration)!;
   const at = ctor.getStart(edit.sf);
   edit.change(at, at, `${declaration}${edit.newline}${edit.newline}${edit.indentOf(ctor)}`, 'add');
@@ -700,9 +710,11 @@ function create(
     const made = `new ${type}(${placed.scopeArg}, ${quoted(intent.id, quoteNear(edit, anchor))}${addedProps(edit, index, intent.props)})`;
     if (placed.fields && placed.cls) {
       declareField(edit, placed.cls, name, type);
-      return insertAfter(edit, anchor, `this.${name} = ${made}${semicolon}`);
+      insertAfter(edit, anchor, `this.${name} = ${made}${semicolon}`);
+      return;
     }
-    return insertAfter(edit, anchor, `const ${name} = ${made}${semicolon}`);
+    insertAfter(edit, anchor, `const ${name} = ${made}${semicolon}`);
+    return;
   }
   copy(c as Creation & { intent: DuplicateIntent; source: NodeFacts }, placed, semicolon);
 }
@@ -727,7 +739,7 @@ function copy(
   while (statement && !ts.isStatement(statement)) statement = statement.parent;
   if (!statement || !ts.isStatement(statement))
     throw new Refusal(index, `${intent.path} isn't made by a statement of its own, so it can't be copied`);
-  const replacements: Array<{ start: number; end: number; text: string }> = [
+  const replacements: { start: number; end: number; text: string }[] = [
     { start: id.getStart(edit.sf), end: id.getEnd(), text: quoted(intent.newId, id.getText(edit.sf)[0]!) },
   ];
   let declared: { old: string; name: string } | undefined;
@@ -805,9 +817,9 @@ function removalRange(edit: FileEdit, node: ts.Node): { start: number; end: numb
   const wholeLines = alone(start) && LINE_END.test(text.slice(end));
   if (!wholeLines) return { start, end };
   start = lineStartOf(start);
-  end += text.slice(end).match(LINE_END)![0].length;
+  end += LINE_END.exec(text.slice(end))![0].length;
   if (/(\n[ \t]*\r?\n|\{[ \t]*\r?\n)$/.test(text.slice(0, start)) || start === 0)
-    end += text.slice(end).match(/^[ \t]*\r?\n/)?.[0].length ?? 0;
+    end += /^[ \t]*\r?\n/.exec(text.slice(end))?.[0].length ?? 0;
   return { start, end };
 }
 
@@ -1303,7 +1315,7 @@ function deleteCalls(edit: FileEdit, calls: readonly CallFacts[], index: number)
 }
 
 /** The ranges of the statements of `calls`, which a Node's deletion takes with it. */
-function callRanges(edit: FileEdit, calls: readonly CallFacts[], index: number): Array<{ start: number; end: number }> {
+function callRanges(edit: FileEdit, calls: readonly CallFacts[], index: number): { start: number; end: number }[] {
   return statementsOf(edit, calls, index).map((st) => removalRange(edit, st));
 }
 
@@ -1386,16 +1398,20 @@ function connect(
   const selfFacts = world.nodes[intent.path]!;
   const peerFacts = world.nodes[intent.peer.path]!;
   const edit = editOf(selfFacts.span.file, index);
-  if (intent.type === 'removeConnection') return deleteCalls(edit, callsNamed(world, intent.calls, index), index);
+  if (intent.type === 'removeConnection') {
+    deleteCalls(edit, callsNamed(world, intent.calls, index), index);
+    return;
+  }
   if (intent.calls.length === 0) throw new Refusal(index, 'There is no call to write');
   const names = bindingsOf(edit, selfFacts, peerFacts, index);
   if (intent.type === 'addConnection') {
     const semicolon = names.anchor.getText(edit.sf).endsWith(';') ? ';' : '';
-    return insertAfter(
+    insertAfter(
       edit,
       names.anchor,
       renderCalls(edit, index, intent.calls, names, semicolon).join(`${edit.newline}${edit.indentOf(names.anchor)}`),
     );
+    return;
   }
   // The new calls go where the first of the old ones was, the rest of which are deleted.
   const old = callsNamed(world, intent.was, index);

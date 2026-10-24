@@ -26,7 +26,7 @@ async function buildScriptOf(appDir: string): Promise<string | undefined> {
     const scripts = (
       JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }
     ).scripts;
-    return typeof scripts?.['build'] === 'string' ? scripts['build'] : undefined;
+    return typeof scripts?.build === 'string' ? scripts.build : undefined;
   } catch {
     return undefined;
   }

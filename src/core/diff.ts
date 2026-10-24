@@ -47,7 +47,10 @@ const CONTEXT = 3;
 /** Past this many lines changed in a row, the differing middle is shown as removed then added rather than matched line by line. */
 const MAX_MATCHED_LINES = 2000;
 
-type Op = { sign: ' ' | '-' | '+'; line: string };
+interface Op {
+  sign: ' ' | '-' | '+';
+  line: string;
+}
 
 /** The line-by-line edit script from `a` to `b`. */
 function script(a: string[], b: string[]): Op[] {

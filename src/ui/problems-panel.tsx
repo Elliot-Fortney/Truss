@@ -24,11 +24,11 @@ export function ProblemsPanel({
   /** The Problem a link from the Save button points at. */
   highlighted: string | undefined;
   /** Selects what the Problem is on; the panel doesn't know what is drawn. */
-  onJump(problem: Problem): void;
+  onJump: (problem: Problem) => void;
   /** Where the code is for the Problem, or nothing. */
-  locate(problem: Problem): SourceLocation | undefined;
-  onOpen(at: SourceLocation): void;
-  onClose(): void;
+  locate: (problem: Problem) => SourceLocation | undefined;
+  onOpen: (at: SourceLocation) => void;
+  onClose: () => void;
 }) {
   const [filter, setFilter] = useState<ProblemFilter>('all');
   const listed = listProblems(problems, filter);
@@ -38,7 +38,14 @@ export function ProblemsPanel({
         <strong>Problems</strong>
         <div role="group" aria-label="Filter">
           {(['draft', 'all'] as const).map((f) => (
-            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+            <button
+              key={f}
+              type="button"
+              aria-pressed={filter === f}
+              onClick={() => {
+                setFilter(f);
+              }}
+            >
               {f === 'draft' ? 'Draft' : 'All'}
             </button>
           ))}
@@ -67,12 +74,24 @@ export function ProblemsPanel({
                 {p.draft ? <span>Draft</span> : null}
                 {p.trussBug ? <span>Bug in Truss</span> : null}
                 {p.path ? (
-                  <button type="button" className="link" onClick={() => onJump(p)}>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      onJump(p);
+                    }}
+                  >
                     {p.path}
                   </button>
                 ) : null}
                 {locate(p) ? (
-                  <button type="button" className="link" onClick={() => onOpen(locate(p)!)}>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      onOpen(locate(p)!);
+                    }}
+                  >
                     Open in editor
                   </button>
                 ) : null}

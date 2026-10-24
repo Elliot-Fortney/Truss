@@ -102,9 +102,9 @@ describe('run', () => {
       ws.send(JSON.stringify({ type: 'open-in-editor', file, ...extra }));
       // A second, valid request is handled after the first, so by then the first has been dropped or acted on.
       ws.send(JSON.stringify({ type: 'open-in-editor', file: 'sentinel.ts' }));
-      await vi.waitFor(() =>
-        expect(d.openInEditor).toHaveBeenCalledWith(expect.objectContaining({ file: '/work/app/sentinel.ts' })),
-      );
+      await vi.waitFor(() => {
+        expect(d.openInEditor).toHaveBeenCalledWith(expect.objectContaining({ file: '/work/app/sentinel.ts' }));
+      });
       ws.close();
       await running.stop();
     };

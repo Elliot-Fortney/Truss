@@ -19,16 +19,16 @@ export type WrittenValue =
       member?: { type: string; name: string };
       quantity?: { type: 'Duration' | 'Size'; unit: string; amount: number };
     }
-  | { kind: 'object'; text: string; fields: Array<{ name: string; written: WrittenValue }> };
+  | { kind: 'object'; text: string; fields: { name: string; written: WrittenValue }[] };
 
 /** For a prop that takes Nodes (a Reference), what it points at and what it could. */
 export interface PropNodesView {
   /** The prop takes several Nodes, in order; otherwise one. */
   many: boolean;
   /** What the code points it at now, in order. */
-  current: Array<{ id: string; label: string; readOnly?: string }>;
+  current: { id: string; label: string; readOnly?: string }[];
   /** The Nodes of the Design it could point at, besides those it does. */
-  choices: Array<{ id: string; label: string }>;
+  choices: { id: string; label: string }[];
 }
 
 export interface PropRowView {
@@ -76,7 +76,7 @@ export interface PanelView {
   /** Triggers and subscriptions of this Node with no Node at the other end. Read-only. */
   otherIntegrations?: EffectView[];
   /** What Truss found on this construct, of every severity: info shows nowhere else. */
-  problems?: Array<{ severity: 'error' | 'warning' | 'info'; message: string; draft: boolean }>;
+  problems?: { severity: 'error' | 'warning' | 'info'; message: string; draft: boolean }[];
 }
 
 const sourceOf = ({ span }: NodeFacts) => ({ file: span.file, line: span.start.line, col: span.start.col });

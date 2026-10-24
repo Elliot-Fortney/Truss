@@ -94,7 +94,7 @@ const good = (): SynthResult => ({ ok: true, assembly: readFixtureAssembly('stra
 
 /** A Synth that records each call, and answers every one with the straight-line fixture unless told otherwise. */
 class FakeSynth implements Synth {
-  calls: Array<{ overlay?: FileSet }> = [];
+  calls: { overlay?: FileSet }[] = [];
   result: (overlay?: FileSet) => SynthResult | Promise<SynthResult> = () => good();
   support: DraftSupport = { ok: true };
   synth(_appDir: string, opts: { overlay?: FileSet } = {}): Promise<SynthResult> {
@@ -121,14 +121,18 @@ async function rig(opts: { source?: TsSource; synth?: FakeSynth } = {}): Promise
   const files = Object.assign(memory, {
     sources,
     read: async () => new Map(sources),
-    change: () => listeners.forEach((l) => l()),
+    change: () => {
+      listeners.forEach((l) => {
+        l();
+      });
+    },
     watch: (l: () => void) => (listeners.add(l), () => listeners.delete(l)),
   }) as Rig['files'];
   const synth = opts.synth ?? new FakeSynth();
   const session = new Session({
     appDir: '/app',
     synth,
-    files: files as Files,
+    files: files,
     source: opts.source ?? new TsSource(),
     catalog,
   });
@@ -141,7 +145,10 @@ const set = (r: Rig, id: string, prop: string | string[], value: PropValue): Pro
   r.session.handle({ type: 'setProp', requestId: `r${++n}`, id, prop: Array.isArray(prop) ? prop : [prop], value });
 const send = (r: Rig, type: 'undo' | 'redo' | 'save' | 'discard'): Promise<Reply> =>
   r.session.handle({ type, requestId: `r${++n}` });
-const settled = (r: Rig) => vi.waitFor(() => expect(r.session.view().synthing).toBe(false));
+const settled = (r: Rig) =>
+  vi.waitFor(() => {
+    expect(r.session.view().synthing).toBe(false);
+  });
 const bool = (value: boolean): PropValue => ({ kind: 'boolean', value });
 const refusal = (reply: Reply) => (reply.type === 'refused' ? reply.reason : `not refused: ${reply.type}`);
 const UPLOADS = 'ShopStack/Uploads';
@@ -261,7 +268,13 @@ describe('the Draft', () => {
     const synth = new FakeSynth();
     const r = await rig({ synth });
     let release!: () => void;
-    synth.result = () => new Promise((resolve) => (release = () => resolve(good())));
+    synth.result = () =>
+      new Promise(
+        (resolve) =>
+          (release = () => {
+            resolve(good());
+          }),
+      );
     await set(r, UPLOADS, 'versioned', bool(false));
     await send(r, 'discard');
     release();
@@ -340,7 +353,9 @@ describe('the Draft', () => {
       const r = await rig({ synth });
       synth.result = () => ({ ok: false, error: { message: 'boom' } });
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().error?.message).toBe('boom'));
+      await vi.waitFor(() => {
+        expect(r.session.view().error?.message).toBe('boom');
+      });
       expect(refusal(await set(r, UPLOADS, 'versioned', bool(false)))).toMatch(/paused.*boom/);
     });
   });
@@ -364,7 +379,9 @@ describe('the Draft', () => {
       const r = await rig({ synth });
       synth.result = (overlay) => (overlay ? { ok: false, error: { message: 'bad prop' } } : good());
       await set(r, UPLOADS, 'versioned', bool(false));
-      await vi.waitFor(() => expect(r.session.view().error).toMatchObject({ kind: 'draft', message: 'bad prop' }));
+      await vi.waitFor(() => {
+        expect(r.session.view().error).toMatchObject({ kind: 'draft', message: 'bad prop' });
+      });
       expect(r.session.view().hasDesign).toBe(true);
       expect(refusal(await send(r, 'save'))).toMatch(/Fix the Problem.*bad prop/);
       // The Draft can still be edited and undone.
@@ -396,7 +413,9 @@ describe('the Draft', () => {
     it('traces a synth error to the Node whose new it points into, and to the line in the code on disk', async () => {
       const r = await rigWith(() => ({ ok: false, error: { message: 'boom', output: trace(12) } }));
       await set(r, UPLOADS, 'versioned', bool(false));
-      await vi.waitFor(() => expect(r.session.view().error).toMatchObject({ kind: 'draft' }));
+      await vi.waitFor(() => {
+        expect(r.session.view().error).toMatchObject({ kind: 'draft' });
+      });
       expect(r.session.view().problems).toEqual([
         expect.objectContaining({
           source: 'synth',
@@ -411,7 +430,9 @@ describe('the Draft', () => {
     it('traces to file:line when the frame is in no Node', async () => {
       const r = await rigWith(() => ({ ok: false, error: { message: 'boom', output: trace(3) } }));
       await set(r, UPLOADS, 'versioned', bool(false));
-      await vi.waitFor(() => expect(r.session.view().error).toMatchObject({ kind: 'draft' }));
+      await vi.waitFor(() => {
+        expect(r.session.view().error).toMatchObject({ kind: 'draft' });
+      });
       const [found] = r.session.view().problems;
       expect(found).toMatchObject({ source: 'synth', location: { file: SHOP, line: 3 } });
       expect(found?.path).toBeUndefined();
@@ -424,7 +445,9 @@ describe('the Draft', () => {
       await settled(r);
       synth.result = (overlay) => (overlay ? { ok: false, error: { message: 'bad prop' } } : good());
       await set(r, UPLOADS, 'versioned', bool(false));
-      await vi.waitFor(() => expect(r.session.view().error?.kind).toBe('draft'));
+      await vi.waitFor(() => {
+        expect(r.session.view().error?.kind).toBe('draft');
+      });
       expect(r.session.view().draft?.items).toEqual([
         expect.not.objectContaining({ suspect: true }),
         expect.objectContaining({ id: UPLOADS, suspect: true, error: 'bad prop', undoable: true }),
@@ -443,9 +466,13 @@ describe('the Draft', () => {
       const r = await rig({ synth });
       synth.result = (overlay) => (overlay ? { ok: false, error: { message: 'bad' } } : good());
       await set(r, UPLOADS, 'versioned', bool(false));
-      await vi.waitFor(() => expect(r.session.view().error?.kind).toBe('draft'));
+      await vi.waitFor(() => {
+        expect(r.session.view().error?.kind).toBe('draft');
+      });
       await set(r, 'ShopStack/Orders', 'fifo', bool(true));
-      await vi.waitFor(() => expect(r.session.view().synthing).toBe(false));
+      await vi.waitFor(() => {
+        expect(r.session.view().synthing).toBe(false);
+      });
       const items = r.session.view().draft!.items;
       expect(items.map((i) => i.suspect)).toEqual([true, true]);
       expect(items.some((i) => i.error || i.undoable)).toBe(false);
@@ -584,7 +611,9 @@ describe('the Draft', () => {
       expect(r.files.texts.get(SHOP)).toBe(shadow.get(SHOP));
       expect(r.session.view().draft).toBeUndefined();
       expect(r.session.draftSize()).toBe(0);
-      await vi.waitFor(() => expect(r.synth.calls.length).toBeGreaterThan(synths));
+      await vi.waitFor(() => {
+        expect(r.synth.calls.length).toBeGreaterThan(synths);
+      });
       expect(r.synth.calls.at(-1)).toEqual({});
     });
 
@@ -592,7 +621,13 @@ describe('the Draft', () => {
       const synth = new FakeSynth();
       const r = await rig({ synth });
       let release!: () => void;
-      synth.result = () => new Promise((resolve) => (release = () => resolve(good())));
+      synth.result = () =>
+        new Promise(
+          (resolve) =>
+            (release = () => {
+              resolve(good());
+            }),
+        );
       await set(r, UPLOADS, 'versioned', bool(false));
       const saving = send(r, 'save');
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -623,7 +658,7 @@ describe('the Draft', () => {
       await set(r, UPLOADS, 'versioned', bool(false));
       await settled(r);
       const original = new Map(r.files.sources);
-      const writes: Array<[string, string]> = [];
+      const writes: [string, string][] = [];
       let failing = true;
       r.files.writeText = async (name, text) => {
         if (name === SHOP && failing) throw new Error('disk full');
@@ -686,7 +721,9 @@ describe('the Draft', () => {
       // Someone renames Uploads in the editor: the Construct ID the edit expected is gone.
       r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await vi.waitFor(() => {
+        expect(r.session.view().draft?.notices).toHaveLength(1);
+      });
       await settled(r);
       expect(r.session.view().draft?.notices[0]).toMatch(/Dropped versioned → false on Uploads/);
       expect(r.session.view().draft?.items.map((i) => i.id)).toEqual(['ShopStack/Orders']);
@@ -699,7 +736,9 @@ describe('the Draft', () => {
       await settled(r);
       r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace('versioned: true', 'versioned: false'));
       r.files.change();
-      await vi.waitFor(() => expect(r.synth.shadowCalls.length).toBeGreaterThan(1));
+      await vi.waitFor(() => {
+        expect(r.synth.shadowCalls.length).toBeGreaterThan(1);
+      });
       await settled(r);
       expect(r.session.view().draft?.items).toHaveLength(1);
       expect(r.session.view().draft?.notices).toEqual([]);
@@ -714,7 +753,9 @@ describe('the Draft', () => {
 
       r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await vi.waitFor(() => {
+        expect(r.session.view().draft?.notices).toHaveLength(1);
+      });
       await settled(r);
       const draft = r.session.view().draft;
       expect(draft?.items).toEqual([]);
@@ -733,11 +774,15 @@ describe('the Draft', () => {
 
       r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Uploads'", "'Renamed'"));
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await vi.waitFor(() => {
+        expect(r.session.view().draft?.notices).toHaveLength(1);
+      });
       await settled(r);
       r.files.sources.set(SHOP, r.files.sources.get(SHOP)!.replace("'Orders'", "'Renamed2'"));
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(2));
+      await vi.waitFor(() => {
+        expect(r.session.view().draft?.notices).toHaveLength(2);
+      });
       await settled(r);
       expect(r.session.view().draft?.notices.join('\n')).toMatch(
         /versioned → false on Uploads[^]*fifo → true on Orders/,
@@ -752,7 +797,9 @@ describe('the Draft', () => {
     const breakApp = async (r: Rig) => {
       r.synth.result = () => ({ ok: false, error: { message: 'boom' } });
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().error?.message).toBe('boom'));
+      await vi.waitFor(() => {
+        expect(r.session.view().error?.message).toBe('boom');
+      });
     };
 
     it('holds the Draft as it was, unplanned on the new code, and refuses Save', async () => {
@@ -784,7 +831,9 @@ describe('the Draft', () => {
       await breakApp(r);
       r.synth.result = () => good();
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().error).toBeUndefined());
+      await vi.waitFor(() => {
+        expect(r.session.view().error).toBeUndefined();
+      });
       await settled(r);
       expect(r.session.view().draft?.notices[0]).toMatch(/Dropped versioned → false on Uploads/);
       expect(r.session.view().draft?.items.map((i) => i.id)).toEqual(['ShopStack/Orders']);
@@ -800,7 +849,9 @@ describe('the Draft', () => {
       await breakApp(r);
       r.synth.result = () => good();
       r.files.change();
-      await vi.waitFor(() => expect(r.session.view().draft?.notices).toHaveLength(1));
+      await vi.waitFor(() => {
+        expect(r.session.view().draft?.notices).toHaveLength(1);
+      });
       await settled(r);
       expect(r.session.view().error).toBeUndefined();
       expect(r.session.draftSize()).toBe(0);

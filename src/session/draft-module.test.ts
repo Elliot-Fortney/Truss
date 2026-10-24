@@ -81,11 +81,13 @@ describe('the Draft module', () => {
   });
 
   it('keeps notices across rebases, and clears them on undo, redo, discard and save', () => {
-    const clearing: Array<(d: Draft) => void> = [
+    const clearing: ((d: Draft) => void)[] = [
       (d) => d.undo(),
       (d) => (d.undo(), d.redo()),
       (d) => d.discard(),
-      (d) => d.saved(),
+      (d) => {
+        d.saved();
+      },
     ];
     for (const clear of clearing) {
       const { draft: d, files } = draft();

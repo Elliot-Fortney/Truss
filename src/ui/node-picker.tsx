@@ -2,8 +2,8 @@ import type { PropNodesView } from '../core/panel.ts';
 
 /** What the panel can do to the Nodes a prop points at: the same edits a drag on the canvas makes. */
 export interface PickNodes {
-  connect(prop: string, to: string, replace: boolean): Promise<boolean>;
-  disconnect(prop: string, to: string): Promise<boolean>;
+  connect: (prop: string, to: string, replace: boolean) => Promise<boolean>;
+  disconnect: (prop: string, to: string) => Promise<boolean>;
 }
 
 /**

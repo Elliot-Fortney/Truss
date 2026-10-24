@@ -19,15 +19,21 @@ function startTruss(
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
+    const exited = new Promise<number | null>((r) =>
+      child.once('exit', (code) => {
+        r(code);
+      }),
+    );
     let out = '';
-    child.stdout!.on('data', (d) => {
+    child.stdout.on('data', (d) => {
       out += d;
       const url = /http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/.exec(out)?.[0];
       if (url) resolveStart({ child, url, exited });
     });
-    child.stderr!.on('data', (d) => (out += d));
-    child.once('exit', () => reject(new Error(`truss exited before printing a URL:\n${out}`)));
+    child.stderr.on('data', (d) => (out += d));
+    child.once('exit', () => {
+      reject(new Error(`truss exited before printing a URL:\n${out}`));
+    });
   });
 }
 
@@ -590,9 +596,13 @@ test('Ctrl+C with an unsaved Draft and no terminal to ask on still stops Truss',
   const dir = copyApp();
   const child = spawn('node', [cli, '--no-open'], { cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] });
   let out = '';
-  const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
-  child.stdout!.on('data', (d) => (out += d));
-  child.stderr!.on('data', (d) => (out += d));
+  const exited = new Promise<number | null>((r) =>
+    child.once('exit', (code) => {
+      r(code);
+    }),
+  );
+  child.stdout.on('data', (d) => (out += d));
+  child.stderr.on('data', (d) => (out += d));
   try {
     await expect.poll(() => /http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/.exec(out)?.[0]).toBeTruthy();
     await page.goto(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/.exec(out)![0]);
