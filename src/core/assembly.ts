@@ -43,6 +43,38 @@ export interface Annotation {
   message: string;
 }
 
+/** One end of an effect, as the template wrote it. */
+export interface EffectEnd {
+  /** Construct paths of the L1 resources the end points at (`Ref`, `Fn::GetAtt`, or an `Fn::ImportValue` paired with its `Export`). */
+  paths: string[];
+  /** What the end reads as, with each such reference shown as its construct path in braces and pseudo parameters spelled out, e.g. `arn:aws:s3:::my-bucket` or `*`. */
+  text: string;
+}
+
+/**
+ * Something the synthesized app grants, triggers or opens (ADR 0012): one IAM statement resource, event source mapping,
+ * subscription, rule target or security group rule. Where it came from in the code doesn't matter here.
+ */
+export interface Effect {
+  kind: 'grant' | 'integration' | 'network';
+  /** Construct path of the L1 resource that carries it (the policy, mapping, subscription, rule or security group). */
+  at: string;
+  /** Who gets the access, where the events come from, or where the traffic comes from. */
+  source: EffectEnd;
+  /** What the access is to, where the events go, or what the traffic reaches. */
+  target: EffectEnd;
+  /** What it says, in a few words: `s3:GetObject, s3:List*`, `SQS → Lambda`, `tcp 5432`. */
+  detail: string;
+}
+
+/** The L1 resource at `from` takes the value of an `Fn::ImportValue`, which the resource at `to` in another Stack exports. */
+export interface ImportRef {
+  from: string;
+  to: string;
+  /** The top-level property of `from` that holds it. */
+  prop: string;
+}
+
 export interface Assembly {
   /** Cloud assembly manifest version. */
   schemaVersion: string;
@@ -54,6 +86,10 @@ export interface Assembly {
   resourceRefs: ResourceRef[];
   /** The annotations the app's constructs carry. Absent in an assembly recorded before Truss read them. */
   annotations?: Annotation[];
+  /** What the Stacks' templates grant, trigger and open. Absent in an assembly recorded before Truss read them. */
+  effects?: Effect[];
+  /** What crosses from one Stack to another through exports. Absent in an assembly recorded before Truss read them. */
+  importRefs?: ImportRef[];
 }
 
 export type SynthResult =

@@ -305,7 +305,7 @@ function toFlowEdges(view: View): Edge[] {
         source: e.from,
         target: e.to,
         label: edgeLabel(e),
-        className: ['reference-edge', e.readOnly ? 'read-only' : '', e.changed ? 'changed' : ''].filter(Boolean).join(' '),
+        className: [`${e.kind}-edge`, 'reference-edge', e.readOnly ? 'read-only' : '', e.changed ? 'changed' : ''].filter(Boolean).join(' '),
         // The arrow is at the end data or requests flow to, which for a prop the Overlay marks is the Node whose prop it is.
         ...(e.flow === 'in' ? { markerStart: { type: MarkerType.ArrowClosed } } : { markerEnd: { type: MarkerType.ArrowClosed } }),
         // Only the arrow's end moves: the Node whose prop it is stays the Node.
@@ -440,20 +440,37 @@ function LayerPanel({ child, node }: { child: LayerChildView; node: NodeView }) 
   );
 }
 
-/** The panel of a Reference: what it is, where the code writes it, and a way to take it out. */
+const KIND_NAME: Record<EdgeView['kind'], string> = { reference: 'Reference', grant: 'Grant', integration: 'Integration', network: 'Network Connection' };
+
+/** The panel of a Connection: what it is, where the code writes it, and a way to take it out. */
 function EdgePanel({ edge, names, paused, onRemove, onOpen }: { edge: EdgeView; names: ReadonlyMap<string, string>; paused: boolean; onRemove(): void; onOpen(at: SourceLocation): void }) {
   return (
     <aside className="note-panel">
       <h2>
         {names.get(edge.from) ?? edge.from}.{edgeLabel(edge)} → {names.get(edge.to) ?? edge.to}
       </h2>
-      <p className="lock-reason">
-        Reference · written <code>{edge.text}</code>
-      </p>
+      {edge.effects ? (
+        <>
+          <p className="lock-reason">{KIND_NAME[edge.kind]} · from the synthesized app</p>
+          <ul className="edge-effects">
+            {edge.effects.map((e) => (
+              <li key={`${e.at}:${e.summary}`} title={e.at}>
+                {e.summary}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="lock-reason">
+          {KIND_NAME[edge.kind]} · written <code>{edge.text}</code>
+        </p>
+      )}
       {edge.readOnly ? <p className="lock-reason">Read-only: {edge.readOnly}</p> : null}
-      <button type="button" className="open-in-editor" onClick={() => onOpen(edge.source)}>
-        Open in editor
-      </button>
+      {edge.source ? (
+        <button type="button" className="open-in-editor" onClick={() => onOpen(edge.source!)}>
+          Open in editor
+        </button>
+      ) : null}
       {!edge.readOnly ? (
         <button type="button" className="remove" disabled={paused} onClick={onRemove}>
           Remove

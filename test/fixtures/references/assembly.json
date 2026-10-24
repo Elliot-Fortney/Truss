@@ -426,5 +426,36 @@
       "to": "Refs/Read/Resource"
     }
   ],
-  "annotations": []
+  "annotations": [],
+  "effects": [
+    {
+      "kind": "grant",
+      "at": "Refs/Read/Resource",
+      "source": {
+        "paths": [
+          "Refs/Reader/Resource"
+        ],
+        "text": "{Refs/Reader/Resource}"
+      },
+      "target": {
+        "paths": [],
+        "text": "*"
+      },
+      "detail": "s3:GetObject"
+    },
+    {
+      "kind": "grant",
+      "at": "Refs/Write/Resource",
+      "source": {
+        "paths": [],
+        "text": ""
+      },
+      "target": {
+        "paths": [],
+        "text": "*"
+      },
+      "detail": "s3:GetObject"
+    }
+  ],
+  "importRefs": []
 }

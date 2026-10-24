@@ -81,6 +81,23 @@ function ConstructIdField({ panel, onRename }: { panel: PanelView; onRename(newI
 }
 
 /** The props of a Node or Stack: required and featured first, the rest one click away. */
+/** What the synthesized app grants or triggers on this Node with no Node at the other end. Read-only: Truss doesn't edit these. */
+function OtherEffects({ title, effects }: { title: string; effects: PanelView['otherPermissions'] }) {
+  if (!effects?.length) return null;
+  return (
+    <section className="other-effects" aria-label={title}>
+      <h3>{title}</h3>
+      <ul>
+        {effects.map((e) => (
+          <li key={`${e.at}:${e.summary}`} title={e.at}>
+            {e.summary}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function PropertyPanel({ state, onSet, onRename, pick }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; pick?: PickNodes }) {
   const [showMore, setShowMore] = useState(false);
   if (state.status === 'loading') return null;
@@ -102,6 +119,8 @@ export function PropertyPanel({ state, onSet, onRename, pick }: { state: PanelSt
         </ul>
       ) : null}
       {notice ? <p className="lock-reason">{notice}</p> : null}
+      <OtherEffects title="Other permissions" effects={panel.otherPermissions} />
+      <OtherEffects title="Other integrations" effects={panel.otherIntegrations} />
       {panel.rows.length === 0 && panel.more.length === 0 ? <p className="lock-reason">No props are passed in your code.</p> : null}
       <PropList rows={panel.rows} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} />
       {panel.more.length > 0 ? (

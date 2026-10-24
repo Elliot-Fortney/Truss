@@ -29,6 +29,9 @@ interface FromCall {
   enclosingClass: EnclosingClass;
 }
 
+/** The string literals among a call's arguments. */
+const identifiersOf = (args: readonly ts.Expression[]): string[] => args.flatMap((a) => (isStringLike(a) ? [a.text] : []));
+
 export class TsSource implements Source {
   /** Parsed files, reused while a file's text is unchanged. */
   private parsed = new Map<string, { text: string; sf: ts.SourceFile }>();
@@ -194,6 +197,7 @@ export class TsSource implements Source {
               binding: bindingOf(n),
               enclosingClass,
               external: true,
+              ...(identifiersOf(n.arguments.slice(2)).length > 0 ? { identifiers: identifiersOf(n.arguments.slice(2)) } : {}),
             },
           });
         }

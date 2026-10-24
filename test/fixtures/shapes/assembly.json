@@ -1399,5 +1399,26 @@
       "from": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource",
       "to": "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource"
     }
-  ]
+  ],
+  "annotations": [],
+  "effects": [
+    {
+      "kind": "grant",
+      "at": "Shapes/Outer/Notifications/HandlerPolicy/Resource",
+      "source": {
+        "paths": [
+          "Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource"
+        ],
+        "text": "{Shapes/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Shapes/Outer/Resource"
+        ],
+        "text": "{Shapes/Outer/Resource}"
+      },
+      "detail": "s3:PutBucketNotification"
+    }
+  ],
+  "importRefs": []
 }

@@ -242,6 +242,7 @@ describe('TsSource.analyse on the shapes fixture: classes, nested stacks, Stages
     expect(at('Shapes/Existing')).toEqual({
       span: { file: 'lib/shapes-stack.ts', start: { line: 65, col: 5 }, end: { line: 65, col: 66 } },
       className: 's3.Bucket.fromBucketName',
+      identifiers: ['existing-bucket'],
       literalId: 'Existing',
       pathsOnSpan: 1,
       binding: 'none',

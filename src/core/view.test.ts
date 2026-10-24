@@ -403,3 +403,28 @@ describe('buildView edges', () => {
     expect(buildView(facts, assembly, emptySidecar()).edges).toEqual([]);
   });
 });
+
+describe('buildView with synth effects', () => {
+  const end = (path: string) => ({ paths: [path], text: `{${path}}` });
+  const withEffects: Assembly = {
+    ...assembly,
+    effects: [
+      { kind: 'integration', at: 'Api/Jobs/Resource', source: end('Api/Jobs/Resource'), target: end('Web/Site/Resource'), detail: 'subscription (https)' },
+      { kind: 'grant', at: 'Api/Jobs/Policy', source: end('Api/Jobs/Resource'), target: { paths: [], text: '*' }, detail: 'sqs:*' },
+    ],
+    importRefs: [{ from: 'Web/Site/Resource', to: 'Api/Jobs/Resource', prop: 'Tags' }],
+  };
+  const view = buildView(facts, withEffects, emptySidecar());
+
+  it('draws an Integration between the Nodes the ends roll up to, and a read-only Reference across Stacks', () => {
+    expect(view.edges.map((e) => [e.kind, e.from, e.to, e.readOnly !== undefined])).toEqual([
+      ['integration', 'Api/Jobs', 'Web/Site', true],
+      ['reference', 'Web/Site', 'Api/Jobs', true],
+    ]);
+  });
+
+  it('lists an effect with no Node at its other end on the Node, not as an edge', () => {
+    expect(view.nodes.find((n) => n.id === 'Api/Jobs')!.otherPermissions).toEqual([{ detail: 'sqs:*', summary: 'sqs:* · Jobs → *', at: 'Api/Jobs/Policy' }]);
+    expect(view.nodes.find((n) => n.id === 'Web/Site')!.otherPermissions).toBeUndefined();
+  });
+});

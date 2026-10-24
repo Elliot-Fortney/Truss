@@ -3,6 +3,7 @@ import type { Assembly, EditorRequest, ResourceRef, SynthError, TreeNode } from 
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
 import type { Problem } from './problems.ts';
+import { connectionsOf, type EffectView } from './connections.ts';
 import { iconFor } from './icons.ts';
 import { serviceName } from './services.ts';
 import { isStackPlumbing, NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
@@ -42,6 +43,8 @@ export interface LayerChildView {
   cfnType?: string;
 }
 
+export type { EffectView };
+
 export interface NodeView {
   /** The construct path, which is the Node's identity. */
   id: string;
@@ -71,6 +74,10 @@ export interface NodeView {
   position?: Point;
   /** The note the Sidecar holds for this Node. */
   note?: string;
+  /** Permissions and network rules of this Node whose other end is not a Node: `*`, a raw ARN, an address range, itself. Read-only. */
+  otherPermissions?: EffectView[];
+  /** Triggers and subscriptions of this Node whose other end is not a Node. Read-only. */
+  otherIntegrations?: EffectView[];
   /** The Draft changes this Node's code, so the Node shows as changed. */
   changed?: true;
   /** The Draft adds this Node: its code is not on disk yet. */
@@ -85,11 +92,12 @@ export interface NodeView {
  */
 export interface EdgeView {
   id: string;
-  kind: 'reference';
-  /** The Node whose prop it is. */
+  kind: 'reference' | 'grant' | 'integration' | 'network';
+  /** The Node whose prop it is; for a Grant, Integration or Network Connection, the Node the access, events or traffic come from. */
   from: string;
   /** The Node it points at; for a property read off a Node, the Node that owns it. */
   to: string;
+  /** The prop of the `new` call; for a Connection read from synth, what the canvas writes on the edge (`s3:GetObject`, `3 permissions`). */
   prop: string;
   /** Which element of an array prop it is. */
   index?: number;
@@ -99,8 +107,10 @@ export interface EdgeView {
   text: string;
   /** Why Truss draws it but won't edit it, when that is so. */
   readOnly?: string;
-  /** Where the code writes it. */
-  source: { file: string; line: number; col: number };
+  /** Where the code writes it; for one read from synth, where the code makes its `from` Node. Absent when neither end has code. */
+  source?: { file: string; line: number; col: number };
+  /** For a Connection read from synth, every effect that makes it. */
+  effects?: EffectView[];
   /** The Draft changes the code that makes it. */
   changed?: true;
 }
@@ -351,7 +361,14 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, ch
     if (source) node.source = source;
   }
 
-  return { stages, stacks, nodes, edges: edgesOf(facts, nodes, changed, flowsIn) };
+  const references = edgesOf(facts, nodes, changed, flowsIn);
+  const connections = connectionsOf(assembly, facts, nodes, references);
+  for (const node of nodes) {
+    const lists = connections.other.get(node.id);
+    if (lists?.permissions.length) node.otherPermissions = lists.permissions;
+    if (lists?.integrations.length) node.otherIntegrations = lists.integrations;
+  }
+  return { stages, stacks, nodes, edges: [...references, ...connections.edges] };
 }
 
 /** The Nodes' References as edges: both ends are Nodes on screen, and a Reference to something inside a Node is drawn to the Node. */

@@ -5,7 +5,7 @@ import { canConnect, type ConnectContext } from './connect.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts, PropFacts } from './facts.ts';
 import { withIntents, type Intent, type PropValue } from './intents.ts';
-import type { ViewBody } from './view.ts';
+import type { EffectView, ViewBody } from './view.ts';
 
 /**
  * What the code gives a prop. A literal is a value Truss can show as such, and so is an object literal, a
@@ -66,6 +66,10 @@ export interface PanelView {
   /** Set when the props are passed as a variable or a call: Truss can't tell prop by prop, so every prop is read-only. */
   propsSource?: string;
   source?: { file: string; line: number; col: number };
+  /** Permissions and network rules of this Node with no Node at the other end (ADR 0012). Read-only. */
+  otherPermissions?: EffectView[];
+  /** Triggers and subscriptions of this Node with no Node at the other end. Read-only. */
+  otherIntegrations?: EffectView[];
   /** What Truss found on this construct, of every severity: info shows nowhere else. */
   problems?: Array<{ severity: 'error' | 'warning' | 'info'; message: string; draft: boolean }>;
 }
@@ -213,6 +217,8 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
     more,
     ...(nodeFacts?.props?.form === 'other' ? { propsSource: nodeFacts.props.text } : {}),
     ...(nodeFacts ? { source: sourceOf(nodeFacts) } : {}),
+    ...(node?.otherPermissions ? { otherPermissions: node.otherPermissions } : {}),
+    ...(node?.otherIntegrations ? { otherIntegrations: node.otherIntegrations } : {}),
   };
 }
 

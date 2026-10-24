@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { templateEffects, type EffectTemplate } from './effects.ts';
 import type { Annotation, Assembly, Frame, ResourceRef, StackInfo, TreeNode } from '../../core/assembly.ts';
 
 interface RawTreeNode {
@@ -62,22 +63,28 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
   const creation: Record<string, Frame[]> = {};
   const resourceRefs: ResourceRef[] = [];
   const annotations: Annotation[] = [];
-  collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs, annotations);
-  return { schemaVersion: String(manifest.version), tree, stacks, creation, resourceRefs, annotations };
+  const templates: EffectTemplate[] = [];
+  collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs, annotations, templates);
+  const { effects, importRefs } = templateEffects(templates);
+  return { schemaVersion: String(manifest.version), tree, stacks, creation, resourceRefs, annotations, effects, importRefs };
 }
 
 /** Adds the stacks of one assembly directory, then those of the nested assembly each Stage writes. */
-function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creation: Record<string, Frame[]>, resourceRefs: ResourceRef[], annotations: Annotation[]): void {
+function collectStacks(dir: string, appDir: string, stacks: StackInfo[], creation: Record<string, Frame[]>, resourceRefs: ResourceRef[], annotations: Annotation[], templates: EffectTemplate[]): void {
   const manifest = readJson(join(dir, 'manifest.json'));
   for (const [id, artifact] of Object.entries<RawArtifact>(manifest.artifacts ?? {})) {
     if (artifact.type === 'cdk:cloud-assembly' && artifact.properties?.directoryName) {
-      collectStacks(join(dir, artifact.properties.directoryName), appDir, stacks, creation, resourceRefs, annotations);
+      collectStacks(join(dir, artifact.properties.directoryName), appDir, stacks, creation, resourceRefs, annotations, templates);
       continue;
     }
     if (artifact.type !== 'aws:cloudformation:stack') continue;
     const env = artifact.environment && artifact.environment !== AGNOSTIC_ENV ? artifact.environment : undefined;
     stacks.push({ path: artifact.displayName ?? id, ...(env ? { env } : {}) });
-    if (artifact.properties?.templateFile) resourceRefs.push(...templateRefs(readJson(join(dir, artifact.properties.templateFile))));
+    if (artifact.properties?.templateFile) {
+      const template = readJson(join(dir, artifact.properties.templateFile));
+      resourceRefs.push(...templateRefs(template));
+      templates.push(template);
+    }
     if (!artifact.additionalMetadataFile) continue;
     const metadata = readJson(join(dir, artifact.additionalMetadataFile)) as Record<string, { type: string; data: unknown }[]>;
     for (const [path, entries] of Object.entries(metadata)) {

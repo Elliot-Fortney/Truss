@@ -58,6 +58,8 @@ export interface NodeFacts {
   props?: PropsFacts;
   /** The construct comes from a `fromXxx` call, so the app refers to it without creating it. */
   external?: true;
+  /** For an external, the string literals the `fromXxx` call passes after the ID: the name or ARN that says which resource it is. */
+  identifiers?: string[];
 }
 
 /**
