@@ -606,3 +606,24 @@ describe('props that take constructs', () => {
     expect(searchCatalog(withReferences(), 'vpc')[0]).not.toHaveProperty('assignableTo');
   });
 });
+
+describe('grant methods', () => {
+  const method = (name: string, param: string, returns: string) => ({ name, parameters: [{ name: 'identity', type: { fqn: param } }], returns: { type: { fqn: returns } } });
+  const raw = {
+    name: 'x',
+    version: '1.0.0',
+    types: {
+      'x.Thing': {
+        kind: 'class',
+        fqn: 'x.Thing',
+        name: 'Thing',
+        base: 'constructs.Construct',
+        methods: [method('grantRead', 'aws-cdk-lib.aws_iam.IGrantable', 'aws-cdk-lib.aws_iam.Grant'), method('grantNothing', 'x.Other', 'aws-cdk-lib.aws_iam.Grant'), method('poke', 'aws-cdk-lib.aws_iam.IGrantable', 'x.Other')],
+      },
+    },
+  };
+
+  it('keeps the methods that take an IGrantable and return a Grant', () => {
+    expect(digestAssembly(raw).classes[0]!.grantMethods).toEqual(['grantRead']);
+  });
+});

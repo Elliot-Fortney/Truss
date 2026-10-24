@@ -1,4 +1,5 @@
 import type { ConnectCheck, ConnectOption } from '../core/connect.ts';
+import type { HintOption } from '../core/connection.ts';
 import type { EdgeView } from '../core/view.ts';
 
 /** What a drag from a Node answered, for every other Node: asked when the drag starts, and good until it ends. */
@@ -12,8 +13,10 @@ export type Drop =
   | { kind: 'connect'; prop: string }
   /** The prop points at another Node: ask before replacing it. */
   | { kind: 'replace'; prop: string; current: string }
-  /** Several props take the Node: ask which. */
-  | { kind: 'choose'; options: readonly ConnectOption[] };
+  /** One Overlay hint fits and nothing else does: stage it with its defaults. */
+  | { kind: 'hint'; hint: HintOption }
+  /** Several props or hints take the Node: ask which. The Overlay's default hint comes first. */
+  | { kind: 'choose'; options: readonly ConnectOption[]; hints: readonly HintOption[] };
 
 /** What a drop on the Node `to` comes to, given what the drag was told. */
 export function dropOn(targets: Targets | undefined, to: string | undefined): Drop {
@@ -22,9 +25,12 @@ export function dropOn(targets: Targets | undefined, to: string | undefined): Dr
   const check = targets[to];
   if (!check) return { kind: 'refused', reason: 'A Node can’t connect to itself.' };
   if (!check.ok) return { kind: 'refused', reason: check.reason };
+  const hints = check.hints ?? [];
   const [only, ...more] = check.options;
+  if (!only && hints.length === 0) return { kind: 'refused', reason: 'Nothing here takes it.' };
+  if (!only && hints.length === 1) return { kind: 'hint', hint: hints[0]! };
+  if (more.length > 0 || hints.length > 0) return { kind: 'choose', options: check.options, hints };
   if (!only) return { kind: 'refused', reason: 'Nothing here takes it.' };
-  if (more.length > 0) return { kind: 'choose', options: check.options };
   return only.replaces ? { kind: 'replace', prop: only.prop, current: only.replaces.label } : { kind: 'connect', prop: only.prop };
 }
 

@@ -3,7 +3,8 @@ import type { Assembly, EditorRequest, ResourceRef, SynthError, TreeNode } from 
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts } from './facts.ts';
 import type { Problem } from './problems.ts';
-import { connectionsOf, type EffectView } from './connections.ts';
+import { connectionsOf, type EdgeCallView, type EffectView } from './connections.ts';
+import type { ConnectionPropsView } from './connections.ts';
 import { iconFor } from './icons.ts';
 import { serviceName } from './services.ts';
 import { isStackPlumbing, NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from './tree.ts';
@@ -43,7 +44,7 @@ export interface LayerChildView {
   cfnType?: string;
 }
 
-export type { EffectView };
+export type { EdgeCallView, EffectView };
 
 export interface NodeView {
   /** The construct path, which is the Node's identity. */
@@ -113,6 +114,10 @@ export interface EdgeView {
   fromSynth?: true;
   /** For a Grant, Integration or Network Connection, every effect that makes it. */
   effects?: EffectView[];
+  /** The calls of the code that make it. */
+  calls?: EdgeCallView[];
+  /** What can be changed about the Connection, when it can be. */
+  connection?: ConnectionPropsView;
   /** The Draft changes the code that makes it. */
   changed?: true;
 }

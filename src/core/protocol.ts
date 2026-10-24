@@ -38,6 +38,15 @@ export type DraftMessage =
   | { type: 'disconnect'; requestId: string; from: string; to: string; prop: string }
   /** Moves the end of a Reference of `prop` from the Node `was` to the Node `to`. */
   | { type: 'repoint'; requestId: string; from: string; was: string; to: string; prop: string }
+  /**
+   * Connects the Nodes `a` and `b` the way the Overlay's hint `hint` says: a Grant, an Integration or a Network Connection.
+   * `env` names the environment variable the hint also sets, or with `null` leaves it out.
+   */
+  | { type: 'addConnection'; requestId: string; a: string; b: string; hint: string; env?: string | null }
+  /** Takes calls that make a Connection out of the code. `calls` are the ids the View gives them. */
+  | { type: 'removeConnection'; requestId: string; calls: string[] }
+  /** Writes the calls of a Connection again for another hint, or with the environment variable renamed or switched off. */
+  | { type: 'changeConnection'; requestId: string; calls: string[]; hint?: string; env?: string | null }
   | { type: 'undo'; requestId: string }
   | { type: 'redo'; requestId: string }
   | { type: 'save'; requestId: string }
@@ -71,6 +80,9 @@ export const MAX_QUERY_LENGTH = 200;
 
 /** A construct path is a few IDs, each at most `MAX_ID_LENGTH` long, so this is generous. */
 const MAX_PATH_LENGTH = 2_000;
+
+/** A Connection is made by a call or two. */
+const MAX_CALLS = 20;
 
 /** A construct has a handful of required props, not hundreds. */
 const MAX_FORM_PROPS = 50;
@@ -145,6 +157,23 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
     }
     if (raw['type'] === 'disconnect') return { ok: true, message: { type: 'disconnect', requestId, from, to, prop } };
     return { ok: true, message: { type: 'connect', requestId, from, to, prop, ...(raw['replace'] === true ? { replace: true } : {}) } };
+  }
+  if (raw['type'] === 'addConnection' || raw['type'] === 'changeConnection' || raw['type'] === 'removeConnection') {
+    const env = raw['env'];
+    if (env !== undefined && env !== null && (typeof env !== 'string' || !IDENTIFIER.test(env) || env.length > MAX_ID_LENGTH)) return refuse('An environment variable needs a name made of letters, digits and underscores');
+    const hint = raw['hint'];
+    const hintOk = typeof hint === 'string' && /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_]+){1,2}#\d{1,4}$/.test(hint);
+    if (raw['type'] === 'addConnection') {
+      const { a, b } = raw;
+      if (typeof a !== 'string' || a === '' || a.length > MAX_PATH_LENGTH || typeof b !== 'string' || b === '' || b.length > MAX_PATH_LENGTH) return refuse('An addConnection needs the construct paths as "a" and "b"');
+      if (!hintOk) return refuse('An addConnection needs the hint it makes');
+      return { ok: true, message: { type: 'addConnection', requestId, a, b, hint, ...(env !== undefined ? { env } : {}) } };
+    }
+    const calls = raw['calls'];
+    if (!Array.isArray(calls) || calls.length === 0 || calls.length > MAX_CALLS || !calls.every((c) => typeof c === 'string' && c !== '' && c.length <= MAX_PATH_LENGTH)) return refuse(`A ${raw['type']} needs the calls as a list of ids`);
+    if (raw['type'] === 'removeConnection') return { ok: true, message: { type: 'removeConnection', requestId, calls: calls as string[] } };
+    if (hint !== undefined && !hintOk) return refuse('A changeConnection takes the hint as the one it is changed to');
+    return { ok: true, message: { type: 'changeConnection', requestId, calls: calls as string[], ...(hintOk ? { hint } : {}), ...(env !== undefined ? { env } : {}) } };
   }
   if (raw['type'] === 'addNode') {
     const { scope, fqn } = raw;

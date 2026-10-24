@@ -15,6 +15,7 @@ const bucket: CatalogEntry = {
   tier: 'L2',
   summary: 'An S3 bucket.',
   assignableTo: ['aws-cdk-lib.aws_s3.Bucket'],
+  grantMethods: [],
   props: [
     { name: 'bucketName', type: 'string', required: false, summary: 'Physical name of this bucket.', default: '- Assigned by CloudFormation.' },
     { name: 'versioned', type: 'boolean', required: false, summary: 'Whether versioning is on.', default: 'false' },
@@ -334,7 +335,7 @@ describe('editableAs', () => {
 });
 
 describe('buildPanel Node picker', () => {
-  const key: CatalogEntry = { fqn: 'aws-cdk-lib.aws_kms.Key', name: 'Key', library: 'aws-cdk-lib', tier: 'L2', props: [], assignableTo: ['aws-cdk-lib.aws_kms.Key', 'aws-cdk-lib.aws_kms.IKey'] };
+  const key: CatalogEntry = { fqn: 'aws-cdk-lib.aws_kms.Key', name: 'Key', library: 'aws-cdk-lib', tier: 'L2', props: [], assignableTo: ['aws-cdk-lib.aws_kms.Key', 'aws-cdk-lib.aws_kms.IKey'], grantMethods: [] };
   const logs: CatalogEntry = {
     ...bucket,
     props: [

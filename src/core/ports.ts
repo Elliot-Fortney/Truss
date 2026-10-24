@@ -42,7 +42,8 @@ export interface Diagnostic {
 }
 
 export interface Source {
-  analyse(files: FileSet, assembly: Assembly): Facts;
+  /** What the code says about the Design. With the Catalog, also the calls that make Grants, Integrations and Network Connections. */
+  analyse(files: FileSet, assembly: Assembly, catalog?: Catalog): Facts;
   /** Plans the text changes for `intents` against `files`, which `facts` were read from. Writes nothing. */
   plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult;
   /** The TypeScript diagnostics of the `touched` files, type-checked as part of the app in `appDir` with `files` in place of what is on disk. */

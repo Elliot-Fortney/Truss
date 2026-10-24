@@ -1,4 +1,5 @@
 import type { SynthResult, Assembly } from '../core/assembly.ts';
+import type { Catalog } from '../core/catalog.ts';
 import { applyChanges, unifiedDiff, type FileDiff, type TextChange } from '../core/diff.ts';
 import { judgeEdit, newDiagnostics } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
@@ -56,7 +57,7 @@ export function checkEditOn(
   const planned = planEdit(app.source, base, intents);
   if (!planned.ok) {
     const at = intents[planned.intent];
-    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : at.type === 'renameId' ? 'the new Construct ID' : at.type === 'removeNode' ? 'the removal' : at.type === 'addReference' || at.type === 'removeReference' || at.type === 'repointReference' ? 'the Reference' : 'the new construct') : 'the edit'}: ${planned.reason}` }] };
+    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : at.type === 'renameId' ? 'the new Construct ID' : at.type === 'removeNode' ? 'the removal' : at.type === 'addReference' || at.type === 'removeReference' || at.type === 'repointReference' ? 'the Reference' : at.type === 'addConnection' || at.type === 'removeConnection' || at.type === 'replaceConnection' ? 'the Connection' : 'the new construct') : 'the edit'}: ${planned.reason}` }] };
   }
   const failures: EditFailure[] = [];
   const touched = Object.keys(planned.changes);
@@ -79,6 +80,8 @@ export function checkEditOn(
 /** The ports and folder an edit is tried on. */
 export interface EditApp {
   appDir: string;
+  /** What the app's installed libraries offer, which the calls that make Connections are read against. */
+  catalog?: Catalog;
   synth: Synth;
   files: Files;
   source: Source;
@@ -96,7 +99,7 @@ export async function checkEdit(app: EditApp, intents: readonly Intent[]): Promi
   const files = await app.files.read();
   const before = await app.synth.synth(app.appDir);
   if (!before.ok) return { ok: false, failures: [`The app doesn't synth before the edit: ${before.error.message}`] };
-  const base: Base = { files, facts: app.source.analyse(files, before.assembly), assembly: before.assembly };
+  const base: Base = { files, facts: app.source.analyse(files, before.assembly, app.catalog), assembly: before.assembly };
 
   const plan = planEdit(app.source, base, intents);
   const after = plan.ok ? await app.synth.synth(app.appDir, { overlay: plan.overlay }) : before;

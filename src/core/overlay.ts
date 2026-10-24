@@ -52,6 +52,8 @@ export interface ConnectionHint {
   default?: true;
   /** The call that makes the Connection, made on `self`. */
   primary: Omit<HintCall, 'on'>;
+  /** For a hint that does the work of several others of the same construct (`grantReadWrite`), their labels. Two Grants on one pair are offered as it. */
+  combines?: string[];
   /** Calls that complete it, such as the environment variable that carries a table's name. */
   secondary?: HintCall[];
 }

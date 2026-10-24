@@ -23,7 +23,7 @@ const READ_ONLY: Partial<Record<ReferenceForm, string>> = {
 };
 
 /** Strips the wrappers that don't change what an expression is: parentheses, a cast, a non-null `!`. */
-function bare(e: ts.Expression): ts.Expression {
+export function bare(e: ts.Expression): ts.Expression {
   while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e)) e = e.expression;
   return e;
 }
@@ -31,7 +31,7 @@ function bare(e: ts.Expression): ts.Expression {
 /** Reads the References of every construct made by a `new` in `files`. */
 export class ReferenceReader {
   /** Paths by the span key of the call that makes them. */
-  private readonly bySpan = new Map<string, string[]>();
+  readonly bySpan = new Map<string, string[]>();
 
   constructor(
     private readonly nodes: Readonly<Record<string, NodeFacts>>,
@@ -102,7 +102,7 @@ export class ReferenceReader {
    * The path of the Node a span key names, as seen from `from`. A span many paths share (a Stack class created
    * more than once) is read as the one beside `from`; with no one nearest, it names nothing.
    */
-  private pathFor(target: string, from: string): string | undefined {
+  pathFor(target: string, from: string): string | undefined {
     const paths = this.bySpan.get(target);
     if (!paths) return undefined;
     if (paths.length === 1) return paths[0];
@@ -144,7 +144,7 @@ export class ReferenceReader {
   }
 
   /** The span key of the Node an identifier, `this.field` or alias stands for. */
-  private valueOf(e: ts.Expression, depth: number): string | undefined {
+  valueOf(e: ts.Expression, depth: number): string | undefined {
     if (depth > MAX_ALIAS_DEPTH) return undefined;
     e = bare(e);
     // A `new` written in the prop itself is the Node, not a Reference to it.

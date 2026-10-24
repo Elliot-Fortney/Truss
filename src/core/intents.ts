@@ -1,5 +1,5 @@
 import { withId } from './construct-id.ts';
-import type { Snippet } from './overlay.ts';
+import type { ConnectionKind, Snippet } from './overlay.ts';
 import type { PropFacts, PropsFacts } from './facts.ts';
 
 export const DURATION_UNITS = ['millis', 'seconds', 'minutes', 'hours', 'days'] as const;
@@ -119,7 +119,88 @@ export interface RepointReferenceIntent {
 
 export type ReferenceIntent = AddReferenceIntent | RemoveReferenceIntent | RepointReferenceIntent;
 
-export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent | RemoveNodeIntent | ReferenceIntent;
+/** A call the Draft writes to make a Connection: `{self}` and `{peer}` in the arguments stand for what the code calls the two Nodes. */
+export interface CallPlan {
+  /** Which Node the method is called on. */
+  on: 'self' | 'peer';
+  /** The method as written after the receiver: `['grants', 'read']`. */
+  method: string[];
+  /** The arguments as code. */
+  args: string[];
+  /** FQNs of the classes and enums the arguments name. */
+  uses?: string[];
+  /** Whether it is the call that makes the Connection, or one that completes it. */
+  role: 'primary' | 'secondary';
+}
+
+/** A call the code has, named by what it is and not where it is, so a Draft that moves the code around still finds it. */
+export interface CallRef {
+  role: 'primary' | 'secondary';
+  /** Construct paths of the Node the method is called on and the Node the arguments name. */
+  on: string;
+  peer: string;
+  method: string[];
+  /** For a call that sets an environment variable, its name. */
+  env?: string;
+}
+
+/**
+ * Writes the calls that connect two Nodes (a Grant, Integration or Network Connection) after the statements that make them.
+ * `path` is the Node the hint belongs to and `peer` the other; the code it writes is the Overlay's, as the developer would.
+ */
+export interface AddConnectionIntent {
+  type: 'addConnection';
+  path: string;
+  expect: { className: string; literalId: string };
+  peer: NodeRef;
+  kind: ConnectionKind;
+  /** The primary call first. */
+  calls: CallPlan[];
+}
+
+/** Deletes calls that make a Connection, each statement with the comment above it. */
+export interface RemoveConnectionIntent {
+  type: 'removeConnection';
+  path: string;
+  expect: { className: string; literalId: string };
+  peer: NodeRef;
+  kind: ConnectionKind;
+  calls: CallRef[];
+}
+
+/** Writes new calls where the first of the old ones is and deletes the rest: a Connection of another kind, or with its environment variable renamed or switched off. */
+export interface ReplaceConnectionIntent {
+  type: 'replaceConnection';
+  path: string;
+  expect: { className: string; literalId: string };
+  peer: NodeRef;
+  kind: ConnectionKind;
+  was: CallRef[];
+  calls: CallPlan[];
+}
+
+export type ConnectionIntent = AddConnectionIntent | RemoveConnectionIntent | ReplaceConnectionIntent;
+
+export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent | RemoveNodeIntent | ReferenceIntent | ConnectionIntent;
+
+/** Whether an intent changes the calls that make a Connection. */
+export const isConnectionIntent = (intent: Intent): intent is ConnectionIntent =>
+  intent.type === 'addConnection' || intent.type === 'removeConnection' || intent.type === 'replaceConnection';
+
+/** What a call the Draft writes will be, in the terms the code has calls in. */
+export function refOfPlan(plan: CallPlan, self: string, peer: string): CallRef {
+  const env = envOf(plan);
+  return { role: plan.role, on: plan.on === 'self' ? self : peer, peer: plan.on === 'self' ? peer : self, method: plan.method, ...(env !== undefined ? { env } : {}) };
+}
+
+/** The environment variable a call sets: the first argument of an `addEnvironment`, when it is a string. */
+export function envOf(plan: Pick<CallPlan, 'method' | 'args'>): string | undefined {
+  const first = plan.args[0]?.trim();
+  return plan.method.at(-1) === 'addEnvironment' && first !== undefined && /^(['"]).*\1$/.test(first) ? first.slice(1, -1) : undefined;
+}
+
+export const sameCall = (a: CallRef, b: CallRef): boolean =>
+  a.role === b.role && a.on === b.on && a.peer === b.peer && a.method.join('.') === b.method.join('.') && (a.env ?? '') === (b.env ?? '');
 
 /** Whether an intent changes a Reference. */
 export const isReferenceIntent = (intent: Intent): intent is ReferenceIntent => intent.type === 'addReference' || intent.type === 'removeReference' || intent.type === 'repointReference';
@@ -156,19 +237,31 @@ export function onBase(intents: readonly Intent[]): Intent[] {
   return intents.map((intent, i) => {
     const moves = movesOf(intents.slice(0, i));
     const path = beforeMoves(moves, intent.path);
-    const onDisk = isReferenceIntent(intent) ? referencesOnBase(intent, moves) : intent;
+    const onDisk = isReferenceIntent(intent) ? referencesOnBase(intent, moves) : isConnectionIntent(intent) ? connectionOnBase(intent, moves) : intent;
     if (path === intent.path) return onDisk;
     const literalId = path.split('/').at(-1)!;
     return { ...onDisk, path, expect: { ...intent.expect, literalId: intent.path.split('/').at(-1) === intent.expect.literalId ? literalId : intent.expect.literalId } };
   });
 }
 
+/** A Node as the Base has it. */
+function nodeOnBase(n: NodeRef, moves: readonly Move[]): NodeRef {
+  const path = beforeMoves(moves, n.path);
+  return path === n.path ? n : { ...n, path, literalId: n.path.split('/').at(-1) === n.literalId ? path.split('/').at(-1)! : n.literalId };
+}
+
+/** A Connection intent with the Nodes it names, and the calls it removes, given the paths the Base has. */
+function connectionOnBase<T extends ConnectionIntent>(intent: T, moves: readonly Move[]): T {
+  const ref = (r: CallRef): CallRef => ({ ...r, on: beforeMoves(moves, r.on), peer: beforeMoves(moves, r.peer) });
+  const base = { ...intent, peer: nodeOnBase(intent.peer, moves) };
+  if (base.type === 'removeConnection') return { ...base, calls: base.calls.map(ref) };
+  if (base.type === 'replaceConnection') return { ...base, was: base.was.map(ref) };
+  return base;
+}
+
 /** A Reference intent with the Nodes it names given the paths and IDs the Base has. */
 function referencesOnBase(intent: ReferenceIntent, moves: readonly Move[]): ReferenceIntent {
-  const base = (n: NodeRef): NodeRef => {
-    const path = beforeMoves(moves, n.path);
-    return path === n.path ? n : { ...n, path, literalId: n.path.split('/').at(-1) === n.literalId ? path.split('/').at(-1)! : n.literalId };
-  };
+  const base = (n: NodeRef): NodeRef => nodeOnBase(n, moves);
   return intent.type === 'repointReference' ? { ...intent, was: base(intent.was), to: base(intent.to) } : { ...intent, to: base(intent.to) };
 }
 
@@ -197,7 +290,29 @@ export function stage(draft: DraftHistory, intent: Intent): DraftHistory {
     const merged = mergeReferences(last, intent);
     if (merged !== undefined) return { intents: merged ? [...rest, merged] : rest, redo: [] };
   }
+  if (last && isConnectionIntent(last) && isConnectionIntent(intent) && last.path === intent.path && last.peer.path === intent.peer.path) {
+    const merged = mergeConnections(last, intent);
+    if (merged !== undefined) return { intents: merged ? [...rest, merged] : rest, redo: [] };
+  }
   return { intents: [...draft.intents, intent], redo: [] };
+}
+
+/** The calls an intent leaves in the code that it wrote itself, as refs. */
+const writtenBy = (i: AddConnectionIntent | ReplaceConnectionIntent): CallRef[] => i.calls.map((c) => refOfPlan(c, i.path, i.peer.path));
+
+const sameCalls = (a: readonly CallRef[], b: readonly CallRef[]) => a.length === b.length && a.every((x) => b.some((y) => sameCall(x, y)));
+
+/**
+ * Two Connection edits in a row to one pair as the one edit they come to: undefined when they are separate edits, null when
+ * they cancel out. Taking away what was just written, or changing it, never reaches the code as more than the final calls.
+ */
+function mergeConnections(last: ConnectionIntent, next: ConnectionIntent): ConnectionIntent | null | undefined {
+  if (last.type === 'removeConnection') return undefined;
+  if (next.type === 'removeConnection' && sameCalls(writtenBy(last), next.calls)) {
+    return last.type === 'addConnection' ? null : { type: 'removeConnection', path: last.path, expect: last.expect, peer: last.peer, kind: last.kind, calls: last.was };
+  }
+  if (next.type === 'replaceConnection' && sameCalls(writtenBy(last), next.was)) return { ...last, kind: next.kind, calls: next.calls };
+  return undefined;
 }
 
 /**
@@ -240,6 +355,8 @@ export function valueText(value: PropValue): string {
   }
 }
 
+const callsText = (calls: readonly CallPlan[]) => calls.map((c) => `${c.on === 'self' ? '' : '…'}${c.method.join('.')}`).join(' + ');
+
 /** An intent as the Draft list words it, e.g. `versioned → true`. */
 export function describeIntent(intent: Intent): string {
   switch (intent.type) {
@@ -259,6 +376,12 @@ export function describeIntent(intent: Intent): string {
       return `${intent.prop} → remove ${intent.to.literalId}`;
     case 'repointReference':
       return `${intent.prop} → ${intent.to.literalId} (was ${intent.was.literalId})`;
+    case 'addConnection':
+      return `Connect ${intent.peer.literalId}: ${callsText(intent.calls)}`;
+    case 'removeConnection':
+      return `Disconnect ${intent.peer.literalId}: ${intent.calls.map((c) => c.method.join('.')).join(', ')}`;
+    case 'replaceConnection':
+      return `Reconnect ${intent.peer.literalId}: ${callsText(intent.calls)}`;
   }
 }
 

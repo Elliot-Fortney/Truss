@@ -6,6 +6,7 @@ import type { Facts } from '../core/facts.ts';
 import { beforeMoves, movesOf, afterMoves, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
 import { connectTargets, intentForConnect, intentForDisconnect, intentForRepoint, type ConnectContext } from '../core/connect.ts';
+import { connectionProps, intentForAddConnection, intentForChangeConnection, intentForRemoveConnection } from '../core/connection.ts';
 import { intentForAdd, intentForDuplicate, intentForRemove } from '../core/create.ts';
 import { buildPanel, intentForEdit, intentForRename, type PanelEditing } from '../core/panel.ts';
 import type { ClientMessage, ConnectableMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
@@ -224,7 +225,7 @@ export class Session {
         this.fail(result.error);
         return false;
       }
-      this.draft.rebase({ files, facts: this.deps.source.analyse(files, result.assembly), assembly: result.assembly });
+      this.draft.rebase({ files, facts: this.deps.source.analyse(files, result.assembly, this.catalog), assembly: result.assembly });
       this.baseDiagnostics = new Map();
       this.baseVersion = version;
       if (this.draft.intents.length === 0) this.showBase(true);
@@ -287,7 +288,7 @@ export class Session {
     if (shown.intents !== this.draft.intents) return;
     if (!(await this.readSidecar())) return;
     if (!result.ok) return this.failDraft(result.error, { ...shown, merged: files });
-    const facts = this.deps.source.analyse(files, result.assembly);
+    const facts = this.deps.source.analyse(files, result.assembly, this.catalog);
     this.snapshot = { facts, assembly: result.assembly };
     this.draft.checked(shown.intents, [
       ...annotationProblems(result.assembly, shown.base.assembly),
@@ -349,7 +350,12 @@ export class Session {
     const changed = this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set<string>();
     // The Sidecar keeps a renamed Node where it was until Save, but on screen it stays where the user put it.
     const view = buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]), this.addedPaths(), this.flowsIn);
-    return { ...view, nodes: [...view.nodes, ...this.ghosts(moves)] };
+    const ctx: ConnectContext = { ...this.connecting(this.snapshot!), view };
+    const edges = view.edges.map((e) => {
+      const connection = connectionProps(ctx, e);
+      return connection ? { ...e, connection } : e;
+    });
+    return { ...view, edges, nodes: [...view.nodes, ...this.ghosts(moves)] };
   }
 
   /** The Nodes the Draft deletes, drawn as the code on disk makes them: they are no longer in the Design on screen. */
@@ -411,6 +417,7 @@ export class Session {
     if (message.type === 'setProp' || message.type === 'renameId') return this.stageEdit(message);
     if (message.type === 'addNode' || message.type === 'duplicate' || message.type === 'removeNode') return this.stageCreation(message);
     if (message.type === 'connect' || message.type === 'disconnect' || message.type === 'repoint') return this.stageReference(message);
+    if (message.type === 'addConnection' || message.type === 'removeConnection' || message.type === 'changeConnection') return this.stageConnection(message);
     // A Draft is held as it was while the code on disk doesn't synth, so only Discard can change it then.
     if ((message.type === 'undo' || message.type === 'redo') && this.current.error && this.current.error.kind !== 'draft') {
       return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
@@ -498,6 +505,25 @@ export class Session {
           ? intentForDisconnect(ctx, from, message.to, message.prop)
           : intentForRepoint(ctx, from, message.was, message.to, message.prop);
     if (!made.ok) return refuse(made.reason);
+    const staged = this.draft.stage(made.intent);
+    if (!staged.ok) return refuse(staged.reason);
+    this.afterDraftChange();
+    return { type: 'ack', requestId };
+  }
+
+  /** Stages a Grant, Integration or Network Connection made, changed or removed: judged by the Overlays and the calls of the code on screen, planned, and then synthed in a shadow copy. */
+  private stageConnection(message: Extract<DraftMessage, { type: 'addConnection' | 'removeConnection' | 'changeConnection' }>): Reply {
+    const { requestId } = message;
+    const refuse = (reason: string, at?: SourceLocation): Reply => ({ type: 'refused', requestId, reason, ...(at ? { at } : {}) });
+    if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
+    const ctx = this.connecting(this.snapshot);
+    const made =
+      message.type === 'addConnection'
+        ? intentForAddConnection(ctx, message.a, message.b, message.hint, message.env)
+        : message.type === 'removeConnection'
+          ? intentForRemoveConnection(ctx, message.calls)
+          : intentForChangeConnection(ctx, message.calls, { ...(message.hint !== undefined ? { hint: message.hint } : {}), ...(message.env !== undefined ? { env: message.env } : {}) });
+    if (!made.ok) return refuse(made.reason, this.current.nodes.find((n) => n.id === (message.type === 'addConnection' ? message.a : undefined))?.source);
     const staged = this.draft.stage(made.intent);
     if (!staged.ok) return refuse(staged.reason);
     this.afterDraftChange();

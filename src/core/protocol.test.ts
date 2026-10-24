@@ -149,3 +149,23 @@ describe('parseClientMessage for References', () => {
     expect(parse({ type: 'connect', requestId: '1', from: 'A'.repeat(5000), to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: false });
   });
 });
+
+describe('Connection requests', () => {
+  const parse = (m: object) => parseClientMessage(JSON.stringify({ requestId: 'r', ...m }));
+  const hint = 'aws-cdk-lib.aws_s3.Bucket#0';
+
+  it('takes an addConnection with the hint and, optionally, the environment variable', () => {
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint })).toMatchObject({ ok: true, message: { type: 'addConnection', hint } });
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: null })).toMatchObject({ ok: true, message: { env: null } });
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: 'MY_VAR' })).toMatchObject({ ok: true, message: { env: 'MY_VAR' } });
+  });
+
+  it('refuses a hint or an environment variable that is not a name, and calls that are not ids', () => {
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint: 'x; drop' }).ok).toBe(false);
+    expect(parse({ type: 'addConnection', a: 'S/A', b: 'S/B', hint, env: "A'); evil(" }).ok).toBe(false);
+    expect(parse({ type: 'removeConnection', calls: [] }).ok).toBe(false);
+    expect(parse({ type: 'removeConnection', calls: [1] }).ok).toBe(false);
+    expect(parse({ type: 'removeConnection', calls: ['lib/a.ts:1:1'] }).ok).toBe(true);
+    expect(parse({ type: 'changeConnection', calls: ['lib/a.ts:1:1'], hint, env: 'X' }).ok).toBe(true);
+  });
+});

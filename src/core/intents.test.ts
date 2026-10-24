@@ -226,3 +226,26 @@ describe('Reference intents', () => {
     expect(onDisk).toMatchObject({ type: 'addReference', to: { path: 'A/Key', literalId: 'Key' } });
   });
 });
+
+describe('stage with Connection edits', () => {
+  const self = { path: 'S/A', expect: { className: 's3.Bucket', literalId: 'A' }, peer: { path: 'S/B', className: 'lambda.Function', literalId: 'B' }, kind: 'grant' as const };
+  const plan = (method: string[]) => ({ on: 'self' as const, method, args: ['{peer}'], role: 'primary' as const });
+  const add = (method: string[]): Intent => ({ type: 'addConnection', ...self, calls: [plan(method)] });
+  const refOf = (method: string[]) => ({ role: 'primary' as const, on: 'S/A', peer: 'S/B', method });
+
+  it('cancels a Connection that is added and then removed, and keeps the edit when a different call is removed', () => {
+    const added = stage(emptyDraftHistory, add(['grantRead']));
+    expect(stage(added, { type: 'removeConnection', ...self, calls: [refOf(['grantRead'])] }).intents).toEqual([]);
+    expect(stage(added, { type: 'removeConnection', ...self, calls: [refOf(['grantWrite'])] }).intents).toHaveLength(2);
+  });
+
+  it('turns an added Connection that is then changed into the one Connection it ends as', () => {
+    const added = stage(emptyDraftHistory, add(['grantRead']));
+    const changed = stage(added, { type: 'replaceConnection', ...self, was: [refOf(['grantRead'])], calls: [plan(['grantWrite'])] });
+    expect(changed.intents).toEqual([add(['grantWrite'])]);
+  });
+
+  it('words a Connection in the Draft list', () => {
+    expect(describeIntent(add(['grants', 'read']))).toBe('Connect B: grants.read');
+  });
+});

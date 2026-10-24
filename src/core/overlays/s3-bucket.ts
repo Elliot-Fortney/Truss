@@ -30,6 +30,7 @@ const overlay: Overlay = {
     {
       kind: 'grant',
       label: 'is read and written by',
+      combines: ['is read by', 'is written by'],
       peers: [FUNCTION],
       flow: 'in',
       primary: { forms: [['grants', 'readWrite'], ['grantReadWrite']], args: ['{peer}'] },

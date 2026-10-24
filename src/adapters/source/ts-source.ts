@@ -5,6 +5,8 @@ import type { Assembly, Frame, TreeNode } from '../../core/assembly.ts';
 import type { Binding, EnclosingClass, Facts, NodeFacts, PropFacts, PropsFacts, Span, Surround } from '../../core/facts.ts';
 import type { Intent } from '../../core/intents.ts';
 import type { Diagnostic, FileSet, PlanResult, Source } from '../../core/ports.ts';
+import type { Catalog } from '../../core/catalog.ts';
+import { CallReader } from './calls.ts';
 import { ReferenceReader } from './references.ts';
 import { planIntents } from './ts-plan.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
@@ -36,7 +38,7 @@ export class TsSource implements Source {
   /** Parsed files, reused while a file's text is unchanged. */
   private parsed = new Map<string, { text: string; sf: ts.SourceFile }>();
 
-  analyse(files: FileSet, assembly: Assembly): Facts {
+  analyse(files: FileSet, assembly: Assembly, catalog?: Catalog): Facts {
     const sites = new Map<string, Frame>();
     for (const [path, list] of Object.entries(assembly.creation)) {
       const frame = this.creationSite(files, list);
@@ -58,8 +60,16 @@ export class TsSource implements Source {
       if (facts) facts.pathsOnSpan = perSpan.get(frameKey(frame)) ?? 1;
     }
     this.addExternals(files, assembly.tree, nodes);
-    const references = new ReferenceReader(nodes, (file) => this.parse(files, file), new Set(assembly.stacks.map((s) => s.path))).read();
-    return { nodes, ...(references.length > 0 ? { references } : {}) };
+    const reader = new ReferenceReader(nodes, (file) => this.parse(files, file), new Set(assembly.stacks.map((s) => s.path)));
+    const references = reader.read();
+    const fqns = new Map<string, string>();
+    const index = (n: TreeNode) => {
+      fqns.set(n.path, n.fqn);
+      n.children.forEach(index);
+    };
+    index(assembly.tree);
+    const calls = catalog ? new CallReader(nodes, fqns, files.keys(), (file) => this.parse(files, file), reader, catalog).read() : [];
+    return { nodes, ...(references.length > 0 ? { references } : {}), ...(calls.length > 0 ? { calls } : {}) };
   }
 
   plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult {
@@ -338,16 +348,27 @@ function firstCreated(node: TreeNode, assembly: Assembly): Frame[] | undefined {
   return undefined;
 }
 
-/** The frame every descendant with a creation stack shares, if they all share one. */
+/**
+ * The frame every descendant with a creation stack shares. When a later call of the app adds constructs beneath the
+ * Node (a grant makes its role's policy, an event source its mapping), they do not share it: then it is the frame of the
+ * L1 resource the construct is named for (`Resource`), or else the one frame most of them have.
+ */
 function agreedFrame(node: TreeNode, sites: Map<string, Frame>): Frame | undefined {
-  const seen = new Map<string, Frame>();
+  const seen = new Map<string, { frame: Frame; count: number }>();
   const walk = (n: TreeNode) => {
     const f = sites.get(n.path);
-    if (f) seen.set(frameKey(f), f);
+    if (f) {
+      const there = seen.get(frameKey(f));
+      seen.set(frameKey(f), { frame: f, count: (there?.count ?? 0) + 1 });
+    }
     n.children.forEach(walk);
   };
   node.children.forEach(walk);
-  return seen.size === 1 ? [...seen.values()][0] : undefined;
+  if (seen.size === 1) return [...seen.values()][0]!.frame;
+  const own = sites.get(`${node.path}/Resource`);
+  if (own) return own;
+  const ranked = [...seen.values()].sort((a, b) => b.count - a.count);
+  return ranked.length > 1 && ranked[0]!.count > ranked[1]!.count ? ranked[0]!.frame : undefined;
 }
 
 /** The props argument as written: an object literal prop by prop, anything else as one piece of text. */

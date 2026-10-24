@@ -1,4 +1,5 @@
 import { entryFor, type Catalog, type CatalogEntry } from './catalog.ts';
+import { hintsFor, type HintOption } from './connection.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts, ReferenceFacts } from './facts.ts';
 import type { Intent, NodeRef } from './intents.ts';
@@ -28,7 +29,8 @@ export interface ConnectOption {
   replaces?: { id: string; label: string };
 }
 
-export type ConnectCheck = { ok: true; options: ConnectOption[] } | { ok: false; reason: string };
+/** `options` are the props of the target a Reference could go in; `hints` are the Grants, Integrations and Network Connections the Overlays offer. Either can be empty, but not both. */
+export type ConnectCheck = { ok: true; options: ConnectOption[]; hints?: HintOption[] } | { ok: false; reason: string };
 
 const ADDED = 'Added in the Draft: save it to connect it.';
 
@@ -109,6 +111,15 @@ function optionsOf(ctx: ConnectContext, from: NodeView, to: NodeView, entry: Cat
  * an interface or class that `to` is. One option means a drop makes it directly; none, with the reason why.
  */
 export function canConnect(ctx: ConnectContext, from: string, to: string): ConnectCheck {
+  const reference = canReference(ctx, from, to);
+  if (from === to || !ctx.view.nodes.some((n) => n.id === from) || !ctx.view.nodes.some((n) => n.id === to)) return reference;
+  const hints = hintsFor(ctx, from, to);
+  if (!hints.ok) return reference.ok || hints.nothing ? reference : { ok: false, reason: hints.reason };
+  return { ok: true, options: reference.ok ? reference.options : [], hints: hints.options };
+}
+
+/** Whether `from` can point at `to` through one of its props. */
+function canReference(ctx: ConnectContext, from: string, to: string): ConnectCheck {
   const source = ctx.view.nodes.find((n) => n.id === from);
   const target = ctx.view.nodes.find((n) => n.id === to);
   if (!source || !target) return { ok: false, reason: `No Node at ${source ? to : from}` };

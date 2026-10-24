@@ -1,3 +1,5 @@
+import type { ConnectionKind } from './overlay.ts';
+
 export interface Position {
   line: number;
   col: number;
@@ -90,9 +92,43 @@ export interface ReferenceFacts {
   span: Span;
 }
 
+/**
+ * A call in the code that makes a Grant, Integration or Network Connection (ADR 0012): a statement that calls an Overlay
+ * hint's method on one Node with another Node among its arguments, or a generic jsii `grantXxx(identity)` call.
+ */
+export interface CallFacts {
+  /** Where the statement starts, e.g. `lib/stack.ts:12:5`: names it in the files as they are now, and nowhere else. */
+  id: string;
+  kind: ConnectionKind;
+  /** `primary` makes the Connection; `secondary` completes it, such as the environment variable that carries a table's name. */
+  role: 'primary' | 'secondary';
+  /** The construct path of the Node the method is called on, and of the one the arguments name. */
+  on: string;
+  peer: string;
+  /** The ends of the edge synth draws for it: where the access, events or traffic come from, and where they go. */
+  from: string;
+  to: string;
+  /** The method as written after the receiver: `['grants', 'read']`, `['grantRead']`. */
+  method: string[];
+  /** The Overlay hint it is an instance of, as `<construct FQN>#<index among the construct's hints>`. Absent for a generic jsii grant call. */
+  hint?: string;
+  /** For a secondary call that sets an environment variable, its name. */
+  env?: string;
+  /** The statement as written. */
+  text: string;
+  /** The statement. */
+  span: Span;
+  /** Whether Truss can remove or rewrite it. */
+  editable: boolean;
+  /** Why not, when it can't. */
+  reason?: string;
+}
+
 /** Facts per construct path. Nothing in here is a syntax tree. */
 export interface Facts {
   nodes: Record<string, NodeFacts>;
+  /** The calls that make Connections. Absent when there are none. */
+  calls?: CallFacts[];
   /** The Nodes the props of each construct point at. Absent when none do. */
   references?: ReferenceFacts[];
 }

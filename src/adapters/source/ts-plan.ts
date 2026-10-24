@@ -1,10 +1,10 @@
 // Turns intents into text changes in the file's own style (ADR 0007). It edits the text and leaves everything else alone.
 import ts from '@typescript/typescript6';
 import { applyChanges, offsetOf, type TextChange } from '../../core/diff.ts';
-import type { Facts, NodeFacts, ReferenceFacts } from '../../core/facts.ts';
+import type { CallFacts, Facts, NodeFacts, ReferenceFacts } from '../../core/facts.ts';
 import { constructIdProblem, parentPath } from '../../core/construct-id.ts';
 import { nodeEditability } from '../../core/editability.ts';
-import { isReferenceIntent, onBase, type AddNodeIntent, type AddedProp, type DuplicateIntent, type Intent, type NodeRef, type PropValue, type ReferenceIntent, type RemoveNodeIntent } from '../../core/intents.ts';
+import { isConnectionIntent, isReferenceIntent, onBase, sameCall, type AddNodeIntent, type AddedProp, type CallPlan, type CallRef, type ConnectionIntent, type DuplicateIntent, type Intent, type NodeRef, type PropValue, type ReferenceIntent, type RemoveNodeIntent } from '../../core/intents.ts';
 import type { FileSet, PlanResult, SourceUse } from '../../core/ports.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 import { languageServiceOver, referencesTo, useAt } from './uses.ts';
@@ -54,6 +54,8 @@ interface Target {
 /** Everything the planner learns about one file, and the changes it has made to it so far. */
 class FileEdit {
   readonly changes: TextChange[] = [];
+  /** Where the statements this plan deletes or rewrites start, so that none is dealt with twice. */
+  readonly removed = new Set<number>();
   readonly newline: string;
   readonly quote: string;
   private identifiers: Set<string> | undefined;
@@ -496,18 +498,22 @@ function place(c: Creation, facts: Facts, edits: (file: string, intent: number) 
   return { edit, anchor, scopeArg: name, fields: false };
 }
 
+/** `code` with the classes it names (`uses`, by FQN) imported the way the file imports, and written as the file refers to them. */
+function importing(edit: FileEdit, index: number, code: string, uses: readonly string[] | undefined): string {
+  for (const fqn of uses ?? []) {
+    const home = enumHome(index, fqn);
+    const ref = edit.ref(index, home.module, home.type, home.alias);
+    if (ref !== home.type) code = code.replace(new RegExp(`(?<![\\w$.'"])${home.type}\\b`, 'g'), ref);
+  }
+  return code;
+}
+
 /** The code of the added construct's props, as the object literal it goes in; empty when it has none. */
 function addedProps(edit: FileEdit, index: number, props: readonly AddedProp[]): string {
   const parts = props.map((p) => {
     if (!IDENTIFIER.test(p.name)) throw new Refusal(index, `${p.name} is not a prop name`);
     if ('value' in p) return render(edit, p.name, { leaf: p.value, intent: index });
-    let code = p.snippet.code;
-    for (const fqn of p.snippet.uses ?? []) {
-      const home = enumHome(index, fqn);
-      const ref = edit.ref(index, home.module, home.type, home.alias);
-      if (ref !== home.type) code = code.replace(new RegExp(`(?<![\\w$.'"])${home.type}\\b`, 'g'), ref);
-    }
-    return `${p.name}: ${code}`;
+    return `${p.name}: ${importing(edit, index, p.snippet.code, p.snippet.uses)}`;
   });
   return parts.length > 0 ? `, { ${parts.join(', ')} }` : '';
 }
@@ -642,7 +648,7 @@ function removalRange(edit: FileEdit, node: ts.Node): { start: number; end: numb
 }
 
 /** Deletes the statement that makes a construct, and the field it is kept in, unless code other than that still uses it. */
-function removeNode(r: Removal, edits: (file: string, intent: number) => FileEdit, files: FileSet, service: ts.LanguageService): void {
+function removeNode(r: Removal, edits: (file: string, intent: number) => FileEdit, files: FileSet, service: ts.LanguageService, world: Facts): void {
   const { index, intent, facts } = r;
   const edit = edits(facts.span.file, index);
   const found = newAt(edit, facts);
@@ -666,7 +672,9 @@ function removeNode(r: Removal, edits: (file: string, intent: number) => FileEdi
     } else if (e !== found) throw new Refusal(index, `${intent.path} is made in a statement Truss can't remove`);
   } else throw new Refusal(index, `${intent.path} isn't made by a statement of its own, so it can't be removed`);
 
-  const gone = [removalRange(edit, statement), ...(property ? [removalRange(edit, property)] : [])];
+  // The calls that connect it to other Nodes go with it.
+  const calls = (world.calls ?? []).filter((c) => c.editable && (c.on === intent.path || c.peer === intent.path));
+  const gone = [removalRange(edit, statement), ...(property ? [removalRange(edit, property)] : []), ...callRanges(edit, calls, index)];
   if (name) {
     const at = (property?.name ?? name).getStart(edit.sf);
     const uses = referencesTo(service, edit.file, at).filter((u) => u.file !== edit.file || !gone.some((g) => u.start >= g.start && u.end <= g.end));
@@ -675,7 +683,8 @@ function removeNode(r: Removal, edits: (file: string, intent: number) => FileEdi
       throw new Refusal(index, `${intent.expect.literalId} is still used in ${places.length === 1 ? 'one place' : `${places.length} places`}: ${places.map((p) => `${p.file}:${p.line}`).join(', ')}`, places);
     }
   }
-  for (const g of gone) edit.change(g.start, g.end, '', 'remove');
+  deleteCalls(edit, calls, index);
+  for (const g of gone.slice(0, property ? 2 : 1)) edit.change(g.start, g.end, '', 'remove');
 }
 
 // --- References ---------------------------------------------------------------------------------------
@@ -929,6 +938,148 @@ function refEdit(edit: FileEdit, source: ts.NewExpression, target: Target, prop:
   };
 }
 
+
+// --- Connections --------------------------------------------------------------------------------------
+
+/** An edit of the calls that make a Connection. */
+interface Connecting {
+  index: number;
+  intent: ConnectionIntent;
+}
+
+const refOfFact = (c: CallFacts): CallRef => ({ role: c.role, on: c.on, peer: c.peer, method: c.method, ...(c.env !== undefined ? { env: c.env } : {}) });
+
+/** The calls of the code that `refs` name, each of which has to be one Truss can edit. */
+function callsNamed(world: Facts, refs: readonly CallRef[], index: number): CallFacts[] {
+  const found: CallFacts[] = [];
+  for (const ref of refs) {
+    const hit = (world.calls ?? []).find((c) => sameCall(refOfFact(c), ref) && !found.includes(c));
+    if (!hit) throw new Refusal(index, `The code has no ${ref.method.join('.')} call between ${ref.on} and ${ref.peer}`);
+    if (!hit.editable) throw new Refusal(index, hit.reason ?? `Truss leaves ${hit.text} alone`);
+    found.push(hit);
+  }
+  return found;
+}
+
+/** The statement that a call was read from. */
+function statementOf(edit: FileEdit, call: CallFacts, index: number): ts.ExpressionStatement {
+  const start = offsetOf(edit.text, call.span.start.line, call.span.start.col);
+  let found: ts.ExpressionStatement | undefined;
+  const visit = (n: ts.Node) => {
+    if (ts.isExpressionStatement(n) && n.getStart(edit.sf) === start) found = n;
+    if (!found) ts.forEachChild(n, visit);
+  };
+  visit(edit.sf);
+  if (!found || found.getText(edit.sf) !== call.text) throw new Refusal(index, `The code at ${call.id} is not the call Truss read`);
+  return found;
+}
+
+/** The statements of the calls, each once however many paths they were read for. */
+function statementsOf(edit: FileEdit, calls: readonly CallFacts[], index: number): ts.ExpressionStatement[] {
+  const seen = new Set<number>();
+  const out: ts.ExpressionStatement[] = [];
+  for (const call of calls) {
+    const st = statementOf(edit, call, index);
+    if (!seen.has(st.getStart(edit.sf))) {
+      seen.add(st.getStart(edit.sf));
+      out.push(st);
+    }
+  }
+  return out;
+}
+
+/** Deletes the statements that make `calls`, unless this plan has already deleted them. */
+function deleteCalls(edit: FileEdit, calls: readonly CallFacts[], index: number): void {
+  for (const st of statementsOf(edit, calls, index)) {
+    if (edit.removed.has(st.getStart(edit.sf))) continue;
+    edit.removed.add(st.getStart(edit.sf));
+    const r = removalRange(edit, st);
+    edit.change(r.start, r.end, '', 'remove');
+  }
+}
+
+/** The ranges of the statements of `calls`, which a Node's deletion takes with it. */
+function callRanges(edit: FileEdit, calls: readonly CallFacts[], index: number): Array<{ start: number; end: number }> {
+  return statementsOf(edit, calls, index).map((st) => removalRange(edit, st));
+}
+
+/** What the code calls the two Nodes of a Connection where a call can be written, and the block that call goes in. */
+interface Bindings {
+  self: string;
+  peer: string;
+  /** The statement the new calls follow. */
+  anchor: ts.Statement;
+}
+
+function bindingsOf(edit: FileEdit, selfFacts: NodeFacts, peerFacts: NodeFacts, index: number): Bindings {
+  const holder = (f: NodeFacts): Holder => {
+    const name = f.literalId ?? f.className;
+    if (f.span.file !== edit.file) throw new Refusal(index, `${name} is made in ${f.span.file}, not in ${edit.file}, so the code has no scope in common to call it from`);
+    const made = madeAt(edit, f);
+    const h = made && holderOf(made);
+    if (!h) throw new Refusal(index, `${name} isn't kept in a variable or a field, so there is nothing to call it by`);
+    return h;
+  };
+  const s = holder(selfFacts);
+  const p = holder(peerFacts);
+  const ctorBody = (h: Holder): ts.Block | undefined => {
+    if (ts.isClassLike(h.container)) return h.container.members.find(ts.isConstructorDeclaration)?.body;
+    return ts.isBlock(h.container) && ts.isConstructorDeclaration(h.container.parent) ? h.container : undefined;
+  };
+  const names = `${selfFacts.literalId ?? selfFacts.className} and ${peerFacts.literalId ?? peerFacts.className}`;
+  if (s.container === p.container && !ts.isClassLike(s.container)) {
+    const list = (s.container as ts.Block | ts.SourceFile | ts.ModuleBlock).statements;
+    const later = list.indexOf(s.site as ts.Statement) > list.indexOf(p.site as ts.Statement) ? s : p;
+    return { self: s.text, peer: p.text, anchor: later.site as ts.Statement };
+  }
+  const body = ctorBody(s);
+  if (!body || body !== ctorBody(p)) throw new Refusal(index, `${names} are not made in the same block of code, so there is no scope in common to connect them in`);
+  const inBody = [s, p].filter((h) => h.container === body).map((h) => h.site as ts.Statement);
+  const anchor = inBody.length > 0 ? inBody.reduce((a, b) => (body.statements.indexOf(b) > body.statements.indexOf(a) ? b : a)) : body.statements.at(-1);
+  if (!anchor) throw new Refusal(index, `The constructor that makes ${names} is empty, so there is nothing to follow`);
+  return { self: s.text, peer: p.text, anchor };
+}
+
+/** A string in a template, in the quote the file uses. */
+function requote(code: string, quote: string): string {
+  return quote === "'" ? code : code.replace(/'([^'"\\]*)'/g, `${quote}$1${quote}`);
+}
+
+/** The statements of `plans`, written the way the file writes. */
+function renderCalls(edit: FileEdit, index: number, plans: readonly CallPlan[], names: { self: string; peer: string }, semicolon: string): string[] {
+  return plans.map((plan) => {
+    if (!plan.method.every((m) => IDENTIFIER.test(m))) throw new Refusal(index, `${plan.method.join('.')} is not a method name`);
+    const args = plan.args.map((a) => requote(a.split('{self}').join(names.self).split('{peer}').join(names.peer), edit.quote));
+    return `${plan.on === 'self' ? names.self : names.peer}.${plan.method.join('.')}(${importing(edit, index, args.join(', '), plan.uses)})${semicolon}`;
+  });
+}
+
+function connect({ index, intent }: Connecting, world: Facts, editOf: (file: string, intent: number) => FileEdit): void {
+  const selfFacts = world.nodes[intent.path]!;
+  const peerFacts = world.nodes[intent.peer.path]!;
+  const edit = editOf(selfFacts.span.file, index);
+  if (intent.type === 'removeConnection') return deleteCalls(edit, callsNamed(world, intent.calls, index), index);
+  if (intent.calls.length === 0) throw new Refusal(index, 'There is no call to write');
+  const names = bindingsOf(edit, selfFacts, peerFacts, index);
+  if (intent.type === 'addConnection') {
+    const semicolon = names.anchor.getText(edit.sf).endsWith(';') ? ';' : '';
+    return insertAfter(edit, names.anchor, renderCalls(edit, index, intent.calls, names, semicolon).join(`${edit.newline}${edit.indentOf(names.anchor)}`));
+  }
+  // The new calls go where the first of the old ones was, the rest of which are deleted.
+  const old = callsNamed(world, intent.was, index);
+  const [first, ...rest] = statementsOf(edit, old, index);
+  if (!first) throw new Refusal(index, 'There is no call to replace');
+  const semicolon = first.getText(edit.sf).endsWith(';') ? ';' : '';
+  edit.removed.add(first.getStart(edit.sf));
+  edit.change(first.getStart(edit.sf), first.getEnd(), renderCalls(edit, index, intent.calls, names, semicolon).join(`${edit.newline}${edit.indentOf(first)}`), 'add');
+  for (const st of rest) {
+    if (edit.removed.has(st.getStart(edit.sf))) continue;
+    edit.removed.add(st.getStart(edit.sf));
+    const r = removalRange(edit, st);
+    edit.change(r.start, r.end, '', 'remove');
+  }
+}
+
 const key = (f: NodeFacts) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
 /** Plans `intents` against `files`, which `facts` were read from. Every intent is checked, and the changes it makes are confined to the `new` call it names (and the file's imports). */
@@ -938,6 +1089,7 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
     const targets = new Map<string, Target>();
     const creations: Creation[] = [];
     const removals = new Map<string, Removal>();
+    const connections: Connecting[] = [];
     for (const [i, intent] of onBase(intents).entries()) {
       const f = facts.nodes[intent.path];
       if (!f) throw new Refusal(i, `There is no construct at ${intent.path} in the code`);
@@ -947,6 +1099,16 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
       }
       if (intent.type === 'addNode') {
         creations.push({ index: i, intent, scopePath: intent.path, scope: f });
+        continue;
+      }
+      if (isConnectionIntent(intent)) {
+        const peer = facts.nodes[intent.peer.path];
+        if (!peer) throw new Refusal(i, `There is no construct at ${intent.peer.path} in the code`);
+        if (peer.external) throw new Refusal(i, `${intent.peer.path} refers to an existing resource; the code doesn't create it`);
+        if (peer.className !== intent.peer.className || (peer.literalId ?? '') !== intent.peer.literalId) {
+          throw new Refusal(i, `${intent.peer.path} is no longer ${intent.peer.className} "${intent.peer.literalId}" in the code`);
+        }
+        connections.push({ index: i, intent });
         continue;
       }
       if (intent.type === 'removeNode') {
@@ -1010,16 +1172,17 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
     // What is removed is not also edited: the whole statement goes, so an edit of it earlier in the Draft has nothing left to change.
     for (const [span, target] of targets) if (!removals.has(span)) editNew(editOf(target.file, target.intent), target);
     for (const c of creations) create(c, facts, editOf, files, parse);
+    for (const c of connections) connect(c, facts, editOf);
     if (removals.size > 0) {
       const service = languageServiceOver(files);
-      for (const r of removals.values()) removeNode(r, editOf, files, service);
+      for (const r of removals.values()) removeNode(r, editOf, files, service, facts);
     }
 
     const changes: Record<string, TextChange[]> = {};
     for (const [file, edit] of edits) {
       const sorted = edit.finish();
       if (sorted.length === 0) continue;
-      const blame = [...targets.values()].find((t) => t.file === file)?.intent ?? creations[0]?.index ?? 0;
+      const blame = [...targets.values()].find((t) => t.file === file)?.intent ?? creations[0]?.index ?? connections[0]?.index ?? 0;
       let after: string;
       try {
         after = applyChanges(edit.text, sorted);

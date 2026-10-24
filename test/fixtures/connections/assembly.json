@@ -1,0 +1,1685 @@
+{
+  "schemaVersion": "55.0.0",
+  "tree": {
+    "id": "App",
+    "path": "",
+    "fqn": "aws-cdk-lib.App",
+    "children": [
+      {
+        "id": "Wiring",
+        "path": "Wiring",
+        "fqn": "aws-cdk-lib.Stack",
+        "children": [
+          {
+            "id": "Uploads",
+            "path": "Wiring/Uploads",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Wiring/Uploads/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Orders",
+            "path": "Wiring/Orders",
+            "fqn": "aws-cdk-lib.aws_sqs.Queue",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Wiring/Orders/Resource",
+                "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                "cfnType": "AWS::SQS::Queue",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Catalog",
+            "path": "Wiring/Catalog",
+            "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Wiring/Catalog/Resource",
+                "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                "cfnType": "AWS::DynamoDB::Table",
+                "children": []
+              },
+              {
+                "id": "ScalingRole",
+                "path": "Wiring/Catalog/ScalingRole",
+                "fqn": "aws-cdk-lib.Resource",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Events",
+            "path": "Wiring/Events",
+            "fqn": "aws-cdk-lib.aws_sns.Topic",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Wiring/Events/Resource",
+                "fqn": "aws-cdk-lib.aws_sns.CfnTopic",
+                "cfnType": "AWS::SNS::Topic",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Vpc",
+            "path": "Wiring/Vpc",
+            "fqn": "aws-cdk-lib.aws_ec2.Vpc",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Wiring/Vpc/Resource",
+                "fqn": "aws-cdk-lib.aws_ec2.CfnVPC",
+                "cfnType": "AWS::EC2::VPC",
+                "children": []
+              },
+              {
+                "id": "PublicSubnet1",
+                "path": "Wiring/Vpc/PublicSubnet1",
+                "fqn": "aws-cdk-lib.aws_ec2.PublicSubnet",
+                "children": [
+                  {
+                    "id": "Subnet",
+                    "path": "Wiring/Vpc/PublicSubnet1/Subnet",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
+                    "cfnType": "AWS::EC2::Subnet",
+                    "children": []
+                  },
+                  {
+                    "id": "Acl",
+                    "path": "Wiring/Vpc/PublicSubnet1/Acl",
+                    "fqn": "aws-cdk-lib.Resource",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTable",
+                    "path": "Wiring/Vpc/PublicSubnet1/RouteTable",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
+                    "cfnType": "AWS::EC2::RouteTable",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTableAssociation",
+                    "path": "Wiring/Vpc/PublicSubnet1/RouteTableAssociation",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
+                    "cfnType": "AWS::EC2::SubnetRouteTableAssociation",
+                    "children": []
+                  },
+                  {
+                    "id": "DefaultRoute",
+                    "path": "Wiring/Vpc/PublicSubnet1/DefaultRoute",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnRoute",
+                    "cfnType": "AWS::EC2::Route",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "PublicSubnet2",
+                "path": "Wiring/Vpc/PublicSubnet2",
+                "fqn": "aws-cdk-lib.aws_ec2.PublicSubnet",
+                "children": [
+                  {
+                    "id": "Subnet",
+                    "path": "Wiring/Vpc/PublicSubnet2/Subnet",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
+                    "cfnType": "AWS::EC2::Subnet",
+                    "children": []
+                  },
+                  {
+                    "id": "Acl",
+                    "path": "Wiring/Vpc/PublicSubnet2/Acl",
+                    "fqn": "aws-cdk-lib.Resource",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTable",
+                    "path": "Wiring/Vpc/PublicSubnet2/RouteTable",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
+                    "cfnType": "AWS::EC2::RouteTable",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTableAssociation",
+                    "path": "Wiring/Vpc/PublicSubnet2/RouteTableAssociation",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
+                    "cfnType": "AWS::EC2::SubnetRouteTableAssociation",
+                    "children": []
+                  },
+                  {
+                    "id": "DefaultRoute",
+                    "path": "Wiring/Vpc/PublicSubnet2/DefaultRoute",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnRoute",
+                    "cfnType": "AWS::EC2::Route",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "IsolatedSubnet1",
+                "path": "Wiring/Vpc/IsolatedSubnet1",
+                "fqn": "aws-cdk-lib.aws_ec2.PrivateSubnet",
+                "children": [
+                  {
+                    "id": "Subnet",
+                    "path": "Wiring/Vpc/IsolatedSubnet1/Subnet",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
+                    "cfnType": "AWS::EC2::Subnet",
+                    "children": []
+                  },
+                  {
+                    "id": "Acl",
+                    "path": "Wiring/Vpc/IsolatedSubnet1/Acl",
+                    "fqn": "aws-cdk-lib.Resource",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTable",
+                    "path": "Wiring/Vpc/IsolatedSubnet1/RouteTable",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
+                    "cfnType": "AWS::EC2::RouteTable",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTableAssociation",
+                    "path": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
+                    "cfnType": "AWS::EC2::SubnetRouteTableAssociation",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "IsolatedSubnet2",
+                "path": "Wiring/Vpc/IsolatedSubnet2",
+                "fqn": "aws-cdk-lib.aws_ec2.PrivateSubnet",
+                "children": [
+                  {
+                    "id": "Subnet",
+                    "path": "Wiring/Vpc/IsolatedSubnet2/Subnet",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
+                    "cfnType": "AWS::EC2::Subnet",
+                    "children": []
+                  },
+                  {
+                    "id": "Acl",
+                    "path": "Wiring/Vpc/IsolatedSubnet2/Acl",
+                    "fqn": "aws-cdk-lib.Resource",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTable",
+                    "path": "Wiring/Vpc/IsolatedSubnet2/RouteTable",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
+                    "cfnType": "AWS::EC2::RouteTable",
+                    "children": []
+                  },
+                  {
+                    "id": "RouteTableAssociation",
+                    "path": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
+                    "cfnType": "AWS::EC2::SubnetRouteTableAssociation",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "IGW",
+                "path": "Wiring/Vpc/IGW",
+                "fqn": "aws-cdk-lib.aws_ec2.CfnInternetGateway",
+                "cfnType": "AWS::EC2::InternetGateway",
+                "children": []
+              },
+              {
+                "id": "VPCGW",
+                "path": "Wiring/Vpc/VPCGW",
+                "fqn": "aws-cdk-lib.aws_ec2.CfnVPCGatewayAttachment",
+                "cfnType": "AWS::EC2::VPCGatewayAttachment",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Db",
+            "path": "Wiring/Db",
+            "fqn": "aws-cdk-lib.aws_rds.DatabaseInstance",
+            "children": [
+              {
+                "id": "SubnetGroup",
+                "path": "Wiring/Db/SubnetGroup",
+                "fqn": "aws-cdk-lib.aws_rds.SubnetGroup",
+                "children": [
+                  {
+                    "id": "Default",
+                    "path": "Wiring/Db/SubnetGroup/Default",
+                    "fqn": "aws-cdk-lib.aws_rds.CfnDBSubnetGroup",
+                    "cfnType": "AWS::RDS::DBSubnetGroup",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "SecurityGroup",
+                "path": "Wiring/Db/SecurityGroup",
+                "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Db/SecurityGroup/Resource",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
+                    "cfnType": "AWS::EC2::SecurityGroup",
+                    "children": []
+                  },
+                  {
+                    "id": "from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}",
+                    "path": "Wiring/Db/SecurityGroup/from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroupIngress",
+                    "cfnType": "AWS::EC2::SecurityGroupIngress",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "Secret",
+                "path": "Wiring/Db/Secret",
+                "fqn": "aws-cdk-lib.aws_rds.DatabaseSecret",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Db/Secret/Resource",
+                    "fqn": "aws-cdk-lib.aws_secretsmanager.CfnSecret",
+                    "cfnType": "AWS::SecretsManager::Secret",
+                    "children": []
+                  },
+                  {
+                    "id": "Attachment",
+                    "path": "Wiring/Db/Secret/Attachment",
+                    "fqn": "aws-cdk-lib.aws_secretsmanager.SecretTargetAttachment",
+                    "children": [
+                      {
+                        "id": "Resource",
+                        "path": "Wiring/Db/Secret/Attachment/Resource",
+                        "fqn": "aws-cdk-lib.aws_secretsmanager.CfnSecretTargetAttachment",
+                        "cfnType": "AWS::SecretsManager::SecretTargetAttachment",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "Resource",
+                "path": "Wiring/Db/Resource",
+                "fqn": "aws-cdk-lib.aws_rds.CfnDBInstance",
+                "cfnType": "AWS::RDS::DBInstance",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Handler",
+            "path": "Wiring/Handler",
+            "fqn": "aws-cdk-lib.aws_lambda.Function",
+            "children": [
+              {
+                "id": "ServiceRole",
+                "path": "Wiring/Handler/ServiceRole",
+                "fqn": "aws-cdk-lib.aws_iam.Role",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Handler/ServiceRole/Resource",
+                    "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                    "cfnType": "AWS::IAM::Role",
+                    "children": []
+                  },
+                  {
+                    "id": "DefaultPolicy",
+                    "path": "Wiring/Handler/ServiceRole/DefaultPolicy",
+                    "fqn": "aws-cdk-lib.aws_iam.Policy",
+                    "children": [
+                      {
+                        "id": "Resource",
+                        "path": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+                        "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                        "cfnType": "AWS::IAM::Policy",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "SecurityGroup",
+                "path": "Wiring/Handler/SecurityGroup",
+                "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Handler/SecurityGroup/Resource",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
+                    "cfnType": "AWS::EC2::SecurityGroup",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "Resource",
+                "path": "Wiring/Handler/Resource",
+                "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                "cfnType": "AWS::Lambda::Function",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Worker",
+            "path": "Wiring/Worker",
+            "fqn": "aws-cdk-lib.aws_lambda.Function",
+            "children": [
+              {
+                "id": "ServiceRole",
+                "path": "Wiring/Worker/ServiceRole",
+                "fqn": "aws-cdk-lib.aws_iam.Role",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Worker/ServiceRole/Resource",
+                    "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                    "cfnType": "AWS::IAM::Role",
+                    "children": []
+                  },
+                  {
+                    "id": "DefaultPolicy",
+                    "path": "Wiring/Worker/ServiceRole/DefaultPolicy",
+                    "fqn": "aws-cdk-lib.aws_iam.Policy",
+                    "children": [
+                      {
+                        "id": "Resource",
+                        "path": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+                        "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                        "cfnType": "AWS::IAM::Policy",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "Resource",
+                "path": "Wiring/Worker/Resource",
+                "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                "cfnType": "AWS::Lambda::Function",
+                "children": []
+              },
+              {
+                "id": "SqsEventSource:WiringOrders222757F6",
+                "path": "Wiring/Worker/SqsEventSource:WiringOrders222757F6",
+                "fqn": "aws-cdk-lib.aws_lambda.EventSourceMapping",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Worker/SqsEventSource:WiringOrders222757F6/Resource",
+                    "fqn": "aws-cdk-lib.aws_lambda.CfnEventSourceMapping",
+                    "cfnType": "AWS::Lambda::EventSourceMapping",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "Reporter",
+            "path": "Wiring/Reporter",
+            "fqn": "aws-cdk-lib.aws_lambda.Function",
+            "children": [
+              {
+                "id": "ServiceRole",
+                "path": "Wiring/Reporter/ServiceRole",
+                "fqn": "aws-cdk-lib.aws_iam.Role",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Reporter/ServiceRole/Resource",
+                    "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                    "cfnType": "AWS::IAM::Role",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "SecurityGroup",
+                "path": "Wiring/Reporter/SecurityGroup",
+                "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Reporter/SecurityGroup/Resource",
+                    "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
+                    "cfnType": "AWS::EC2::SecurityGroup",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "Resource",
+                "path": "Wiring/Reporter/Resource",
+                "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                "cfnType": "AWS::Lambda::Function",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Idle",
+            "path": "Wiring/Idle",
+            "fqn": "aws-cdk-lib.aws_lambda.Function",
+            "children": [
+              {
+                "id": "ServiceRole",
+                "path": "Wiring/Idle/ServiceRole",
+                "fqn": "aws-cdk-lib.aws_iam.Role",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Idle/ServiceRole/Resource",
+                    "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                    "cfnType": "AWS::IAM::Role",
+                    "children": []
+                  },
+                  {
+                    "id": "DefaultPolicy",
+                    "path": "Wiring/Idle/ServiceRole/DefaultPolicy",
+                    "fqn": "aws-cdk-lib.aws_iam.Policy",
+                    "children": [
+                      {
+                        "id": "Resource",
+                        "path": "Wiring/Idle/ServiceRole/DefaultPolicy/Resource",
+                        "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                        "cfnType": "AWS::IAM::Policy",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "Resource",
+                "path": "Wiring/Idle/Resource",
+                "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                "cfnType": "AWS::Lambda::Function",
+                "children": []
+              },
+              {
+                "id": "AllowInvoke:WiringEvents521BBF23",
+                "path": "Wiring/Idle/AllowInvoke:WiringEvents521BBF23",
+                "fqn": "aws-cdk-lib.aws_lambda.CfnPermission",
+                "cfnType": "AWS::Lambda::Permission",
+                "children": []
+              },
+              {
+                "id": "Events",
+                "path": "Wiring/Idle/Events",
+                "fqn": "aws-cdk-lib.aws_sns.Subscription",
+                "children": [
+                  {
+                    "id": "Resource",
+                    "path": "Wiring/Idle/Events/Resource",
+                    "fqn": "aws-cdk-lib.aws_sns.CfnSubscription",
+                    "cfnType": "AWS::SNS::Subscription",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "CDKMetadata",
+            "path": "Wiring/CDKMetadata",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Default",
+                "path": "Wiring/CDKMetadata/Default",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              },
+              {
+                "id": "Condition",
+                "path": "Wiring/CDKMetadata/Condition",
+                "fqn": "aws-cdk-lib.CfnCondition",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "BootstrapVersion",
+            "path": "Wiring/BootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnParameter",
+            "children": []
+          },
+          {
+            "id": "CheckBootstrapVersion",
+            "path": "Wiring/CheckBootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnRule",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "Tree",
+        "path": "Tree",
+        "fqn": "constructs.Construct",
+        "children": []
+      }
+    ]
+  },
+  "stacks": [
+    {
+      "path": "Wiring"
+    }
+  ],
+  "creation": {
+    "Wiring": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Uploads/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 17,
+        "col": 21
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Orders/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 18,
+        "col": 20
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Catalog/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 19,
+        "col": 21
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Events/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 20,
+        "col": 20
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Vpc/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 21,
+        "col": 17
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Vpc/IGW": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 21,
+        "col": 17
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Vpc/VPCGW": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 21,
+        "col": 17
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Db/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 22,
+        "col": 16
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Handler/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 28,
+        "col": 21
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Worker/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 34,
+        "col": 20
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Reporter/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 40,
+        "col": 22
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Idle/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 46,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Idle/AllowInvoke:WiringEvents521BBF23": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 66,
+        "col": 12
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Vpc/PublicSubnet1/DefaultRoute": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 21,
+        "col": 17
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Vpc/PublicSubnet2/DefaultRoute": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 21,
+        "col": 17
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Db/SubnetGroup/Default": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 22,
+        "col": 16
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Db/SecurityGroup/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 22,
+        "col": 16
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Db/SecurityGroup/from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 69,
+        "col": 20
+      }
+    ],
+    "Wiring/Db/Secret/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 22,
+        "col": 16
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      }
+    ],
+    "Wiring/Handler/ServiceRole/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 28,
+        "col": 21
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Handler/SecurityGroup/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 28,
+        "col": 21
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Worker/ServiceRole/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 34,
+        "col": 20
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Worker/SqsEventSource:WiringOrders222757F6/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 65,
+        "col": 12
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Reporter/ServiceRole/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 40,
+        "col": 22
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Reporter/SecurityGroup/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 40,
+        "col": 22
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Idle/ServiceRole/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 46,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Idle/Events/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 66,
+        "col": 12
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Db/Secret/Attachment/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 22,
+        "col": 16
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 30
+      }
+    ],
+    "Wiring/Worker/ServiceRole/DefaultPolicy/Resource": [
+      {
+        "fn": "new WiringStack",
+        "file": "lib/wiring-stack.ts",
+        "line": 57,
+        "col": 20
+      }
+    ]
+  },
+  "resourceRefs": [
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/Subnet",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/RouteTable",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/RouteTableAssociation",
+      "to": "Wiring/Vpc/PublicSubnet1/RouteTable"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/RouteTableAssociation",
+      "to": "Wiring/Vpc/PublicSubnet1/Subnet"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/DefaultRoute",
+      "to": "Wiring/Vpc/IGW"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/DefaultRoute",
+      "to": "Wiring/Vpc/PublicSubnet1/RouteTable"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet1/DefaultRoute",
+      "to": "Wiring/Vpc/VPCGW"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/Subnet",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/RouteTable",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/RouteTableAssociation",
+      "to": "Wiring/Vpc/PublicSubnet2/RouteTable"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/RouteTableAssociation",
+      "to": "Wiring/Vpc/PublicSubnet2/Subnet"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/DefaultRoute",
+      "to": "Wiring/Vpc/IGW"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/DefaultRoute",
+      "to": "Wiring/Vpc/PublicSubnet2/RouteTable"
+    },
+    {
+      "from": "Wiring/Vpc/PublicSubnet2/DefaultRoute",
+      "to": "Wiring/Vpc/VPCGW"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet1/Subnet",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet1/RouteTable",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTable"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation",
+      "to": "Wiring/Vpc/IsolatedSubnet1/Subnet"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet2/Subnet",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet2/RouteTable",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTable"
+    },
+    {
+      "from": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation",
+      "to": "Wiring/Vpc/IsolatedSubnet2/Subnet"
+    },
+    {
+      "from": "Wiring/Vpc/VPCGW",
+      "to": "Wiring/Vpc/IGW"
+    },
+    {
+      "from": "Wiring/Vpc/VPCGW",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Db/SubnetGroup/Default",
+      "to": "Wiring/Vpc/IsolatedSubnet1/Subnet"
+    },
+    {
+      "from": "Wiring/Db/SubnetGroup/Default",
+      "to": "Wiring/Vpc/IsolatedSubnet2/Subnet"
+    },
+    {
+      "from": "Wiring/Db/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Db/SecurityGroup/from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}",
+      "to": "Wiring/Db/Resource"
+    },
+    {
+      "from": "Wiring/Db/SecurityGroup/from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}",
+      "to": "Wiring/Db/SecurityGroup/Resource"
+    },
+    {
+      "from": "Wiring/Db/SecurityGroup/from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}",
+      "to": "Wiring/Handler/SecurityGroup/Resource"
+    },
+    {
+      "from": "Wiring/Db/Secret/Attachment/Resource",
+      "to": "Wiring/Db/Secret/Resource"
+    },
+    {
+      "from": "Wiring/Db/Secret/Attachment/Resource",
+      "to": "Wiring/Db/Resource"
+    },
+    {
+      "from": "Wiring/Db/Resource",
+      "to": "Wiring/Db/SubnetGroup/Default"
+    },
+    {
+      "from": "Wiring/Db/Resource",
+      "to": "Wiring/Db/Secret/Resource"
+    },
+    {
+      "from": "Wiring/Db/Resource",
+      "to": "Wiring/Db/SecurityGroup/Resource"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Uploads/Resource"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Catalog/Resource"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Handler/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Handler/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Uploads/Resource"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Handler/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Handler/SecurityGroup/Resource"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/Subnet"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/Subnet"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Handler/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Catalog/Resource"
+    },
+    {
+      "from": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Orders/Resource"
+    },
+    {
+      "from": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Worker/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Worker/Resource",
+      "to": "Wiring/Worker/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Worker/Resource",
+      "to": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource"
+    },
+    {
+      "from": "Wiring/Worker/SqsEventSource:WiringOrders222757F6/Resource",
+      "to": "Wiring/Orders/Resource"
+    },
+    {
+      "from": "Wiring/Worker/SqsEventSource:WiringOrders222757F6/Resource",
+      "to": "Wiring/Worker/Resource"
+    },
+    {
+      "from": "Wiring/Reporter/ServiceRole/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Reporter/ServiceRole/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Reporter/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/Resource"
+    },
+    {
+      "from": "Wiring/Reporter/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Reporter/SecurityGroup/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Reporter/Resource",
+      "to": "Wiring/Reporter/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Reporter/Resource",
+      "to": "Wiring/Reporter/SecurityGroup/Resource"
+    },
+    {
+      "from": "Wiring/Reporter/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/Subnet"
+    },
+    {
+      "from": "Wiring/Reporter/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/Subnet"
+    },
+    {
+      "from": "Wiring/Reporter/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet1/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Reporter/Resource",
+      "to": "Wiring/Vpc/IsolatedSubnet2/RouteTableAssociation"
+    },
+    {
+      "from": "Wiring/Idle/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Orders/Resource"
+    },
+    {
+      "from": "Wiring/Idle/ServiceRole/DefaultPolicy/Resource",
+      "to": "Wiring/Idle/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Idle/Resource",
+      "to": "Wiring/Idle/ServiceRole/Resource"
+    },
+    {
+      "from": "Wiring/Idle/Resource",
+      "to": "Wiring/Idle/ServiceRole/DefaultPolicy/Resource"
+    },
+    {
+      "from": "Wiring/Idle/AllowInvoke:WiringEvents521BBF23",
+      "to": "Wiring/Idle/Resource"
+    },
+    {
+      "from": "Wiring/Idle/AllowInvoke:WiringEvents521BBF23",
+      "to": "Wiring/Events/Resource"
+    },
+    {
+      "from": "Wiring/Idle/Events/Resource",
+      "to": "Wiring/Idle/Resource"
+    },
+    {
+      "from": "Wiring/Idle/Events/Resource",
+      "to": "Wiring/Events/Resource"
+    }
+  ],
+  "annotations": [],
+  "effects": [
+    {
+      "kind": "network",
+      "at": "Wiring/Db/SecurityGroup/from WiringHandlerSecurityGroup4F9143C6:{IndirectPort}",
+      "source": {
+        "paths": [
+          "Wiring/Handler/SecurityGroup/Resource"
+        ],
+        "text": "{Wiring/Handler/SecurityGroup/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Db/SecurityGroup/Resource"
+        ],
+        "text": "{Wiring/Db/SecurityGroup/Resource}"
+      },
+      "detail": "tcp [object Object]-[object Object]"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Handler/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Handler/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Uploads/Resource"
+        ],
+        "text": "{Wiring/Uploads/Resource}"
+      },
+      "detail": "s3:GetObject*, s3:GetBucket*, s3:List*"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Handler/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Handler/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Uploads/Resource"
+        ],
+        "text": "{Wiring/Uploads/Resource}/*"
+      },
+      "detail": "s3:GetObject*, s3:GetBucket*, s3:List*"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Handler/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Handler/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Catalog/Resource"
+        ],
+        "text": "{Wiring/Catalog/Resource}"
+      },
+      "detail": "dynamodb:BatchGetItem, dynamodb:Query, dynamodb:GetItem, dynamodb:Scan, dynamodb:ConditionCheckItem, dynamodb:DescribeTable"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Handler/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Handler/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Catalog/Resource"
+        ],
+        "text": "{Wiring/Catalog/Resource}"
+      },
+      "detail": "dynamodb:GetRecords, dynamodb:GetShardIterator"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Handler/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Handler/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Handler/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Catalog/Resource"
+        ],
+        "text": "{Wiring/Catalog/Resource}"
+      },
+      "detail": "dynamodb:BatchWriteItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:DescribeTable"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Worker/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Worker/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Catalog/Resource"
+        ],
+        "text": "{Wiring/Catalog/Resource}"
+      },
+      "detail": "dynamodb:BatchGetItem, dynamodb:Query, dynamodb:GetItem, dynamodb:Scan, dynamodb:ConditionCheckItem, dynamodb:BatchWriteItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:DescribeTable"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Worker/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Worker/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Catalog/Resource"
+        ],
+        "text": "{Wiring/Catalog/Resource}"
+      },
+      "detail": "dynamodb:GetRecords, dynamodb:GetShardIterator"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Worker/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Worker/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Worker/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Orders/Resource"
+        ],
+        "text": "{Wiring/Orders/Resource}"
+      },
+      "detail": "sqs:ReceiveMessage, sqs:ChangeMessageVisibility, sqs:GetQueueUrl, sqs:DeleteMessage, sqs:GetQueueAttributes"
+    },
+    {
+      "kind": "integration",
+      "at": "Wiring/Worker/SqsEventSource:WiringOrders222757F6/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Orders/Resource"
+        ],
+        "text": "{Wiring/Orders/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Worker/Resource"
+        ],
+        "text": "{Wiring/Worker/Resource}"
+      },
+      "detail": "event source mapping"
+    },
+    {
+      "kind": "grant",
+      "at": "Wiring/Idle/ServiceRole/DefaultPolicy/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Idle/ServiceRole/Resource"
+        ],
+        "text": "{Wiring/Idle/ServiceRole/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Orders/Resource"
+        ],
+        "text": "{Wiring/Orders/Resource}"
+      },
+      "detail": "sqs:PurgeQueue, sqs:GetQueueAttributes, sqs:GetQueueUrl"
+    },
+    {
+      "kind": "integration",
+      "at": "Wiring/Idle/Events/Resource",
+      "source": {
+        "paths": [
+          "Wiring/Events/Resource"
+        ],
+        "text": "{Wiring/Events/Resource}"
+      },
+      "target": {
+        "paths": [
+          "Wiring/Idle/Resource"
+        ],
+        "text": "{Wiring/Idle/Resource}"
+      },
+      "detail": "subscription (lambda)"
+    }
+  ],
+  "importRefs": []
+}

@@ -199,3 +199,9 @@ button.link { padding: 0; border: 0; background: none; color: var(--accent); cur
 .reference-edge.grant-edge .react-flow__edge-path { stroke: var(--fg); stroke-dasharray: 8 3; }
 .reference-edge.integration-edge .react-flow__edge-path { stroke: var(--fg); stroke-dasharray: 2 3; }
 .reference-edge.network-edge .react-flow__edge-path { stroke: var(--muted); stroke-dasharray: 8 3 2 3; }
+
+.hint-choice { border: 0; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.hint-env { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.connection-props { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.edge-calls { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.edge-calls li { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }

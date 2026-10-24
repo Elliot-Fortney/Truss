@@ -68,3 +68,12 @@ describe('edge words', () => {
     expect(edgeTitle({ ...edge, readOnly: 'Passed through a call' }, names)).toBe('Fn.securityGroups[1] → Vpc (read-only: Passed through a call)');
   });
 });
+
+describe('dropOn with hints', () => {
+  const h = (hint: string, text: string, extra = {}) => ({ hint, self: 'a', peer: 'b', kind: 'grant' as const, text, ...extra });
+  it('stages the one hint that fits, and asks when there are several or a prop takes it too', () => {
+    expect(dropOn({ x: { ok: true, options: [], hints: [h('H#0', 'A is read by B')] } }, 'x')).toMatchObject({ kind: 'hint', hint: { hint: 'H#0' } });
+    expect(dropOn({ x: { ok: true, options: [], hints: [h('H#0', 'one'), h('H#1', 'two')] } }, 'x')).toMatchObject({ kind: 'choose', hints: [{ hint: 'H#0' }, { hint: 'H#1' }] });
+    expect(dropOn({ x: { ok: true, options: [{ prop: 'p', type: 'T', many: false }], hints: [h('H#0', 'one')] } }, 'x')).toMatchObject({ kind: 'choose' });
+  });
+});

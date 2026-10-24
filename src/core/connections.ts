@@ -1,5 +1,5 @@
 import type { Assembly, Effect, EffectEnd } from './assembly.ts';
-import type { Facts } from './facts.ts';
+import type { CallFacts, Facts } from './facts.ts';
 
 /** One thing the synthesized app grants, triggers or opens (ADR 0012), as the panel lists it. */
 export interface EffectView {
@@ -9,6 +9,32 @@ export interface EffectView {
   summary: string;
   /** The construct path of the resource that carries it, e.g. a policy. */
   at: string;
+}
+
+/** A call in the code that makes a Connection, as the panel of its edge lists it. */
+export interface EdgeCallView {
+  /** Names the call in the code as it is now. */
+  id: string;
+  role: 'primary' | 'secondary';
+  /** The statement as written. */
+  text: string;
+  /** The Overlay hint it is an instance of; absent for a generic jsii grant call. */
+  hint?: string;
+  /** For a call that sets an environment variable, its name. */
+  env?: string;
+  /** Whether Truss can remove or rewrite it, and why not. */
+  editable: boolean;
+  reason?: string;
+}
+
+/** What the panel of an edge offers to change about the Connection it is: the props of the Connection. */
+export interface ConnectionPropsView {
+  /** What the Connection is, among the ways the Overlay offers to make it. Featured first. */
+  access?: { current: string; options: Array<{ hint: string; text: string }> };
+  /** Two Grants on the pair that the Overlay has one Grant for. */
+  combine?: { hint: string; text: string };
+  /** The environment variable the Connection sets, and whether it does. */
+  env?: { name: string; on: boolean; default: string };
 }
 
 /** The part of a Node on screen that connections are rolled up to. */
@@ -26,19 +52,41 @@ export interface ConnectionEdge {
   to: string;
   prop: string;
   text: string;
-  readOnly: string;
+  /** Why Truss draws it but doesn't edit it, when that is so. */
+  readOnly?: string;
   /** Read from what synth produced, not written in the code. */
-  fromSynth: true;
+  fromSynth?: true;
   source?: { file: string; line: number; col: number };
   effects?: EffectView[];
+  /** The calls of the code that make it. */
+  calls?: EdgeCallView[];
+  /** What can be changed about the Connection, when it can be. */
+  connection?: ConnectionPropsView;
 }
 
 type Kind = 'grant' | 'integration' | 'network';
 
-const READ_ONLY = 'Truss reads this from what the app synthesizes and does not edit it yet';
+const READ_ONLY = 'Truss reads this from what the app synthesizes, and no call it recognises makes it';
 const CROSS_STACK = "It reads another Stack's export through Fn::ImportValue, which Truss does not edit";
 
 const NOUN: Record<Kind, [string, string]> = { grant: ['permission', 'permissions'], integration: ['trigger', 'triggers'], network: ['rule', 'rules'] };
+
+const callView = (c: CallFacts): EdgeCallView => ({
+  id: c.id,
+  role: c.role,
+  text: c.text,
+  ...(c.hint ? { hint: c.hint } : {}),
+  ...(c.env !== undefined ? { env: c.env } : {}),
+  editable: c.editable,
+  ...(c.reason ? { reason: c.reason } : {}),
+});
+
+/** Why the edge can't be removed as one, when it can't: every call that makes it has to be one Truss edits (ADR 0012). */
+function readOnlyOf(mine: readonly CallFacts[]): string | undefined {
+  const primaries = mine.filter((c) => c.role === 'primary');
+  if (primaries.length === 0) return READ_ONLY;
+  return primaries.find((c) => !c.editable)?.reason ?? undefined;
+}
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -101,9 +149,19 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
   }
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const calls = new Map<string, CallFacts[]>();
+  for (const c of facts.calls ?? []) {
+    if (!ids.has(c.from) || !ids.has(c.to) || c.from === c.to) continue;
+    const key = `${c.kind}\0${c.from}\0${c.to}`;
+    (calls.get(key) ?? calls.set(key, []).get(key)!).push(c);
+  }
   const out: ConnectionEdge[] = [...edges.values()].map(({ kind, from, to, effects }) => {
-    const source = nodeById.get(from)?.source ?? nodeById.get(to)?.source;
+    const mine = calls.get(`${kind}\0${from}\0${to}`) ?? [];
+    calls.delete(`${kind}\0${from}\0${to}`);
+    const primary = mine.find((c) => c.role === 'primary');
+    const source = primary?.span ? { file: primary.span.file, line: primary.span.start.line, col: primary.span.start.col } : (nodeById.get(from)?.source ?? nodeById.get(to)?.source);
     const [one, many] = NOUN[kind];
+    const lock = readOnlyOf(mine);
     return {
       id: `${kind}:${from}->${to}`,
       kind,
@@ -111,12 +169,30 @@ export function connectionsOf(assembly: Assembly, facts: Facts, nodes: readonly 
       to,
       prop: effects.length === 1 ? effects[0]!.detail : `${effects.length} ${many}`,
       text: effects.length === 1 ? effects[0]!.summary : `${effects.length} ${effects.length === 1 ? one : many}`,
-      readOnly: READ_ONLY,
+      ...(lock !== undefined ? { readOnly: lock } : {}),
       fromSynth: true as const,
       ...(source ? { source } : {}),
       effects,
+      ...(mine.length > 0 ? { calls: mine.map(callView) } : {}),
     };
   });
+  // A call that makes a Connection synth shows nothing of (a route to a Function, an origin) is an edge of its own.
+  for (const mine of calls.values()) {
+    const primary = mine.find((c) => c.role === 'primary');
+    if (!primary) continue;
+    const lock = readOnlyOf(mine);
+    out.push({
+      id: `${primary.kind}:${primary.from}->${primary.to}`,
+      kind: primary.kind,
+      from: primary.from,
+      to: primary.to,
+      prop: primary.method.join('.'),
+      text: primary.text,
+      ...(lock !== undefined ? { readOnly: lock } : {}),
+      source: { file: primary.span.file, line: primary.span.start.line, col: primary.span.start.col },
+      calls: mine.map(callView),
+    });
+  }
 
   const drawn = new Set(existing.map((e) => `${e.from}\0${e.to}`));
   for (const r of assembly.importRefs ?? []) {

@@ -2,7 +2,8 @@ import type { Assembly, TreeNode } from './assembly.ts';
 import { offsetOf, type TextChange } from './diff.ts';
 import type { Facts } from './facts.ts';
 import { parentPath, withId } from './construct-id.ts';
-import { afterMoves, beforeMoves, movesOf, onBase, type Intent } from './intents.ts';
+import { afterMoves, beforeMoves, isConnectionIntent, movesOf, onBase, sameCall, type Intent } from './intents.ts';
+import { NESTED_STACK_FQN, STAGE_FQN } from './tree.ts';
 import type { Diagnostic, FileSet } from './ports.ts';
 
 const spanKey = (f: { span: { file: string; start: { line: number; col: number } } }) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
@@ -41,6 +42,21 @@ function pathsOf(tree: TreeNode): Map<string, string> {
   };
   walk(tree);
   return out;
+}
+
+const underPath = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+
+/** What the synthesized app grants, triggers or opens between two Nodes, either way round, in words that don't mention where. */
+function between(a: Assembly, x: string, y: string): string[] {
+  return (a.effects ?? [])
+    .filter((e) => (e.source.paths.some((p) => underPath(p, x)) && e.target.paths.some((p) => underPath(p, y))) || (e.source.paths.some((p) => underPath(p, y)) && e.target.paths.some((p) => underPath(p, x))))
+    .map((e) => `${e.kind}|${e.detail}`)
+    .sort();
+}
+
+/** The paths beneath `root`, to compare what a construct holds before and after. */
+function beneath(tree: TreeNode, root: string): string[] {
+  return [...pathsOf(tree).keys()].filter((p) => p.startsWith(`${root}/`)).sort();
 }
 
 /** What the planned changes are checked against, none of which is the planner's own word for what it did. */
@@ -82,7 +98,25 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
   // A rename moves one construct and what is beneath it, which is then the only thing that is somewhere else in the tree.
   const moves = movesOf(intents);
   const paths = targetPaths(facts, intents);
-  const below = (path: string) => [...paths].some((t) => path.startsWith(`${t}/`));
+  // A Connection reaches into the Nodes at both its ends: a Function gets a policy, a Queue a mapping to it. And a construct the library makes
+  // for the Stack as a whole, such as the handler of every bucket notification, is not any Node's.
+  const stackScope = new Set([...before.stacks, ...after.stacks].map((st) => st.path));
+  const reachedByConnections = new Set(
+    onDisk.flatMap((i) => {
+      if (isConnectionIntent(i)) return [i.path, i.peer.path];
+      if (i.type !== 'removeNode') return [];
+      return (facts.calls ?? []).filter((c) => c.editable && (c.on === i.path || c.peer === i.path)).flatMap((c) => [c.on, c.peer]);
+    }),
+  );
+  const connecting = reachedByConnections.size > 0;
+  const nodesOfCode = Object.keys(facts.nodes).filter((p) => !stackScope.has(p));
+  const plumbing = (path: string, tree: TreeNode) => {
+    if (!connecting) return false;
+    const fqn = pathsOf(tree).get(path);
+    if (fqn === NESTED_STACK_FQN || fqn === STAGE_FQN) return false;
+    return !nodesOfCode.some((n) => underPath(path, n));
+  };
+  const below = (path: string) => [...paths, ...[...reachedByConnections].map((p) => afterMoves(moves, p)), ...reachedByConnections].some((t) => path.startsWith(`${t}/`)) || (connecting && plumbing(path, after.tree) && plumbing(path, before.tree));
   const was = pathsOf(before.tree);
   const reached = pathsOf(after.tree);
   const now = new Map([...reached].map(([path, fqn]) => [beforeMoves(moves, path), fqn]));
@@ -132,6 +166,24 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     if (!hasResources(after.tree, to) || !hasResources(after.tree, from)) continue;
     const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
     if (!after.resourceRefs.some((r) => under(r.from, from) && under(r.to, to))) failures.push(`${from} does not point at ${to} after the edit`);
+  }
+  // A Connection an edit makes, or takes away the last of, shows in the synthesized app: what is granted, triggered or opened between its Nodes changes.
+  for (const i of onDisk) {
+    if (!isConnectionIntent(i) || i.type === 'replaceConnection') continue;
+    // The environment variable a Connection sets is in no template Truss reads, so only a call that makes the Connection can be told by what it does.
+    if (!i.calls.some((c) => c.role === 'primary')) continue;
+    const x = afterMoves(moves, i.path);
+    const y = afterMoves(moves, i.peer.path);
+    const had = between(before, i.path, i.peer.path);
+    const has = between(after, x, y);
+    const inside = (a: Assembly, p: string, q: string) => `${beneath(a.tree, p).join(',')}|${beneath(a.tree, q).join(',')}`;
+    const changed = had.join('\n') !== has.join('\n') || inside(before, i.path, i.peer.path) !== inside(after, x, y);
+    if (i.type === 'addConnection' && !changed) failures.push(`${x} and ${y} are no more connected after the edit`);
+    if (i.type === 'removeConnection') {
+      const left = (facts.calls ?? []).filter((c) => c.role === 'primary' && [c.on, c.peer].sort().join() === [i.path, i.peer.path].sort().join() && !i.calls.some((r) => sameCall(r, { role: c.role, on: c.on, peer: c.peer, method: c.method, ...(c.env !== undefined ? { env: c.env } : {}) })));
+      if (left.length === 0 && had.length > 0 && has.length > 0) failures.push(`${x} and ${y} are still connected after the edit`);
+      else if (!changed) failures.push(`${x} and ${y} are no less connected after the edit`);
+    }
   }
   const stacks = (a: Assembly) => JSON.stringify(a.stacks.filter((s) => !paths.has(beforeMoves(moves, s.path)) && !below(beforeMoves(moves, s.path))));
   if (stacks(before) !== stacks(after)) failures.push('The edit changes a Stack it should not touch');

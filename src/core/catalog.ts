@@ -55,6 +55,8 @@ export interface CatalogEntry {
   props: CatalogProp[];
   /** The construct's own FQN and those of every class and interface it inherits from, so a prop typed as one of them takes it. */
   assignableTo: string[];
+  /** The instance methods, its own and inherited, that take an `IGrantable` and return a `Grant`: `grantRead`, `grantInvoke`. */
+  grantMethods: string[];
   /** The hand-written presentation data for this construct, with the items that don't resolve in the app's libraries left out. */
   overlay?: ResolvedOverlay;
 }
@@ -67,12 +69,12 @@ export interface Catalog {
 }
 
 /** An entry as the palette lists it: everything but the props, with the Overlay's friendly name and whether it is featured. */
-export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay' | 'assignableTo'> & { displayName?: string; featured?: true };
+export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay' | 'assignableTo' | 'grantMethods'> & { displayName?: string; featured?: true };
 
 // --- Digest ---------------------------------------------------------------------------------------------
 
 /** Bump when the digest's shape changes, so a cache written by an older Truss is ignored. */
-export const DIGEST_FORMAT = 3;
+export const DIGEST_FORMAT = 4;
 
 /** A jsii type reference. */
 export type TypeRef =
@@ -98,6 +100,8 @@ interface DigestClass {
   interfaces?: string[];
   /** Names of the instance methods a caller can use, declared on this class and not on its bases. */
   methods?: string[];
+  /** Those of `methods` that take an `IGrantable` and return a `Grant`. */
+  grantMethods?: string[];
   /** Instance properties a caller can use, by name, each with the FQN of its type, or `''` when the type isn't a class or interface. */
   properties?: Record<string, string>;
 }
@@ -107,6 +111,7 @@ interface DigestInterface {
   fqn: string;
   bases: string[];
   methods?: string[];
+  grantMethods?: string[];
   properties?: Record<string, string>;
 }
 
@@ -165,7 +170,7 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
       const base = str(t['base']);
       const summary = str(docs['summary']);
       const cfnType = str(custom['cloudformationResource']);
-      const { methods, properties } = digestMembers(t);
+      const { methods, grantMethods, properties } = digestMembers(t);
       const implemented = stringList(t['interfaces']);
       classes.push({
         fqn,
@@ -180,6 +185,7 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
         ...(propsType ? { propsFqn: propsType } : {}),
         ...(implemented.length > 0 ? { interfaces: implemented } : {}),
         ...(methods ? { methods } : {}),
+        ...(grantMethods ? { grantMethods } : {}),
         ...(properties ? { properties } : {}),
       });
     } else if (t['kind'] === 'enum') {
@@ -197,12 +203,24 @@ export function digestAssembly(raw: unknown): AssemblyDigest {
 const stringList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((b): b is string => typeof b === 'string') : []);
 
 /** The instance methods and properties of a class or interface, left out when it has none. */
-function digestMembers(t: Json): { methods?: string[]; properties?: Record<string, string> } {
-  const methods = (Array.isArray(t['methods']) ? t['methods'] : []).flatMap((m) => (isCallable(m) ? [m['name'] as string] : []));
+function digestMembers(t: Json): { methods?: string[]; grantMethods?: string[]; properties?: Record<string, string> } {
+  const callable = (Array.isArray(t['methods']) ? t['methods'] : []).filter(isCallable);
+  const methods = callable.map((m) => m['name'] as string);
+  const grantMethods = callable.filter(grantsToIdentity).map((m) => m['name'] as string);
   const properties = Object.fromEntries(
     (Array.isArray(t['properties']) ? t['properties'] : []).flatMap((p) => (isCallable(p) ? [[p['name'] as string, isObject(p['type']) ? (str(p['type']['fqn']) ?? '') : '']] : [])),
   );
-  return { ...(methods.length > 0 ? { methods } : {}), ...(Object.keys(properties).length > 0 ? { properties } : {}) };
+  return { ...(methods.length > 0 ? { methods } : {}), ...(grantMethods.length > 0 ? { grantMethods } : {}), ...(Object.keys(properties).length > 0 ? { properties } : {}) };
+}
+
+const GRANTABLE = 'aws-cdk-lib.aws_iam.IGrantable';
+const GRANT = 'aws-cdk-lib.aws_iam.Grant';
+
+/** Whether a method takes an `IGrantable` as its first parameter and returns a `Grant`. */
+function grantsToIdentity(m: Json): boolean {
+  const first = Array.isArray(m['parameters']) ? m['parameters'][0] : undefined;
+  const returns = isObject(m['returns']) && isObject(m['returns']['type']) ? m['returns']['type']['fqn'] : undefined;
+  return isObject(first) && isObject(first['type']) && first['type']['fqn'] === GRANTABLE && returns === GRANT;
 }
 
 /** A method or property a caller can use on an instance: named, and neither static nor protected. */
@@ -336,9 +354,9 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
   const enums = new Set<string>();
   const enumMembers = new Map<string, string[]>();
   /** What a call can be made on: every class and interface, with the types it inherits members from. */
-  const members = new Map<string, { bases: string[]; methods?: string[]; properties?: Record<string, string> }>();
+  const members = new Map<string, { bases: string[]; methods?: string[]; grantMethods?: string[]; properties?: Record<string, string> }>();
   for (const d of digests) {
-    for (const c of d.classes) members.set(c.fqn, { bases: [...(c.base ? [c.base] : []), ...(c.interfaces ?? [])], ...(c.methods ? { methods: c.methods } : {}), ...(c.properties ? { properties: c.properties } : {}) });
+    for (const c of d.classes) members.set(c.fqn, { bases: [...(c.base ? [c.base] : []), ...(c.interfaces ?? [])], ...(c.methods ? { methods: c.methods } : {}), ...(c.grantMethods ? { grantMethods: c.grantMethods } : {}), ...(c.properties ? { properties: c.properties } : {}) });
     for (const i of d.interfaces) members.set(i.fqn, i);
     for (const c of d.classes) classes.set(c.fqn, { c, library: d.name });
     for (const s of d.structs) structs.set(s.fqn, s);
@@ -398,6 +416,7 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
       ...(c.deprecated ? { deprecated: true as const } : {}),
       props,
       assignableTo: supertypes(members, fqn),
+      grantMethods: [...new Set(supertypes(members, fqn).flatMap((f) => members.get(f)?.grantMethods ?? []))],
     });
   }
 

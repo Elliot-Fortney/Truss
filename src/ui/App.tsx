@@ -12,6 +12,7 @@ import { addScopeOf, stackPathOf } from './add.ts';
 import { AddForm } from './add-form.tsx';
 import { canRepoint, dimmed, dropOn, edgeLabel, edgeTitle, type Targets } from './connect.ts';
 import type { ConnectOption } from '../core/connect.ts';
+import type { HintOption } from '../core/connection.ts';
 import type { PickNodes } from './node-picker.tsx';
 import { DraftBar } from './draft-bar.tsx';
 import { layoutView } from './layout.ts';
@@ -309,7 +310,7 @@ function toFlowEdges(view: View): Edge[] {
         // The arrow is at the end data or requests flow to, which for a prop the Overlay marks is the Node whose prop it is.
         ...(e.flow === 'in' ? { markerStart: { type: MarkerType.ArrowClosed } } : { markerEnd: { type: MarkerType.ArrowClosed } }),
         // Only the arrow's end moves: the Node whose prop it is stays the Node.
-        reconnectable: e.readOnly ? false : 'target',
+        reconnectable: e.readOnly || e.kind !== 'reference' ? false : 'target',
         ariaLabel: edgeTitle(e, names),
         data: { edge: e },
       }),
@@ -443,8 +444,12 @@ function LayerPanel({ child, node }: { child: LayerChildView; node: NodeView }) 
 const KIND_NAME: Record<EdgeView['kind'], string> = { reference: 'Reference', grant: 'Grant', integration: 'Integration', network: 'Network Connection' };
 
 /** The panel of a Connection: what it is, where the code writes it, and a way to take it out. */
-function EdgePanel({ edge, names, paused, onRemove, onOpen }: { edge: EdgeView; names: ReadonlyMap<string, string>; paused: boolean; onRemove(): void; onOpen(at: SourceLocation): void }) {
+function EdgePanel({ edge, names, paused, onRemove, onOpen, onChange, onRemoveCalls }: { edge: EdgeView; names: ReadonlyMap<string, string>; paused: boolean; onRemove(): void; onOpen(at: SourceLocation): void; onChange(change: { hint?: string; env?: string | null }): void; onRemoveCalls(ids: string[]): void }) {
   const at = edge.source;
+  const props = edge.connection;
+  const callIds = edge.calls?.map((c) => c.id) ?? [];
+  const [env, setEnv] = useState(props?.env?.name ?? '');
+  useEffect(() => setEnv(props?.env?.name ?? ''), [props?.env?.name]);
   return (
     <aside className="note-panel">
       <h2>
@@ -467,6 +472,58 @@ function EdgePanel({ edge, names, paused, onRemove, onOpen }: { edge: EdgeView; 
         </p>
       )}
       {edge.readOnly ? <p className="lock-reason">Read-only: {edge.readOnly}</p> : null}
+      {props ? (
+        <section className="connection-props" aria-label="Connection">
+          {props.access ? (
+            <label>
+              Access
+              <select className="prop-input" value={props.access.current} disabled={paused} onChange={(e) => onChange({ hint: e.currentTarget.value })}>
+                {props.access.options.map((o) => (
+                  <option key={o.hint} value={o.hint}>
+                    {o.text}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {props.combine ? (
+            <button type="button" disabled={paused} onClick={() => onChange({ hint: props.combine!.hint })}>
+              Combine into: {props.combine.text}
+            </button>
+          ) : null}
+          {props.env ? (
+            <div className="hint-env">
+              <label>
+                <input type="checkbox" checked={props.env.on} disabled={paused} onChange={(e) => onChange({ env: e.currentTarget.checked ? env || props.env!.default : null })} /> Environment variable
+              </label>
+              <input
+                className="prop-input"
+                aria-label="Environment variable name"
+                value={env}
+                disabled={paused || !props.env.on}
+                onChange={(e) => setEnv(e.currentTarget.value)}
+                onBlur={() => env !== props.env!.name && env !== '' && onChange({ env })}
+              />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {edge.calls?.length ? (
+        <ul className="edge-calls" aria-label="Calls">
+          {edge.calls.map((c) => (
+            <li key={c.id} title={c.reason}>
+              <code>{c.text}</code>
+              {c.editable ? (
+                <button type="button" className="picked-remove" aria-label={`Remove ${c.text}`} disabled={paused} onClick={() => onRemoveCalls([c.id])}>
+                  ✕
+                </button>
+              ) : (
+                <span className="lock-reason"> read-only: {c.reason}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {at ? (
         <button type="button" className="open-in-editor" onClick={() => onOpen(at)}>
           Open in editor
@@ -499,7 +556,12 @@ function RefusalTip({ tip, onOpen, onClose }: { tip: Tip; onOpen(at: SourceLocat
 }
 
 /** What a drop that asks something shows: which prop, or whether to replace. */
-function ConnectMenu({ choice, onPick, onClose }: { choice: Choice; onPick(prop: string, replace: boolean): void; onClose(): void }) {
+function ConnectMenu({ choice, onPick, onHint, onClose }: { choice: Choice; onPick(prop: string, replace: boolean): void; onHint(hint: HintOption, env: string | null | undefined): void; onClose(): void }) {
+  const hints = choice.kind === 'choose' ? choice.hints : [];
+  const [picked, setPicked] = useState(0);
+  const chosen = hints[picked];
+  const [env, setEnv] = useState<string | undefined>();
+  const [envOn, setEnvOn] = useState(true);
   return (
     <div className="connect-menu" role="dialog" aria-label="Connect" style={{ left: choice.x, top: choice.y }}>
       {choice.kind === 'replace' ? (
@@ -522,6 +584,28 @@ function ConnectMenu({ choice, onPick, onClose }: { choice: Choice; onPick(prop:
               {o.replaces ? <span className="muted"> · replaces {o.replaces.label}</span> : null}
             </button>
           ))}
+          {hints.length > 0 ? (
+            <fieldset className="hint-choice">
+              {hints.map((h, i) => (
+                <label key={h.hint}>
+                  <input type="radio" name="hint" checked={picked === i} onChange={() => setPicked(i)} /> {h.text}
+                  {h.default ? <span className="muted"> · default</span> : null}
+                  {h.replaces ? <span className="muted"> · replaces the grant it completes</span> : null}
+                </label>
+              ))}
+              {chosen?.env ? (
+                <div className="hint-env">
+                  <label>
+                    <input type="checkbox" checked={envOn} onChange={(e) => setEnvOn(e.currentTarget.checked)} /> Set environment variable
+                  </label>
+                  <input className="prop-input" aria-label="Environment variable" disabled={!envOn} value={env ?? chosen.env} onChange={(e) => setEnv(e.currentTarget.value)} />
+                </div>
+              ) : null}
+              <button type="button" onClick={() => chosen && onHint(chosen, chosen.env ? (envOn ? env : null) : undefined)}>
+                Connect
+              </button>
+            </fieldset>
+          ) : null}
         </>
       )}
       <button type="button" onClick={onClose}>
@@ -557,7 +641,7 @@ interface Tip {
 /** A drop that needs an answer before anything is staged. */
 type Choice =
   | { kind: 'replace'; x: number; y: number; from: string; to: string; fromId: string; toId: string; prop: string; current: string }
-  | { kind: 'choose'; x: number; y: number; from: string; to: string; fromId: string; toId: string; options: readonly ConnectOption[] };
+  | { kind: 'choose'; x: number; y: number; from: string; to: string; fromId: string; toId: string; options: readonly ConnectOption[]; hints: readonly HintOption[] };
 
 /** The Truss Node under a pointer at the end of a drag. */
 function nodeUnder(event: MouseEvent | TouchEvent): { id: string | undefined; x: number; y: number } {
@@ -638,6 +722,11 @@ export function App() {
   const [tip, setTip] = useState<Tip>();
   const [choice, setChoice] = useState<Choice>();
   const names = useMemo(() => new Map((shown?.nodes ?? []).map((n) => [n.id, n.label])), [shown]);
+  /** Takes an edge out of the code: a Reference by its prop, a Connection by the calls that make it. */
+  const removeEdge = useCallback(
+    (edge: EdgeView) => void request(edge.calls ? { type: 'removeConnection', calls: edge.calls.filter((c) => c.editable).map((c) => c.id) } : { type: 'disconnect', from: edge.from, to: edge.to, prop: edge.prop }),
+    [request],
+  );
   const labelOf = useCallback((id: string) => names.get(id) ?? id, [names]);
   const startDrag = useCallback(
     (from: string | null) => {
@@ -671,8 +760,9 @@ export function App() {
         const source = view?.nodes.find((n) => n.id === from)?.source;
         setTip({ ...at, reason: outcome.reason, ...(source ? { at: source } : {}) });
       } else if (outcome.kind === 'connect') void submit({ type: 'connect', from, to: over.id, prop: outcome.prop }, at);
+      else if (outcome.kind === 'hint') void submit({ type: 'addConnection', a: from, b: over.id, hint: outcome.hint.hint }, at);
       else if (outcome.kind === 'replace') setChoice({ kind: 'replace', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, prop: outcome.prop, current: outcome.current });
-      else setChoice({ kind: 'choose', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, options: outcome.options });
+      else setChoice({ kind: 'choose', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, options: outcome.options, hints: outcome.hints });
     },
     [drag, submit, labelOf, view],
   );
@@ -833,11 +923,11 @@ export function App() {
       const target = e.target instanceof HTMLElement ? e.target : undefined;
       if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
       e.preventDefault();
-      void request({ type: 'disconnect', from: selectedEdge.from, to: selectedEdge.to, prop: selectedEdge.prop });
+      removeEdge(selectedEdge);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedEdge, editable, request]);
+  }, [selectedEdge, editable, removeEdge]);
   const addScope = shown ? addScopeOf(shown.stacks, openStack?.id, selected?.stackId) : undefined;
   const panelState = usePanel(selected?.id ?? openStack?.id, view?.version, panel);
   const selectedLayer = useMemo(() => {
@@ -980,9 +1070,9 @@ export function App() {
         {asking ? <AddForm key={asking.fqn} name={asking.name} props={asking.props} onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)} onCancel={() => setAsking(undefined)} /> : null}
         {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onRename={rename(openStack.id, stackNodeId)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
-        {selectedEdge ? <EdgePanel edge={selectedEdge} names={names} paused={error !== undefined} onRemove={() => void request({ type: 'disconnect', from: selectedEdge.from, to: selectedEdge.to, prop: selectedEdge.prop })} onOpen={openInEditor} /> : null}
+        {selectedEdge ? <EdgePanel edge={selectedEdge} names={names} paused={error !== undefined} onRemove={() => removeEdge(selectedEdge)} onOpen={openInEditor} onChange={(change) => void request({ type: 'changeConnection', calls: selectedEdge.calls?.map((c) => c.id) ?? [], ...change })} onRemoveCalls={(calls) => void request({ type: 'removeConnection', calls })} /> : null}
         {tip ? <RefusalTip tip={tip} onOpen={openInEditor} onClose={() => setTip(undefined)} /> : null}
-        {choice ? <ConnectMenu choice={choice} onPick={(prop, replace) => void submit({ type: 'connect', from: choice.fromId, to: choice.toId, prop, ...(replace ? { replace: true } : {}) }, { x: choice.x, y: choice.y })} onClose={() => setChoice(undefined)} /> : null}
+        {choice ? <ConnectMenu choice={choice} onHint={(hint, env) => void submit({ type: 'addConnection', a: choice.fromId, b: choice.toId, hint: hint.hint, ...(env !== undefined ? { env } : {}) }, { x: choice.x, y: choice.y })} onPick={(prop, replace) => void submit({ type: 'connect', from: choice.fromId, to: choice.toId, prop, ...(replace ? { replace: true } : {}) }, { x: choice.x, y: choice.y })} onClose={() => setChoice(undefined)} /> : null}
       </div>
     </div>
   );
