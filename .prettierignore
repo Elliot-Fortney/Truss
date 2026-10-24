@@ -1,0 +1,9 @@
+dist/
+test-results/
+playwright-report/
+cdk.out/
+node_modules/
+assets/
+test/fixtures/
+package-lock.json
+**/dist/
