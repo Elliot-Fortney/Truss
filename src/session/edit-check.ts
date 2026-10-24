@@ -34,6 +34,29 @@ export type EditFailure =
   | { kind: 'synth'; message: string }
   | { kind: 'judge'; message: string };
 
+/** What an intent Source couldn't place is called when telling the user. */
+function describePlaced(intent: Intent): string {
+  switch (intent.type) {
+    case 'setProp':
+      return intent.prop.join('.');
+    case 'renameId':
+      return 'the new Construct ID';
+    case 'removeNode':
+      return 'the removal';
+    case 'addReference':
+    case 'removeReference':
+    case 'repointReference':
+      return 'the Reference';
+    case 'addConnection':
+    case 'removeConnection':
+    case 'replaceConnection':
+      return 'the Connection';
+    case 'addNode':
+    case 'duplicate':
+      return 'the new construct';
+  }
+}
+
 export interface EditChecked {
   planned: Extract<Planned, { ok: true }> | undefined;
   diffs: FileDiff[];
@@ -57,7 +80,7 @@ export function checkEditOn(
   const planned = planEdit(app.source, base, intents);
   if (!planned.ok) {
     const at = intents[planned.intent];
-    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? (at.type === 'setProp' ? at.prop.join('.') : at.type === 'renameId' ? 'the new Construct ID' : at.type === 'removeNode' ? 'the removal' : at.type === 'addReference' || at.type === 'removeReference' || at.type === 'repointReference' ? 'the Reference' : at.type === 'addConnection' || at.type === 'removeConnection' || at.type === 'replaceConnection' ? 'the Connection' : 'the new construct') : 'the edit'}: ${planned.reason}` }] };
+    return { planned: undefined, diffs: [], failures: [{ kind: 'plan', message: `Source can't place ${at ? describePlaced(at) : 'the edit'}: ${planned.reason}` }] };
   }
   const failures: EditFailure[] = [];
   const touched = Object.keys(planned.changes);
