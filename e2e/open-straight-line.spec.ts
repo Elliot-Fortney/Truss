@@ -252,13 +252,13 @@ test('Nodes Truss cannot edit show a lock with the reason, and every Node opens 
     await expect(loop).toHaveCSS('opacity', '1');
 
     await loop.click();
-    await expect(page.locator('.lock-reason')).toHaveText('Read-only: Created in a loop');
+    await expect(page.getByText('Read-only: Created in a loop')).toBeVisible();
     await page.getByRole('button', { name: 'Open in editor' }).click();
     await expect.poll(() => (existsSync(opened) ? readFileSync(opened, 'utf8').trim() : '')).toMatch(/^--goto .*\/lib\/shapes-stack\.ts:41:7$/);
 
     // An editable Node opens in the editor too, and says nothing about a lock.
     await page.locator('.truss-node', { hasText: 'Plain' }).click();
-    await expect(page.locator('.lock-reason')).toHaveCount(0);
+    await expect(page.getByText(/^Read-only:/)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open in editor' })).toBeVisible();
   } finally {
     truss.child.kill('SIGINT');
