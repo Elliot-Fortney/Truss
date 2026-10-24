@@ -123,3 +123,29 @@ describe('parseClientMessage', () => {
     expect(parse({ type: 'search', query: 'a' })).toMatchObject({ ok: false });
   });
 });
+
+describe('parseClientMessage for References', () => {
+  it('reads a connectable question, which names one Node', () => {
+    expect(parse({ type: 'connectable', requestId: '1', id: 'A/B' })).toEqual({ ok: true, message: { type: 'connectable', requestId: '1', id: 'A/B' } });
+    expect(parse({ type: 'connectable', requestId: '1' })).toMatchObject({ ok: false, requestId: '1' });
+  });
+
+  it('reads a connect, a disconnect and a repoint, each naming both Nodes and the prop', () => {
+    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' })).toEqual({ ok: true, message: { type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' } });
+    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc', replace: true })).toMatchObject({ ok: true, message: { replace: true } });
+    expect(parse({ type: 'disconnect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: true, message: { type: 'disconnect' } });
+    expect(parse({ type: 'repoint', requestId: '1', from: 'A/B', was: 'A/C', to: 'A/D', prop: 'vpc' })).toEqual({ ok: true, message: { type: 'repoint', requestId: '1', from: 'A/B', was: 'A/C', to: 'A/D', prop: 'vpc' } });
+  });
+
+  it('refuses one that lacks a Node, has a prop that is not a name, or leaves out what a repoint moves from', () => {
+    expect(parse({ type: 'connect', requestId: '1', to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: false, requestId: '1' });
+    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: '', prop: 'vpc' })).toMatchObject({ ok: false });
+    expect(parse({ type: 'connect', requestId: '1', from: 'A/B', to: 'A/C', prop: 'vpc; drop' })).toMatchObject({ ok: false });
+    expect(parse({ type: 'disconnect', requestId: '1', from: 'A/B', to: 'A/C' })).toMatchObject({ ok: false });
+    expect(parse({ type: 'repoint', requestId: '1', from: 'A/B', to: 'A/D', prop: 'vpc' })).toMatchObject({ ok: false });
+  });
+
+  it('refuses a path that is absurdly long', () => {
+    expect(parse({ type: 'connect', requestId: '1', from: 'A'.repeat(5000), to: 'A/C', prop: 'vpc' })).toMatchObject({ ok: false });
+  });
+});

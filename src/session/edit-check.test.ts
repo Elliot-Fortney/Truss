@@ -75,3 +75,46 @@ describe('assertEditHolds on the straight-line fixture', () => {
     expect(outcome).toMatchObject({ ok: false, failures: [expect.stringContaining("doesn't synth with the edit")] });
   });
 });
+
+const referencesDir = fixtureDir('references');
+const refs = (): EditApp => ({ appDir: referencesDir, synth: new ToolkitSynth(), files: new NodeFiles(referencesDir), source: new TsSource() });
+const node = (id: string, className: string) => ({ path: `Refs/${id}`, className, literalId: id });
+const base = (id: string, className: string, prop: string) => ({ path: `Refs/${id}`, expect: { className, literalId: id }, prop });
+
+/** These run the real synth and the real type check over the fixture app with References in it. */
+describe('assertEditHolds on the references fixture', () => {
+  it('holds for a Reference added to a prop the code does not pass, written in the object the call has', async () => {
+    const { files, diffs } = await assertEditHolds(refs(), [{ type: 'addReference', ...base('Plain', 's3.Bucket', 'encryptionKey'), to: node('Key', 'kms.Key') }]);
+    expect(files.get('lib/ref-stack.ts')).toContain("const plain = new s3.Bucket(this, 'Plain', { encryptionKey: key });");
+    expect(diffs.map((d) => d.file)).toEqual(['lib/ref-stack.ts']);
+  });
+
+  it('holds for a Reference re-pointed from one Node to another', async () => {
+    const { files } = await assertEditHolds(refs(), [{ type: 'repointReference', ...base('Data', 's3.Bucket', 'encryptionKey'), was: node('Key', 'kms.Key'), to: node('Spare', 'kms.Key') }]);
+    expect(files.get('lib/ref-stack.ts')).toContain('{ encryptionKey: spare, serverAccessLogsBucket: logs }');
+  });
+
+  it('holds for a Reference removed, and the construct it made beneath the Node goes with it', async () => {
+    const { files } = await assertEditHolds(refs(), [{ type: 'removeReference', ...base('Data', 's3.Bucket', 'serverAccessLogsBucket'), to: node('Logs', 's3.Bucket') }]);
+    expect(files.get('lib/ref-stack.ts')).toContain("new s3.Bucket(this, 'Data', { encryptionKey: key });");
+  });
+
+  it('holds for Nodes added to an array prop, and taken out of it again', async () => {
+    const { files } = await assertEditHolds(refs(), [{ type: 'addReference', ...base('Reader', 'iam.Role', 'managedPolicies'), many: true, to: node('Write', 'iam.ManagedPolicy') }]);
+    expect(files.get('lib/ref-stack.ts')).toContain('managedPolicies: [read, write]');
+    await assertEditHolds(refs(), [{ type: 'removeReference', ...base('Reader', 'iam.Role', 'managedPolicies'), to: node('Read', 'iam.ManagedPolicy') }]);
+  });
+
+  it('holds for a Reference to a Node made after the source, which moves the source statement below it', async () => {
+    const { files, diffs } = await assertEditHolds(refs(), [{ type: 'addReference', ...base('Early', 's3.Bucket', 'encryptionKey'), to: node('Target', 'kms.Key') }]);
+    const text = files.get('lib/ref-stack.ts')!;
+    expect(text).toContain("    const target = new kms.Key(this, 'Target');\n    // Made before the Node it will point at, so a Reference moves it below.\n    // Two lines of comment.\n    const early = new s3.Bucket(this, 'Early', { encryptionKey: target });");
+    expect(text.match(/'Early'/g)).toHaveLength(1);
+    expect(diffs[0]!.diff).toContain("-    const early = new s3.Bucket(this, 'Early');");
+  });
+
+  it('does not hold when the type checker rejects the Node', async () => {
+    const outcome = await checkEdit(refs(), [{ type: 'addReference', ...base('Plain', 's3.Bucket', 'encryptionKey'), to: node('Logs', 's3.Bucket') }]);
+    expect(outcome).toMatchObject({ ok: false, failures: expect.arrayContaining([expect.stringMatching(/TypeScript 2/)]) });
+  });
+});

@@ -4,11 +4,12 @@ import type { PropValue } from '../core/intents.ts';
 import type { PanelView, PropRowView } from '../core/panel.ts';
 import { idFieldState, literalText, moreLabel, propsNotice, unsetText } from './panel-format.ts';
 import { PropEditor } from './prop-inputs.tsx';
+import { NodePicker, type PickNodes } from './node-picker.tsx';
 
 /** What the panel has for a Node or Stack: still asking, the answer, or why there is none. */
 export type PanelState = { status: 'loading' } | { status: 'ready'; panel: PanelView } | { status: 'refused'; reason: string };
 
-function PropRow({ row, unset, onSet }: { row: PropRowView; unset: string; onSet(prop: string[], value: PropValue): Promise<boolean> }) {
+function PropRow({ row, unset, onSet, pick }: { row: PropRowView; unset: string; onSet(prop: string[], value: PropValue): Promise<boolean>; pick?: PickNodes }) {
   return (
     <li className="prop-row">
       <div className="prop-head">
@@ -18,6 +19,8 @@ function PropRow({ row, unset, onSet }: { row: PropRowView; unset: string; onSet
       </div>
       {row.input ? (
         <PropEditor name={row.name} input={row.input} written={row.written} path={[row.name]} onSet={onSet} />
+      ) : row.nodes && pick ? (
+        <NodePicker name={row.name} nodes={row.nodes} pick={pick} />
       ) : row.written?.kind === 'literal' ? (
         <div className="prop-value literal">{literalText(row.written.value)}</div>
       ) : row.written ? (
@@ -34,11 +37,11 @@ function PropRow({ row, unset, onSet }: { row: PropRowView; unset: string; onSet
   );
 }
 
-function PropList({ rows, unset, onSet }: { rows: readonly PropRowView[]; unset: string; onSet(prop: string[], value: PropValue): Promise<boolean> }) {
+function PropList({ rows, unset, onSet, pick }: { rows: readonly PropRowView[]; unset: string; onSet(prop: string[], value: PropValue): Promise<boolean>; pick?: PickNodes }) {
   return (
     <ul className="prop-list">
       {rows.map((row) => (
-        <PropRow key={row.name} row={row} unset={unset} onSet={onSet} />
+        <PropRow key={row.name} row={row} unset={unset} onSet={onSet} {...(pick ? { pick } : {})} />
       ))}
     </ul>
   );
@@ -78,7 +81,7 @@ function ConstructIdField({ panel, onRename }: { panel: PanelView; onRename(newI
 }
 
 /** The props of a Node or Stack: required and featured first, the rest one click away. */
-export function PropertyPanel({ state, onSet, onRename }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean> }) {
+export function PropertyPanel({ state, onSet, onRename, pick }: { state: PanelState; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; pick?: PickNodes }) {
   const [showMore, setShowMore] = useState(false);
   if (state.status === 'loading') return null;
   if (state.status === 'refused') return <p className="lock-reason">{state.reason}</p>;
@@ -100,13 +103,13 @@ export function PropertyPanel({ state, onSet, onRename }: { state: PanelState; o
       ) : null}
       {notice ? <p className="lock-reason">{notice}</p> : null}
       {panel.rows.length === 0 && panel.more.length === 0 ? <p className="lock-reason">No props are passed in your code.</p> : null}
-      <PropList rows={panel.rows} unset={unsetText(panel)} onSet={onSet} />
+      <PropList rows={panel.rows} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} />
       {panel.more.length > 0 ? (
         <>
           <button type="button" className="prop-more" aria-expanded={showMore} onClick={() => setShowMore(!showMore)}>
             {moreLabel(panel.more.length, showMore)}
           </button>
-          {showMore ? <PropList rows={panel.more} unset={unsetText(panel)} onSet={onSet} /> : null}
+          {showMore ? <PropList rows={panel.more} unset={unsetText(panel)} onSet={onSet} {...(pick ? { pick } : {})} /> : null}
         </>
       ) : null}
     </section>

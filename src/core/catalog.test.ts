@@ -533,6 +533,20 @@ describe('Overlays', () => {
       });
     });
 
+    describe('reference flows', () => {
+      const fn = (referenceFlows: Overlay['referenceFlows']): Overlay => ({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Function', referenceFlows });
+
+      it('keeps the props the construct has, and drops the ones it does not, saying so', () => {
+        const c = build(fn({ timeout: 'in', gone: 'in' }));
+        expect(entryFor(c, 'aws-cdk-lib.aws_lambda.Function')!.overlay!.referenceFlows).toEqual({ timeout: 'in' });
+        expect(c.dropped).toEqual([expect.stringMatching(/Function.*reference flow "gone"/)]);
+      });
+
+      it('is empty for an Overlay that has none', () => {
+        expect(entryFor(build(fn(undefined)), 'aws-cdk-lib.aws_lambda.Function')!.overlay!.referenceFlows).toEqual({});
+      });
+    });
+
     describe('accessors', () => {
       const fn = (accessors: Overlay['accessors']): Overlay => ({ fqn: 'aws-cdk-lib.aws_lambda.Function', displayName: 'Function', accessors });
 
@@ -543,5 +557,52 @@ describe('Overlays', () => {
         expect(c.dropped).toHaveLength(2);
       });
     });
+  });
+});
+
+describe('props that take constructs', () => {
+  /** A Function whose props take a Vpc, a list of security groups, a Duration and a struct. */
+  function withReferences() {
+    const raw = cdkLib() as { types: Record<string, unknown> };
+    const t = raw.types;
+    t['aws-cdk-lib.aws_ec2.IVpc'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_ec2.IVpc', name: 'IVpc', interfaces: ['aws-cdk-lib.IResource'] };
+    t['aws-cdk-lib.IResource'] = { kind: 'interface', fqn: 'aws-cdk-lib.IResource', name: 'IResource' };
+    t['aws-cdk-lib.aws_ec2.ISecurityGroup'] = { kind: 'interface', fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup', name: 'ISecurityGroup' };
+    t['aws-cdk-lib.aws_ec2.Vpc'] = cls('aws-cdk-lib.aws_ec2.Vpc', { base: 'aws-cdk-lib.Resource', interfaces: ['aws-cdk-lib.aws_ec2.IVpc'], initializer: init() });
+    t['aws-cdk-lib.aws_ec2.SecurityGroup'] = cls('aws-cdk-lib.aws_ec2.SecurityGroup', { base: 'aws-cdk-lib.Resource', interfaces: ['aws-cdk-lib.aws_ec2.ISecurityGroup'], initializer: init() });
+    t['aws-cdk-lib.aws_lambda.FunctionOptions'] = struct('aws-cdk-lib.aws_lambda.FunctionOptions', [
+      prop('timeout', { fqn: 'aws-cdk-lib.Duration' }, { optional: true }),
+      prop('vpc', { fqn: 'aws-cdk-lib.aws_ec2.IVpc' }, { optional: true }),
+      prop('securityGroups', { collection: { kind: 'array', elementtype: { fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup' } } }, { optional: true }),
+      prop('role', { union: { types: [{ fqn: 'aws-cdk-lib.aws_ec2.IVpc' }, { fqn: 'aws-cdk-lib.interfaces.aws_iam.IRoleRef' }] } }, { optional: true }),
+      prop('tags', { collection: { kind: 'map', elementtype: { fqn: 'aws-cdk-lib.aws_ec2.IVpc' } } }, { optional: true }),
+    ]);
+    return catalogOf(raw);
+  }
+  const prop_ = (name: string) => entryFor(withReferences(), 'aws-cdk-lib.aws_lambda.Function')!.props.find((p) => p.name === name);
+
+  it('marks a prop typed as an interface, or a construct class, with what it accepts', () => {
+    expect(prop_('vpc')?.accepts).toEqual({ fqn: 'aws-cdk-lib.aws_ec2.IVpc' });
+  });
+
+  it('marks an array of them as taking several', () => {
+    expect(prop_('securityGroups')?.accepts).toEqual({ fqn: 'aws-cdk-lib.aws_ec2.ISecurityGroup', many: true });
+  });
+
+  it('sees through the Ref alternative an L1 prop adds', () => {
+    expect(prop_('role')?.accepts).toEqual({ fqn: 'aws-cdk-lib.aws_ec2.IVpc' });
+  });
+
+  it('leaves out a prop typed as anything else: a Duration, a primitive, a map', () => {
+    for (const name of ['timeout', 'handler', 'tags']) expect(prop_(name)).not.toHaveProperty('accepts');
+  });
+
+  it('lists everything a construct is assignable to, through its base classes and interfaces', () => {
+    const vpc = entryFor(withReferences(), 'aws-cdk-lib.aws_ec2.Vpc')!;
+    expect(vpc.assignableTo).toEqual(expect.arrayContaining(['aws-cdk-lib.aws_ec2.Vpc', 'aws-cdk-lib.aws_ec2.IVpc', 'aws-cdk-lib.IResource', 'aws-cdk-lib.Resource']));
+  });
+
+  it('keeps that list out of a search hit', () => {
+    expect(searchCatalog(withReferences(), 'vpc')[0]).not.toHaveProperty('assignableTo');
   });
 });

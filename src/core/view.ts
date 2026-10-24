@@ -80,6 +80,32 @@ export interface NodeView {
 }
 
 /**
+ * A Reference drawn as an edge. The arrow runs from the Node whose prop holds it to the Node it points at, which for the
+ * props a Reference is made of (a Function's VPC, a service's cluster, a bucket's key) is also the way requests and data go.
+ */
+export interface EdgeView {
+  id: string;
+  kind: 'reference';
+  /** The Node whose prop it is. */
+  from: string;
+  /** The Node it points at; for a property read off a Node, the Node that owns it. */
+  to: string;
+  prop: string;
+  /** Which element of an array prop it is. */
+  index?: number;
+  /** `in` when what the Node `to` is flows into the Node `from` (a Function's role): the arrow runs from `to` to `from`. Absent, it runs the other way. */
+  flow?: 'in';
+  /** What the code writes, e.g. `vpc` or `this.network.vpc`. */
+  text: string;
+  /** Why Truss draws it but won't edit it, when that is so. */
+  readOnly?: string;
+  /** Where the code writes it. */
+  source: { file: string; line: number; col: number };
+  /** The Draft changes the code that makes it. */
+  changed?: true;
+}
+
+/**
  * A synth error, or (`kind: 'sidecar'`) a `truss.json` that is invalid or from a newer Truss. `kind: 'draft'`
  * is a synth error the Draft causes: the canvas shows the last good Design, and the Draft can still be undone.
  */
@@ -133,6 +159,8 @@ export interface View {
   /** Parents come before the Stacks nested in them. */
   stacks: StackBoxView[];
   nodes: NodeView[];
+  /** The Connections between the Nodes. */
+  edges: EdgeView[];
   /** Everything Truss found wrong with the Design on screen, in the order to list it. */
   problems: Problem[];
   /** Absent when there is nothing in the Draft and nothing to say about it. */
@@ -142,7 +170,7 @@ export interface View {
 }
 
 /** The part of a View that is derived from the app. */
-export type ViewBody = Pick<View, 'stages' | 'stacks' | 'nodes'>;
+export type ViewBody = Pick<View, 'stages' | 'stacks' | 'nodes' | 'edges'>;
 
 function envLabel(env: string | undefined): string {
   const m = env && /^aws:\/\/([^/]+)\/(.+)$/.exec(env);
@@ -233,7 +261,10 @@ function causes(nodes: readonly NodeView[], refs: readonly ResourceRef[]): Map<s
 }
 
 /** Projects what the source says plus what synth produced into the view the canvas draws. */
-export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, changed: ReadonlySet<string> = new Set(), added: ReadonlySet<string> = new Set()): ViewBody {
+/** Whether what a Reference to the prop `prop` of the construct `fqn` points at flows into it, which reverses the arrow. */
+export type FlowsIn = (fqn: string, prop: string) => boolean;
+
+export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, changed: ReadonlySet<string> = new Set(), added: ReadonlySet<string> = new Set(), flowsIn: FlowsIn = () => false): ViewBody {
   const envs = new Map(assembly.stacks.map((s) => [s.path, s.env]));
   const stages: StageView[] = [];
   const stacks: StackBoxView[] = [];
@@ -320,7 +351,40 @@ export function buildView(facts: Facts, assembly: Assembly, sidecar: Sidecar, ch
     if (source) node.source = source;
   }
 
-  return { stages, stacks, nodes };
+  return { stages, stacks, nodes, edges: edgesOf(facts, nodes, changed, flowsIn) };
+}
+
+/** The Nodes' References as edges: both ends are Nodes on screen, and a Reference to something inside a Node is drawn to the Node. */
+function edgesOf(facts: Facts, nodes: readonly NodeView[], changed: ReadonlySet<string>, flowsIn: FlowsIn): EdgeView[] {
+  const ids = new Set(nodes.map((n) => n.id));
+  const fqns = new Map(nodes.map((n) => [n.id, n.fqn]));
+  const unitOf = (path: string): string | undefined => {
+    for (let at = path.length; at > 0; at = path.lastIndexOf('/', at - 1)) {
+      const prefix = path.slice(0, at);
+      if (ids.has(prefix)) return prefix;
+    }
+    return undefined;
+  };
+  const out: EdgeView[] = [];
+  for (const r of facts.references ?? []) {
+    const from = unitOf(r.from);
+    const to = unitOf(r.to);
+    if (from === undefined || to === undefined || from === to) continue;
+    out.push({
+      id: `${from}->${to}:${r.prop}${r.index !== undefined ? `[${r.index}]` : ''}`,
+      kind: 'reference',
+      from,
+      to,
+      prop: r.prop,
+      ...(r.index !== undefined ? { index: r.index } : {}),
+      ...(flowsIn(fqns.get(from) ?? '', r.prop) ? { flow: 'in' as const } : {}),
+      text: r.text,
+      ...(r.editable ? {} : { readOnly: r.reason ?? 'Truss leaves this alone' }),
+      source: { file: r.span.file, line: r.span.start.line, col: r.span.start.col },
+      ...(changed.has(r.from) ? { changed: true as const } : {}),
+    });
+  }
+  return out;
 }
 
 /** What the browser sends: the only message there is. */

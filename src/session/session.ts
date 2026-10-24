@@ -1,13 +1,14 @@
 import type { Assembly, SourceLocation, SynthError, SynthResult } from '../core/assembly.ts';
-import { searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
+import { entryFor, searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { TextChange } from '../core/diff.ts';
 import { removedPaths, targetPaths } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import { beforeMoves, movesOf, afterMoves, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
+import { connectTargets, intentForConnect, intentForDisconnect, intentForRepoint, type ConnectContext } from '../core/connect.ts';
 import { intentForAdd, intentForDuplicate, intentForRemove } from '../core/create.ts';
 import { buildPanel, intentForEdit, intentForRename, type PanelEditing } from '../core/panel.ts';
-import type { ClientMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
+import type { ClientMessage, ConnectableMessage, DraftMessage, EditMessage, PanelMessage, Reply } from '../core/protocol.ts';
 import { currentFormatVersion, emptySidecar, MIGRATIONS, parseSidecar, serializeSidecar, SIDECAR_FILE, withMoves, withNote, withoutPaths, withPosition, type Migration, type Sidecar } from '../core/sidecar.ts';
 import { annotationProblems, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
 import { locateError } from '../core/synth-error.ts';
@@ -41,7 +42,7 @@ export interface SessionDeps {
 const MAX_STALE_IN_A_ROW = 2;
 
 export class Session {
-  private current: View = { version: 0, synthing: true, hasDesign: false, stages: [], stacks: [], nodes: [], problems: [] };
+  private current: View = { version: 0, synthing: true, hasDesign: false, stages: [], stacks: [], nodes: [], edges: [], problems: [] };
   private listeners = new Set<(view: View) => void>();
   private unwatch: (() => void) | undefined;
   private stopped = false;
@@ -119,6 +120,7 @@ export class Session {
     }
     // Likewise a panel only reads the Design on screen.
     if (message.type === 'panel') return Promise.resolve(this.panel(message));
+    if (message.type === 'connectable') return Promise.resolve(this.connectable(message));
     // Save waits for the synth in flight, so it writes what the screen shows.
     if (message.type === 'save') return this.settled().then(() => this.serialised(() => this.save(message.requestId)));
     return this.serialised(() => this.apply(message));
@@ -131,6 +133,17 @@ export class Session {
     const here = this.draft.problems().filter((p) => p.path === id || p.path?.startsWith(`${id}/`));
     if (here.length > 0) panel.problems = here.map((p) => ({ severity: p.severity, message: p.message, draft: p.draft }));
     return { type: 'panel', requestId, panel };
+  }
+
+  /** What each other Node of the Design on screen would answer to a drag from the Node at `id`. */
+  private connectable({ requestId, id }: ConnectableMessage): Reply {
+    if (!this.snapshot || !this.current.nodes.some((n) => n.id === id)) return { type: 'refused', requestId, reason: `No Node at ${id}` };
+    return { type: 'connectable', requestId, targets: connectTargets(this.connecting(this.snapshot), id) };
+  }
+
+  /** What dragging from one Node to another is judged against. */
+  private connecting(snapshot: { facts: Facts }): ConnectContext {
+    return { view: this.current, facts: snapshot.facts, catalog: this.catalog, added: this.addedPaths(), ...this.editBlock() };
   }
 
   /** What a panel needs to know to offer edits of the Design on screen. */
@@ -261,7 +274,7 @@ export class Session {
     if (!parsed.ok) {
       this.snapshot = undefined;
       this.draft.setProblems([]);
-      this.push({ synthing: false, hasDesign: false, error: { kind: 'sidecar', message: parsed.message }, stages: [], stacks: [], nodes: [] });
+      this.push({ synthing: false, hasDesign: false, error: { kind: 'sidecar', message: parsed.message }, stages: [], stacks: [], nodes: [], edges: [] });
       return false;
     }
     this.sidecar = parsed.sidecar;
@@ -327,12 +340,15 @@ export class Session {
     this.push({ synthing: false, hasDesign: true, error, ...this.body(), ...this.draftFields() });
   }
 
+  /** Whether the Overlay says the Nodes a prop points at flow into the construct, which turns the arrow round. */
+  private readonly flowsIn = (fqn: string, prop: string): boolean => (this.catalog ? entryFor(this.catalog, fqn)?.overlay?.referenceFlows[prop] === 'in' : false);
+
   /** The View of the Design on screen, with the Nodes the Draft changes marked. */
   private body() {
     const moves = movesOf(this.draft.intents);
     const changed = this.draft.base ? targetPaths(this.draft.base.facts, this.draft.intents) : new Set<string>();
     // The Sidecar keeps a renamed Node where it was until Save, but on screen it stays where the user put it.
-    const view = buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]), this.addedPaths());
+    const view = buildView(this.snapshot!.facts, this.snapshot!.assembly, withMoves(this.sidecar, moves), new Set([...changed, ...[...changed].map((p) => afterMoves(moves, p))]), this.addedPaths(), this.flowsIn);
     return { ...view, nodes: [...view.nodes, ...this.ghosts(moves)] };
   }
 
@@ -394,6 +410,7 @@ export class Session {
     if (!this.snapshot) return { type: 'refused', requestId, reason: 'There is no Design to edit yet.' };
     if (message.type === 'setProp' || message.type === 'renameId') return this.stageEdit(message);
     if (message.type === 'addNode' || message.type === 'duplicate' || message.type === 'removeNode') return this.stageCreation(message);
+    if (message.type === 'connect' || message.type === 'disconnect' || message.type === 'repoint') return this.stageReference(message);
     // A Draft is held as it was while the code on disk doesn't synth, so only Discard can change it then.
     if ((message.type === 'undo' || message.type === 'redo') && this.current.error && this.current.error.kind !== 'draft') {
       return { type: 'refused', requestId, reason: `Editing is paused until the app synths again: ${this.current.error.message}` };
@@ -461,6 +478,28 @@ export class Session {
     }
     const staged = this.draft.stage(intent);
     if (!staged.ok) return { type: 'refused', requestId, reason: staged.reason, ...(staged.uses ? { uses: staged.uses } : {}) };
+    this.afterDraftChange();
+    return { type: 'ack', requestId };
+  }
+
+  /** Stages a Reference made, re-pointed or removed by a drag or by the panel's picker: judged as the canvas judged the drop, planned, and then synthed in a shadow copy. */
+  private stageReference(message: Extract<DraftMessage, { type: 'connect' | 'disconnect' | 'repoint' }>): Reply {
+    const { requestId, from } = message;
+    const refuse = (reason: string): Reply => {
+      const source = this.current.nodes.find((n) => n.id === from)?.source;
+      return { type: 'refused', requestId, reason, ...(source ? { at: source } : {}) };
+    };
+    if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
+    const ctx = this.connecting(this.snapshot);
+    const made =
+      message.type === 'connect'
+        ? intentForConnect(ctx, from, message.to, message.prop, message.replace === true)
+        : message.type === 'disconnect'
+          ? intentForDisconnect(ctx, from, message.to, message.prop)
+          : intentForRepoint(ctx, from, message.was, message.to, message.prop);
+    if (!made.ok) return refuse(made.reason);
+    const staged = this.draft.stage(made.intent);
+    if (!staged.ok) return refuse(staged.reason);
     this.afterDraftChange();
     return { type: 'ack', requestId };
   }

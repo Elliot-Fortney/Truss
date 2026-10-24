@@ -129,6 +129,8 @@ export function layoutView(view: View, expanded: ReadonlySet<string> = new Set()
     for (const n of members) g.setNode(n.id, { ...memberSize.get(n.id)! });
     // A hoisted Node goes to the right of the Node that caused it.
     for (const n of members) for (const cause of n.causedBy ?? []) if (g.hasNode(cause)) g.setEdge(cause, n.id);
+    // Arrows run left to right: a Node goes to the left of the Node its arrow points at.
+    for (const e of view.edges) if (g.hasNode(e.from) && g.hasNode(e.to) && e.from !== e.to) e.flow === 'in' ? g.setEdge(e.to, e.from) : g.setEdge(e.from, e.to);
     dagre.layout(g);
 
     // Canvas coordinates of each member's top-left corner.

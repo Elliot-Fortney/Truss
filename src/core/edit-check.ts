@@ -1,7 +1,7 @@
 import type { Assembly, TreeNode } from './assembly.ts';
 import { offsetOf, type TextChange } from './diff.ts';
 import type { Facts } from './facts.ts';
-import { withId } from './construct-id.ts';
+import { parentPath, withId } from './construct-id.ts';
 import { afterMoves, beforeMoves, movesOf, onBase, type Intent } from './intents.ts';
 import type { Diagnostic, FileSet } from './ports.ts';
 
@@ -23,6 +23,14 @@ export function targetPaths(facts: Facts, intents: readonly Intent[]): Set<strin
 /** The paths in the Base of the Nodes the intents remove. */
 export function removedPaths(facts: Facts, intents: readonly Intent[]): Set<string> {
   return new Set(onBase(intents).flatMap((i) => (i.type === 'removeNode' && facts.nodes[i.path] ? [i.path] : [])));
+}
+
+/** Whether the construct at `path` has an L1 resource at or beneath it. */
+function hasResources(tree: TreeNode, path: string): boolean {
+  const find = (n: TreeNode): TreeNode | undefined => (n.path === path ? n : n.children.map(find).find((c) => c !== undefined));
+  const has = (n: TreeNode): boolean => n.cfnType !== undefined || n.children.some(has);
+  const at = find(tree);
+  return at !== undefined && has(at);
 }
 
 function pathsOf(tree: TreeNode): Map<string, string> {
@@ -64,7 +72,7 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
     const text = files.get(file) ?? '';
     const inside = targets.filter((t) => t.span.file === file).map((t) => [offsetOf(text, t.span.start.line, t.span.start.col), offsetOf(text, t.span.end.line, t.span.end.col)] as const);
     for (const c of list) {
-      if (c.purpose === 'import' || c.purpose === 'add' || c.purpose === 'remove' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
+      if (c.purpose === 'import' || c.purpose === 'add' || c.purpose === 'remove' || c.purpose === 'move' || inside.some(([start, end]) => c.start >= start && c.end <= end)) continue;
       failures.push(`The edit changes ${file} outside the code it was meant to change`);
       break;
     }
@@ -114,6 +122,16 @@ export function judgeEdit({ files, changes, facts, intents, before, after }: Edi
   // A construct that came or went takes everything beneath it along, which is one thing to say, not many.
   for (const path of changed) {
     if (!changed.some((other) => path.startsWith(`${other}/`))) failures.push(`The edit changes ${path}, which it should not touch`);
+  }
+  // A Reference an edit adds or points elsewhere is one the template shows: a resource of the source points at a resource of the target.
+  // Between Nodes of one Stack only; across Stacks CDK writes exports and imports instead of a plain reference.
+  for (const i of onDisk) {
+    if ((i.type !== 'addReference' && i.type !== 'repointReference') || parentPath(i.path) !== parentPath(i.to.path)) continue;
+    const from = afterMoves(moves, i.path);
+    const to = afterMoves(moves, i.to.path);
+    if (!hasResources(after.tree, to) || !hasResources(after.tree, from)) continue;
+    const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+    if (!after.resourceRefs.some((r) => under(r.from, from) && under(r.to, to))) failures.push(`${from} does not point at ${to} after the edit`);
   }
   const stacks = (a: Assembly) => JSON.stringify(a.stacks.filter((s) => !paths.has(beforeMoves(moves, s.path)) && !below(beforeMoves(moves, s.path))));
   if (stacks(before) !== stacks(after)) failures.push('The edit changes a Stack it should not touch');

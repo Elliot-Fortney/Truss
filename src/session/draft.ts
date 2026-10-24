@@ -140,7 +140,8 @@ export class Draft {
     if (planned?.ok && this.current) {
       for (const [file, text] of planned.overlay) {
         const diff = unifiedDiff(file, this.current.files.get(file) ?? '', text);
-        if (diff) diffs.push(diff);
+        const moves = (planned.changes[file] ?? []).flatMap((c) => (c.note ? [c.note] : []));
+        if (diff) diffs.push(moves.length > 0 ? { ...diff, moves } : diff);
       }
     }
     const suspects = this.error === undefined ? [] : intents.filter((i) => !this.lastGood.includes(i));

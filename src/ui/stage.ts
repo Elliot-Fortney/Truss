@@ -35,9 +35,11 @@ export function chooseStage(stages: readonly StageView[], remembered: string | u
   return stages.find((s) => s.id === remembered)?.id ?? stages[0]?.id;
 }
 
-/** The View with only the chosen Stage's Stacks and the Stacks outside every Stage, and the Nodes in them. */
+/** The View with only the chosen Stage's Stacks and the Stacks outside every Stage, and the Nodes in them, with the edges between those. */
 export function showStage(view: View, stageId: string | undefined): View {
   const stacks = view.stacks.filter((s) => s.stageId === undefined || s.stageId === stageId);
   const shown = new Set(stacks.map((s) => s.id));
-  return { ...view, stacks, nodes: view.nodes.filter((n) => shown.has(n.stackId)) };
+  const nodes = view.nodes.filter((n) => shown.has(n.stackId));
+  const ids = new Set(nodes.map((n) => n.id));
+  return { ...view, stacks, nodes, edges: view.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) };
 }

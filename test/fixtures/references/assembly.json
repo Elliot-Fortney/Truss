@@ -1,0 +1,430 @@
+{
+  "schemaVersion": "55.0.0",
+  "tree": {
+    "id": "App",
+    "path": "",
+    "fqn": "aws-cdk-lib.App",
+    "children": [
+      {
+        "id": "Refs",
+        "path": "Refs",
+        "fqn": "aws-cdk-lib.Stack",
+        "children": [
+          {
+            "id": "Key",
+            "path": "Refs/Key",
+            "fqn": "aws-cdk-lib.aws_kms.Key",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Key/Resource",
+                "fqn": "aws-cdk-lib.aws_kms.CfnKey",
+                "cfnType": "AWS::KMS::Key",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Spare",
+            "path": "Refs/Spare",
+            "fqn": "aws-cdk-lib.aws_kms.Key",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Spare/Resource",
+                "fqn": "aws-cdk-lib.aws_kms.CfnKey",
+                "cfnType": "AWS::KMS::Key",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Logs",
+            "path": "Refs/Logs",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Logs/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Data",
+            "path": "Refs/Data",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Data/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Plain",
+            "path": "Refs/Plain",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Plain/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Read",
+            "path": "Refs/Read",
+            "fqn": "aws-cdk-lib.aws_iam.ManagedPolicy",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Read/Resource",
+                "fqn": "aws-cdk-lib.aws_iam.CfnManagedPolicy",
+                "cfnType": "AWS::IAM::ManagedPolicy",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Write",
+            "path": "Refs/Write",
+            "fqn": "aws-cdk-lib.aws_iam.ManagedPolicy",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Write/Resource",
+                "fqn": "aws-cdk-lib.aws_iam.CfnManagedPolicy",
+                "cfnType": "AWS::IAM::ManagedPolicy",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Reader",
+            "path": "Refs/Reader",
+            "fqn": "aws-cdk-lib.aws_iam.Role",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Reader/Resource",
+                "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                "cfnType": "AWS::IAM::Role",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Early",
+            "path": "Refs/Early",
+            "fqn": "aws-cdk-lib.aws_s3.Bucket",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Early/Resource",
+                "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                "cfnType": "AWS::S3::Bucket",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "Target",
+            "path": "Refs/Target",
+            "fqn": "aws-cdk-lib.aws_kms.Key",
+            "children": [
+              {
+                "id": "Resource",
+                "path": "Refs/Target/Resource",
+                "fqn": "aws-cdk-lib.aws_kms.CfnKey",
+                "cfnType": "AWS::KMS::Key",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "CDKMetadata",
+            "path": "Refs/CDKMetadata",
+            "fqn": "constructs.Construct",
+            "children": [
+              {
+                "id": "Default",
+                "path": "Refs/CDKMetadata/Default",
+                "fqn": "aws-cdk-lib.CfnResource",
+                "children": []
+              },
+              {
+                "id": "Condition",
+                "path": "Refs/CDKMetadata/Condition",
+                "fqn": "aws-cdk-lib.CfnCondition",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "BootstrapVersion",
+            "path": "Refs/BootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnParameter",
+            "children": []
+          },
+          {
+            "id": "CheckBootstrapVersion",
+            "path": "Refs/CheckBootstrapVersion",
+            "fqn": "aws-cdk-lib.CfnRule",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "Tree",
+        "path": "Tree",
+        "fqn": "constructs.Construct",
+        "children": []
+      }
+    ]
+  },
+  "stacks": [
+    {
+      "path": "Refs"
+    }
+  ],
+  "creation": {
+    "Refs": [
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Key/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 11,
+        "col": 17
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Spare/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 12,
+        "col": 19
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Logs/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 13,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Data/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 16,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Plain/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 17,
+        "col": 19
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Read/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 20,
+        "col": 18
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Write/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 21,
+        "col": 19
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Reader/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 22,
+        "col": 5
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Early/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 26,
+        "col": 19
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ],
+    "Refs/Target/Resource": [
+      {
+        "fn": "new RefStack",
+        "file": "lib/ref-stack.ts",
+        "line": 27,
+        "col": 20
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 1
+      },
+      {
+        "fn": "<anonymous>",
+        "file": "bin/app.ts",
+        "line": 5,
+        "col": 25
+      }
+    ]
+  },
+  "resourceRefs": [
+    {
+      "from": "Refs/Data/Resource",
+      "to": "Refs/Key/Resource"
+    },
+    {
+      "from": "Refs/Data/Resource",
+      "to": "Refs/Logs/Resource"
+    },
+    {
+      "from": "Refs/Reader/Resource",
+      "to": "Refs/Read/Resource"
+    }
+  ],
+  "annotations": []
+}

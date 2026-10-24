@@ -168,3 +168,28 @@ button.link { padding: 0; border: 0; background: none; color: var(--accent); cur
 
 .add-form-actions { display: flex; gap: 8px; margin-top: 8px; }
 .duplicate { font: inherit; font-size: 12px; margin-bottom: 6px; }
+
+/* References */
+.truss-handle.drag-handle { pointer-events: all; width: 12px; height: 12px; right: -7px; border: 2px solid var(--accent); background: var(--card); cursor: crosshair; }
+.truss-node:hover .truss-handle.drag-handle { opacity: 1; }
+.react-flow__node.connect-dim { opacity: 0.35; filter: grayscale(1); }
+.reference-edge .react-flow__edge-path { stroke: var(--accent); stroke-width: 1.5; }
+.reference-edge .react-flow__edge-textbg { fill: var(--card); }
+.reference-edge .react-flow__edge-text { fill: var(--muted); font-size: 10px; }
+.reference-edge.read-only .react-flow__edge-path { stroke: var(--muted); stroke-dasharray: 2 3; }
+.reference-edge.changed .react-flow__edge-path { stroke-width: 2.5; }
+.react-flow__edge.reference-edge.selected .react-flow__edge-path { stroke-width: 3; }
+.react-flow__edge.reference-edge .react-flow__edge-interaction { stroke-width: 18; }
+.refusal-tip, .connect-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 280px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 12px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.18); }
+.refusal-tip { color: var(--error-fg); background: var(--error-bg); border-color: var(--error-fg); }
+.refusal-tip .tip-close { position: absolute; top: 2px; right: 4px; border: 0; background: none; color: inherit; cursor: pointer; }
+.refusal-tip .open-in-editor { margin-bottom: 0; }
+.connect-menu p { margin: 0; }
+.connect-menu button { font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.connect-menu .muted { color: var(--muted); }
+.node-picker { width: 100%; }
+.picked-nodes { margin: 2px 0; padding-left: 18px; }
+.picked-nodes li { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.picked-remove { border: 0; background: none; color: var(--muted); cursor: pointer; }
+.picked-remove:hover { color: var(--error-fg); }
+.diff-move { margin: 4px 0 2px; font-size: 11px; color: var(--accent); }

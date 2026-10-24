@@ -37,7 +37,7 @@ An edge between two Nodes that always becomes code: a Reference, Grant, Integrat
 _Avoid_: Link, wire, line, relationship
 
 **Reference**:
-A Connection where one Node's prop points at another Node, e.g. a Function placed in a VPC. Containment is a Reference, never nesting.
+A Connection where one Node's prop points at another Node, e.g. a Function placed in a VPC. Containment is a Reference, never nesting. Its arrow runs from the Node whose prop it is to the Node it names, unless the Overlay says what it names flows into that Node (a Function's role).
 _Avoid_: Containment, parent
 
 **Grant**:

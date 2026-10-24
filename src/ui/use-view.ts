@@ -4,6 +4,7 @@ import type { CatalogProp, SearchHit } from '../core/catalog.ts';
 import type { PropValue } from '../core/intents.ts';
 import type { SourceUse } from '../core/ports.ts';
 import type { PanelView } from '../core/panel.ts';
+import type { Targets } from './connect.ts';
 import type { ClientRequest, Reply } from '../core/protocol.ts';
 import type { OpenInEditorMessage, View } from '../core/view.ts';
 import { applyPush } from './versions.ts';
@@ -11,7 +12,9 @@ import { applyPush } from './versions.ts';
 export type Connection = 'connecting' | 'open' | 'closed';
 
 /** `uses` are the places in the code that keep a Node from being removed. */
-export type Outcome = { ok: true } | { ok: false; reason: string; uses?: SourceUse[] };
+export type Outcome = { ok: true } | { ok: false; reason: string; uses?: SourceUse[]; at?: SourceLocation };
+
+export type ConnectableOutcome = { ok: true; targets: Targets } | { ok: false; reason: string };
 
 export type SearchOutcome = { ok: true; hits: SearchHit[] } | { ok: false; reason: string };
 
@@ -32,6 +35,8 @@ export function useView(): {
   search(query: string): Promise<SearchOutcome>;
   /** Asks for the property panel of a Node or Stack. Never rejects. */
   panel(id: string): Promise<PanelOutcome>;
+  /** Asks, for the Node `id`, which other Nodes would take a Reference from it. Never rejects. */
+  connectable(id: string): Promise<ConnectableOutcome>;
   /** Adds the construct `fqn` to the Stack `scope`. Never rejects. */
   addNode(scope: string, fqn: string, props?: Record<string, PropValue>): Promise<AddOutcome>;
   openInEditor(at: SourceLocation): void;
@@ -86,7 +91,7 @@ export function useView(): {
   const send = useCallback(
     async (request: ClientRequest): Promise<Outcome> => {
       const reply = await ask(request);
-      return reply.type === 'refused' ? { ok: false, reason: reply.reason, ...(reply.uses ? { uses: reply.uses } : {}) } : { ok: true };
+      return reply.type === 'refused' ? { ok: false, reason: reply.reason, ...(reply.uses ? { uses: reply.uses } : {}), ...(reply.at ? { at: reply.at } : {}) } : { ok: true };
     },
     [ask],
   );
@@ -109,6 +114,15 @@ export function useView(): {
     [ask],
   );
 
+  const connectable = useCallback(
+    async (id: string): Promise<ConnectableOutcome> => {
+      const reply = await ask({ type: 'connectable', id });
+      if (reply.type === 'connectable') return { ok: true, targets: reply.targets };
+      return { ok: false, reason: reply.type === 'refused' ? reply.reason : 'Unexpected reply to a connect request.' };
+    },
+    [ask],
+  );
+
   const addNode = useCallback(
     async (scope: string, fqn: string, props?: Record<string, PropValue>): Promise<AddOutcome> => {
       const reply = await ask({ type: 'addNode', scope, fqn, ...(props ? { props } : {}) });
@@ -123,5 +137,5 @@ export function useView(): {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'open-in-editor', ...at } satisfies OpenInEditorMessage));
   }, []);
 
-  return { view, connection, send, search, panel, addNode, openInEditor };
+  return { view, connection, send, search, panel, connectable, addNode, openInEditor };
 }

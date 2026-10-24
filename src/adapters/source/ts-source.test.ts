@@ -343,3 +343,109 @@ describe('the view of the shapes fixture', () => {
     expect(nodes['Shapes/Api']?.subtitle).toBe('ApiService');
   });
 });
+
+describe('TsSource.analyse: References', () => {
+  const STACK = `import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+
+export class AppStack extends Stack {
+  private readonly shared = new s3.Bucket(this, 'Shared');
+  readonly network: Network;
+
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+
+    const vpc = new ec2.Vpc(this, 'Vpc');
+    const net = vpc;
+    const group = new ec2.SecurityGroup(this, 'Group', { vpc });
+    const logs = new s3.Bucket(this, 'Logs');
+    this.network = new Network(this, 'Network');
+    new lambda.Function(this, 'ByName', { vpc, securityGroups: [group, group2], logging: logs });
+    new lambda.Function(this, 'ByAlias', { vpc: net });
+    new lambda.Function(this, 'ByField', { vpc: this.network.vpc, serverAccessLogsBucket: this.shared, role: this.shared.role });
+    new lambda.Function(this, 'ByCall', { vpc: pick(vpc, other), name: \`\${vpc.vpcId}\` });
+    new lambda.Function(this, 'ByChoice', { vpc: flag ? vpc : net });
+    new lambda.Function(this, 'Short', { vpc, name: vpc.vpcId });
+    new lambda.Function(this, 'Inline', { vpc: new ec2.Vpc(this, 'Inner'), other: someParam });
+  }
+}
+`;
+  const needles: Record<string, string> = {
+    'S/Shared': "new s3.Bucket(this, 'Shared')",
+    'S/Vpc': "new ec2.Vpc(this, 'Vpc')",
+    'S/Group': "new ec2.SecurityGroup(this, 'Group'",
+    'S/Logs': "new s3.Bucket(this, 'Logs')",
+    'S/Network': "new Network(this, 'Network')",
+    'S/ByName': "new lambda.Function(this, 'ByName'",
+    'S/ByAlias': "new lambda.Function(this, 'ByAlias'",
+    'S/ByField': "new lambda.Function(this, 'ByField'",
+    'S/ByCall': "new lambda.Function(this, 'ByCall'",
+    'S/ByChoice': "new lambda.Function(this, 'ByChoice'",
+    'S/Short': "new lambda.Function(this, 'Short'",
+    'S/Inline': "new lambda.Function(this, 'Inline'",
+    'S/Inner': "new ec2.Vpc(this, 'Inner')",
+  };
+  const frame = (needle: string) => {
+    const at = STACK.indexOf(needle);
+    const before = STACK.slice(0, at);
+    return { file: 'lib/app.ts', line: before.split('\n').length, col: at - before.lastIndexOf('\n') };
+  };
+  const assembly: Assembly = {
+    schemaVersion: '1',
+    tree: { id: 'App', path: '', fqn: 'aws-cdk-lib.App', children: [{ id: 'S', path: 'S', fqn: 'aws-cdk-lib.Stack', children: Object.keys(needles).map((p) => ({ id: p.slice(2), path: p, fqn: 'x', children: [] })) }] },
+    stacks: [{ path: 'S' }],
+    creation: { S: [{ file: 'bin/app.ts', line: 1, col: 1 }], ...Object.fromEntries(Object.entries(needles).map(([path, needle]) => [path, [frame(needle)]])) },
+    resourceRefs: [],
+  };
+  const facts = new TsSource().analyse(new Map([['lib/app.ts', STACK]]), assembly);
+  const refs = (from: string) => (facts.references ?? []).filter((r) => r.from === from).map(({ to, prop, form, editable, index }) => ({ to, prop, form, editable, ...(index !== undefined ? { index } : {}) }));
+
+  it('reads an identifier bound to a const, as an editable Reference, in a prop or in an element of an array prop', () => {
+    expect(refs('S/ByName')).toEqual([
+      { to: 'S/Vpc', prop: 'vpc', form: 'shorthand', editable: true },
+      { to: 'S/Group', prop: 'securityGroups', form: 'identifier', editable: true, index: 0 },
+      { to: 'S/Logs', prop: 'logging', form: 'identifier', editable: true },
+    ]);
+  });
+
+  it('reads a shorthand property and a const alias of a Node as editable', () => {
+    expect(refs('S/Short')).toContainEqual({ to: 'S/Vpc', prop: 'vpc', form: 'shorthand', editable: true });
+    expect(refs('S/ByAlias')).toEqual([{ to: 'S/Vpc', prop: 'vpc', form: 'alias', editable: true }]);
+  });
+
+  it('reads this.field, bound by an assignment or a class property initializer, as editable', () => {
+    expect(refs('S/ByField')).toContainEqual({ to: 'S/Shared', prop: 'serverAccessLogsBucket', form: 'field', editable: true });
+  });
+
+  it('draws an accessor chain to the Node that owns it, and leaves it read-only', () => {
+    expect(refs('S/ByField')).toContainEqual({ to: 'S/Network', prop: 'vpc', form: 'accessor', editable: false });
+    expect(refs('S/ByField')).toContainEqual({ to: 'S/Shared', prop: 'role', form: 'accessor', editable: false });
+    expect(refs('S/Short')).toContainEqual({ to: 'S/Vpc', prop: 'name', form: 'accessor', editable: false });
+  });
+
+  it('draws a Node passed through a call, or chosen by a condition, as read-only', () => {
+    expect(refs('S/ByCall')).toEqual([{ to: 'S/Vpc', prop: 'vpc', form: 'call', editable: false }]);
+    expect(refs('S/ByChoice')).toEqual([
+      { to: 'S/Vpc', prop: 'vpc', form: 'conditional', editable: false },
+      { to: 'S/Vpc', prop: 'vpc', form: 'conditional', editable: false },
+    ]);
+  });
+
+  it('leaves a token that is not a Node, a token inside a template, and a construct written in the prop itself, as source text', () => {
+    expect(refs('S/Inline')).toEqual([]);
+    expect(refs('S/ByCall')).not.toContainEqual(expect.objectContaining({ prop: 'name' }));
+    expect(facts.references?.every((r) => r.from !== 'S/Vpc')).toBe(true);
+  });
+
+  it('says where the expression is, and what it says', () => {
+    const r = facts.references!.find((x) => x.from === 'S/ByName' && x.prop === 'logging')!;
+    expect(r.text).toBe('logs');
+    expect(r.reason).toBeUndefined();
+    expect(r.span.start.line).toBeGreaterThan(1);
+  });
+
+  it('has no references for an app without any', () => {
+    expect(new TsSource().analyse(readFixtureFiles('straight-line'), readFixtureAssembly('straight-line')).references).toBeUndefined();
+  });
+});

@@ -9,6 +9,8 @@ const overlay: Overlay = {
     handler: { code: "'index.handler'" },
     code: { code: "Code.fromInline('exports.handler = async () => {};')", uses: ['aws-cdk-lib.aws_lambda.Code'] },
   },
+  // The execution role and the layers give the Function what it runs with.
+  referenceFlows: { role: 'in', layers: 'in' },
   connections: [
     {
       kind: 'integration',

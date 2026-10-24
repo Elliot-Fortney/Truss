@@ -1,0 +1,12 @@
+{
+  "name": "references-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "aws-cdk-lib": "2.274.0",
+    "constructs": "10.8.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  }
+}

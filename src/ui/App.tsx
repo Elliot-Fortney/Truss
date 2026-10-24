@@ -1,4 +1,4 @@
-import { applyNodeChanges, Background, Controls, Handle, Position, ReactFlow, useStore, type Edge, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
+import { applyNodeChanges, Background, Controls, Handle, MarkerType, Position, ReactFlow, useStore, type Edge, type Node, type NodeProps, type OnNodesChange } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceLocation } from '../core/assembly.ts';
 import { withId } from '../core/construct-id.ts';
@@ -6,10 +6,13 @@ import type { PropValue } from '../core/intents.ts';
 import type { SourceUse } from '../core/ports.ts';
 import { badgesFor, isBadged, type Badge, type Problem } from '../core/problems.ts';
 import { MAX_NOTE_LENGTH, type ClientRequest } from '../core/protocol.ts';
-import type { LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
+import type { EdgeView, LayerChildView, NodeView, StackBoxView, View, ViewError } from '../core/view.ts';
 import type { CatalogProp, SearchHit } from '../core/catalog.ts';
 import { addScopeOf, stackPathOf } from './add.ts';
 import { AddForm } from './add-form.tsx';
+import { canRepoint, dimmed, dropOn, edgeLabel, edgeTitle, type Targets } from './connect.ts';
+import type { ConnectOption } from '../core/connect.ts';
+import type { PickNodes } from './node-picker.tsx';
 import { DraftBar } from './draft-bar.tsx';
 import { layoutView } from './layout.ts';
 import { NodeIcon } from './node-icon.tsx';
@@ -45,6 +48,8 @@ interface TrussNodeData extends Record<string, unknown> {
   badge?: Badge;
   external?: boolean;
   hoisted?: boolean;
+  /** A drag from this Node's handle makes a Reference. */
+  connectable?: boolean;
   /** The Node has a Layer to open. */
   expandable?: boolean;
   expanded?: boolean;
@@ -130,9 +135,9 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
   const tooltip = data.external ? `${data.label} · ${data.fqn} · refers to an existing resource` : `${data.label} · ${data.fqn}`;
   return (
     <div className={className} title={tooltip}>
-      {/* Only a hoisted Node is ever the end of a line, and only to the Node that caused it. */}
-      <Handle type="target" position={Position.Left} isConnectable={false} className="truss-handle" />
-      <Handle type="source" position={Position.Right} isConnectable={false} className="truss-handle" />
+      {/* Lines end here. A drag starts only from the right-hand handle of a Node whose props Truss can edit, and ends where it is dropped, not on a handle. */}
+      <Handle type="target" position={Position.Left} isConnectableStart={false} isConnectableEnd={false} className="truss-handle" />
+      <Handle type="source" position={Position.Right} isConnectableStart={data.connectable === true} isConnectableEnd={false} className={data.connectable ? 'truss-handle drag-handle' : 'truss-handle'} title={data.connectable ? 'Drag to connect' : undefined} />
       <div className="node-head">
         <NodeIcon icon={data.icon} size={showName ? ICON_SIZE : ICON_ONLY_SIZE} />
         {/* Always in the page, so screen readers have the name; zoomed out it is clipped away rather than removed. */}
@@ -204,7 +209,7 @@ function drawnIds(layout: Layout): Set<string> {
   return new Set([...layout.stacks.map((s) => s.id), ...layout.nodes.map((n) => n.id), ...layout.layers.map((l) => l.id)]);
 }
 
-function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, onToggle: (id: string) => void): Node[] {
+function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, onToggle: (id: string) => void, editable: boolean): Node[] {
   const badges = badgesFor(view.problems, drawnIds(layout));
   const stacksById = new Map(view.stacks.map((s) => [s.id, s]));
   const boxesById = new Map(layout.stacks.map((b) => [b.id, b]));
@@ -249,6 +254,7 @@ function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, 
         ...(badges.has(n.id) ? { badge: badges.get(n.id)! } : {}),
         ...(n.external ? { external: true } : {}),
         ...(n.hoisted ? { hoisted: true } : {}),
+        ...(editable && !n.lock && !n.hoisted && !n.removed && !n.added ? { connectable: true } : {}),
         expandable,
         expanded: expandable && expanded.has(n.id),
         onToggle,
@@ -282,14 +288,33 @@ function toFlowNodes(view: View, layout: Layout, expanded: ReadonlySet<string>, 
   return [...stackNodes, ...nodes, ...layers];
 }
 
-/** A dashed line from each Node to the hoisted Nodes it caused, for the Nodes on show. */
+/** A dashed line from each Node to the hoisted Nodes it caused, and an arrow for each Reference, for the Nodes on show. */
 function toFlowEdges(view: View): Edge[] {
   const shown = new Set(view.nodes.map((n) => n.id));
-  return view.nodes.flatMap((n) =>
+  const names = new Map(view.nodes.map((n) => [n.id, n.label]));
+  const causes = view.nodes.flatMap((n) =>
     (n.causedBy ?? [])
       .filter((cause) => shown.has(cause))
-      .map((cause) => ({ id: `cause:${cause}>${n.id}`, source: cause, target: n.id, className: 'cause-edge', selectable: false, focusable: false })),
+      .map((cause): Edge => ({ id: `cause:${cause}>${n.id}`, source: cause, target: n.id, className: 'cause-edge', selectable: false, focusable: false })),
   );
+  const references = view.edges
+    .filter((e) => shown.has(e.from) && shown.has(e.to))
+    .map(
+      (e): Edge => ({
+        id: e.id,
+        source: e.from,
+        target: e.to,
+        label: edgeLabel(e),
+        className: ['reference-edge', e.readOnly ? 'read-only' : '', e.changed ? 'changed' : ''].filter(Boolean).join(' '),
+        // The arrow is at the end data or requests flow to, which for a prop the Overlay marks is the Node whose prop it is.
+        ...(e.flow === 'in' ? { markerStart: { type: MarkerType.ArrowClosed } } : { markerEnd: { type: MarkerType.ArrowClosed } }),
+        // Only the arrow's end moves: the Node whose prop it is stays the Node.
+        reconnectable: e.readOnly ? false : 'target',
+        ariaLabel: edgeTitle(e, names),
+        data: { edge: e },
+      }),
+    );
+  return [...causes, ...references];
 }
 
 /** Where a React Flow node sits on the canvas: its own position plus those of the boxes it is nested in. */
@@ -320,7 +345,7 @@ function StagePicker({ stages, value, onChange }: { stages: View['stages']; valu
   );
 }
 
-function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onDuplicate, onRemove, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onDuplicate(): void; onRemove(): void; onOpen(at: SourceLocation): void }) {
+function NodePanel({ node, nodes, props, paused, pick, onSave, onSet, onRename, onDuplicate, onRemove, onOpen }: { node: NodeView; nodes: readonly NodeView[]; props: PanelState; paused: boolean; pick: PickNodes; onSave: (note: string) => void; onSet(prop: string[], value: PropValue): Promise<boolean>; onRename(newId: string): Promise<boolean>; onDuplicate(): void; onRemove(): void; onOpen(at: SourceLocation): void }) {
   if (node.removed) {
     return (
       <aside className="note-panel">
@@ -351,7 +376,7 @@ function NodePanel({ node, nodes, props, paused, onSave, onSet, onRename, onDupl
         </button>
       ) : null}
       {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
-      <PropertyPanel key={node.id} state={props} onSet={onSet} onRename={onRename} />
+      <PropertyPanel key={node.id} state={props} onSet={onSet} onRename={onRename} pick={pick} />
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}
@@ -415,6 +440,79 @@ function LayerPanel({ child, node }: { child: LayerChildView; node: NodeView }) 
   );
 }
 
+/** The panel of a Reference: what it is, where the code writes it, and a way to take it out. */
+function EdgePanel({ edge, names, paused, onRemove, onOpen }: { edge: EdgeView; names: ReadonlyMap<string, string>; paused: boolean; onRemove(): void; onOpen(at: SourceLocation): void }) {
+  return (
+    <aside className="note-panel">
+      <h2>
+        {names.get(edge.from) ?? edge.from}.{edgeLabel(edge)} → {names.get(edge.to) ?? edge.to}
+      </h2>
+      <p className="lock-reason">
+        Reference · written <code>{edge.text}</code>
+      </p>
+      {edge.readOnly ? <p className="lock-reason">Read-only: {edge.readOnly}</p> : null}
+      <button type="button" className="open-in-editor" onClick={() => onOpen(edge.source)}>
+        Open in editor
+      </button>
+      {!edge.readOnly ? (
+        <button type="button" className="remove" disabled={paused} onClick={onRemove}>
+          Remove
+        </button>
+      ) : null}
+    </aside>
+  );
+}
+
+/** Where a drop was refused, and why, at the place it was dropped. Snaps back: nothing was staged. */
+function RefusalTip({ tip, onOpen, onClose }: { tip: Tip; onOpen(at: SourceLocation): void; onClose(): void }) {
+  return (
+    <div className="refusal-tip" role="alert" style={{ left: tip.x, top: tip.y }}>
+      <span>{tip.reason}</span>
+      {tip.at ? (
+        <button type="button" className="open-in-editor" onClick={() => onOpen(tip.at!)}>
+          Open in editor
+        </button>
+      ) : null}
+      <button type="button" className="tip-close" aria-label="Dismiss" onClick={onClose}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/** What a drop that asks something shows: which prop, or whether to replace. */
+function ConnectMenu({ choice, onPick, onClose }: { choice: Choice; onPick(prop: string, replace: boolean): void; onClose(): void }) {
+  return (
+    <div className="connect-menu" role="dialog" aria-label="Connect" style={{ left: choice.x, top: choice.y }}>
+      {choice.kind === 'replace' ? (
+        <>
+          <p>
+            Replace {choice.current} with {choice.to} as <code>{choice.prop}</code>?
+          </p>
+          <button type="button" onClick={() => onPick(choice.prop, true)}>
+            Replace
+          </button>
+        </>
+      ) : (
+        <>
+          <p>
+            Connect {choice.from} to {choice.to} as:
+          </p>
+          {choice.options.map((o) => (
+            <button key={o.prop} type="button" onClick={() => onPick(o.prop, o.replaces !== undefined)}>
+              <code>{o.prop}</code> <span className="muted">{o.type}</span>
+              {o.replaces ? <span className="muted"> · replaces {o.replaces.label}</span> : null}
+            </button>
+          ))}
+        </>
+      )}
+      <button type="button" onClick={onClose}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceLocation): void }) {
   if (!error.location) return null;
   const { file, line, col } = error.location;
@@ -430,8 +528,29 @@ function ErrorLocation({ error, onOpen }: { error: ViewError; onOpen(at: SourceL
   );
 }
 
+/** A refusal shown where the drop was. */
+interface Tip {
+  x: number;
+  y: number;
+  reason: string;
+  at?: SourceLocation;
+}
+
+/** A drop that needs an answer before anything is staged. */
+type Choice =
+  | { kind: 'replace'; x: number; y: number; from: string; to: string; fromId: string; toId: string; prop: string; current: string }
+  | { kind: 'choose'; x: number; y: number; from: string; to: string; fromId: string; toId: string; options: readonly ConnectOption[] };
+
+/** The Truss Node under a pointer at the end of a drag. */
+function nodeUnder(event: MouseEvent | TouchEvent): { id: string | undefined; x: number; y: number } {
+  const point = 'changedTouches' in event ? event.changedTouches[0] : event;
+  if (!point) return { id: undefined, x: 0, y: 0 };
+  const el = document.elementsFromPoint(point.clientX, point.clientY).find((e) => e.classList.contains('react-flow__node-truss'));
+  return { id: el?.getAttribute('data-id') ?? undefined, x: point.clientX, y: point.clientY };
+}
+
 export function App() {
-  const { view, connection, send, search, panel, addNode, openInEditor } = useView();
+  const { view, connection, send, search, panel, connectable, addNode, openInEditor } = useView();
   // The picked Stage is only a preference of this browser; with none picked, or a gone one, the first Stage shows.
   const [pickedStage, setPickedStage] = useState(rememberedStage);
   const stageId = view ? chooseStage(view.stages, pickedStage) : undefined;
@@ -448,13 +567,15 @@ export function App() {
     [],
   );
   const layout = useMemo(() => (shown ? layoutView(shown, expanded) : undefined), [shown, expanded]);
-  const flowNodes = useMemo(() => (shown && layout ? toFlowNodes(shown, layout, expanded, toggle) : []), [shown, layout, expanded, toggle]);
+  const editable = view !== undefined && view.error === undefined;
+  const flowNodes = useMemo(() => (shown && layout ? toFlowNodes(shown, layout, expanded, toggle, editable) : []), [shown, layout, expanded, toggle, editable]);
   const flowEdges = useMemo(() => (shown ? toFlowEdges(shown) : []), [shown]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
-  const [shownNotice, setShownNotice] = useState<{ text: string; uses?: SourceUse[] }>();
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
+  const [shownNotice, setShownNotice] = useState<{ text: string; uses?: SourceUse[]; at?: SourceLocation }>();
   const notice = shownNotice?.text;
-  const setNotice = useCallback((text?: string, uses?: readonly SourceUse[]) => setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}) } : undefined), []);
+  const setNotice = useCallback((text?: string, uses?: readonly SourceUse[], at?: SourceLocation) => setShownNotice(text ? { text, ...(uses?.length ? { uses: [...uses] } : {}), ...(at ? { at } : {}) } : undefined), []);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [linkedProblem, setLinkedProblem] = useState<string>();
   // Opening a Node must not move the viewport, so only the Nodes and boxes of the Design decide when to fit it again.
@@ -474,7 +595,7 @@ export function App() {
   const request = useCallback(
     async (req: ClientRequest) => {
       const outcome = await send(req);
-      setNotice(outcome.ok ? undefined : outcome.reason, outcome.ok ? undefined : outcome.uses);
+      setNotice(outcome.ok ? undefined : outcome.reason, outcome.ok ? undefined : outcome.uses, outcome.ok ? undefined : outcome.at);
       // A refused change never reached the Sidecar, so put every Node back where the View has it.
       if (!outcome.ok) setNodes(keepSelection(flowNodes));
       return outcome.ok;
@@ -493,6 +614,90 @@ export function App() {
     },
     [nodes, request],
   );
+
+  // A drag from a Node's handle makes a Reference: Truss says, when it starts, which Nodes would take it, and the others are dimmed.
+  const [drag, setDrag] = useState<{ from: string; targets?: Targets }>();
+  const [tip, setTip] = useState<Tip>();
+  const [choice, setChoice] = useState<Choice>();
+  const names = useMemo(() => new Map((shown?.nodes ?? []).map((n) => [n.id, n.label])), [shown]);
+  const labelOf = useCallback((id: string) => names.get(id) ?? id, [names]);
+  const startDrag = useCallback(
+    (from: string | null) => {
+      setTip(undefined);
+      setChoice(undefined);
+      if (from === null) return;
+      setDrag({ from });
+      void connectable(from).then((answer) => setDrag((now) => (now?.from === from ? (answer.ok ? { from, targets: answer.targets } : { from }) : now)));
+    },
+    [connectable],
+  );
+  /** Sends a connect, disconnect or re-point, and says where it was refused if it was. */
+  const submit = useCallback(
+    async (req: ClientRequest, at: { x: number; y: number }) => {
+      setChoice(undefined);
+      const outcome = await send(req);
+      if (!outcome.ok) setTip({ x: at.x, y: at.y, reason: outcome.reason, ...(outcome.at ? { at: outcome.at } : {}) });
+    },
+    [send],
+  );
+  const endDrag = useCallback(
+    (event: MouseEvent | TouchEvent, from: string | undefined) => {
+      const now = drag;
+      setDrag(undefined);
+      const over = nodeUnder(event);
+      // A click on the handle, or a drop on nothing, is not a drop: there is nothing to refuse.
+      if (from === undefined || over.id === undefined || over.id === from) return;
+      const outcome = dropOn(now?.targets, over.id);
+      const at = { x: over.x, y: over.y };
+      if (outcome.kind === 'refused') {
+        const source = view?.nodes.find((n) => n.id === from)?.source;
+        setTip({ ...at, reason: outcome.reason, ...(source ? { at: source } : {}) });
+      } else if (outcome.kind === 'connect') void submit({ type: 'connect', from, to: over.id, prop: outcome.prop }, at);
+      else if (outcome.kind === 'replace') setChoice({ kind: 'replace', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, prop: outcome.prop, current: outcome.current });
+      else setChoice({ kind: 'choose', ...at, from: labelOf(from), to: labelOf(over.id), fromId: from, toId: over.id, options: outcome.options });
+    },
+    [drag, submit, labelOf, view],
+  );
+  const endReconnect = useCallback(
+    (event: MouseEvent | TouchEvent, edge: Edge) => {
+      const now = drag;
+      setDrag(undefined);
+      const over = nodeUnder(event);
+      const e = (edge.data as { edge?: EdgeView } | undefined)?.edge;
+      if (!e || over.id === undefined || over.id === e.to) return;
+      const at = { x: over.x, y: over.y };
+      if (!canRepoint(now?.targets, over.id, e.prop)) {
+        const check = now?.targets?.[over.id];
+        const source = view?.nodes.find((n) => n.id === e.from)?.source;
+        setTip({ ...at, reason: check && !check.ok ? check.reason : `${labelOf(e.from)}.${e.prop} doesn't take ${labelOf(over.id)}`, ...(source ? { at: source } : {}) });
+        return;
+      }
+      void submit({ type: 'repoint', from: e.from, was: e.to, to: over.id, prop: e.prop }, at);
+    },
+    [drag, submit, labelOf, view],
+  );
+  // A tip stays until the next click anywhere else, or Escape.
+  useEffect(() => {
+    if (!tip && !choice) return;
+    const away = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.refusal-tip, .connect-menu')) return;
+      setTip(undefined);
+      setChoice(undefined);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') away(e);
+    };
+    window.addEventListener('pointerdown', away);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('pointerdown', away);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [tip, choice]);
+  const dragged = useMemo(() => {
+    if (!drag?.targets) return nodes;
+    return nodes.map((n) => (n.type === 'truss' && dimmed(drag.targets, n.id, drag.from) ? { ...n, className: 'connect-dim' } : n));
+  }, [nodes, drag]);
 
   /** Selects what a Problem is on, bubbling to the nearest drawn construct as its badge does. */
   const jumpTo = useCallback(
@@ -519,6 +724,7 @@ export function App() {
 
   const selected = shown?.nodes.find((n) => n.id === selectedId);
   const openStack = shown?.stacks.find((s) => stackNodeId(s.id) === selectedId);
+  const selectedEdge = selectedId === undefined ? shown?.edges.find((e) => e.id === selectedEdgeId) : undefined;
   const [saving, setSaving] = useState(false);
   const draft = view?.draft;
   const unsaved = (draft?.items.length ?? 0) > 0;
@@ -537,6 +743,14 @@ export function App() {
       }
       return ok;
     },
+    [request],
+  );
+  /** The Node picker of the open panel edits the same Reference a drag does. */
+  const pickFor = useCallback(
+    (from: string): PickNodes => ({
+      connect: (prop, to, replace) => request({ type: 'connect', from, to, prop, ...(replace ? { replace: true } : {}) }),
+      disconnect: (prop, to) => request({ type: 'disconnect', from, to, prop }),
+    }),
     [request],
   );
   /** The construct being added that needs props from the user first, and the Stack it goes in. */
@@ -593,6 +807,19 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
+  // Delete takes the selected Reference out, unless the user is typing.
+  useEffect(() => {
+    if (!selectedEdge || selectedEdge.readOnly || !editable) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target instanceof HTMLElement ? e.target : undefined;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      e.preventDefault();
+      void request({ type: 'disconnect', from: selectedEdge.from, to: selectedEdge.to, prop: selectedEdge.prop });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedEdge, editable, request]);
   const addScope = shown ? addScopeOf(shown.stacks, openStack?.id, selected?.stackId) : undefined;
   const panelState = usePanel(selected?.id ?? openStack?.id, view?.version, panel);
   const selectedLayer = useMemo(() => {
@@ -670,6 +897,14 @@ export function App() {
           {notice ? (
             <div className="banner notice" role="alert">
               {notice}
+              {shownNotice?.at ? (
+                <>
+                  {' '}
+                  <button type="button" className="open-in-editor" onClick={() => openInEditor(shownNotice.at!)}>
+                    Open in editor
+                  </button>
+                </>
+              ) : null}
               {shownNotice?.uses ? (
                 <ul className="uses">
                   {shownNotice.uses.map((u) => (
@@ -688,14 +923,23 @@ export function App() {
         <ReactFlow
           // fitView only runs on mount, so re-mount when the set of boxes changes (the first push has none).
           key={fitKey}
-          nodes={nodes}
+          nodes={dragged}
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
-          onSelectionChange={({ nodes: picked }) => setSelectedId((picked.find((n) => n.type === 'truss' || n.type === 'layer') ?? picked.find((n) => n.type === 'stack'))?.id)}
+          onSelectionChange={({ nodes: picked, edges: pickedEdges }) => {
+            setSelectedId((picked.find((n) => n.type === 'truss' || n.type === 'layer') ?? picked.find((n) => n.type === 'stack'))?.id);
+            setSelectedEdgeId(pickedEdges.find((e) => (e.data as { edge?: EdgeView } | undefined)?.edge)?.id);
+          }}
           edges={flowEdges}
           nodeTypes={nodeTypes}
-          nodesConnectable={false}
+          nodesConnectable={!error}
           nodesDraggable={!error}
+          // The line is drawn by React Flow, but where it ends and what it means is Truss's to say: see endDrag.
+          onConnectStart={(_event, params) => startDrag(params.nodeId)}
+          onConnectEnd={(event, state) => endDrag(event, state.fromNode?.id)}
+          onReconnect={() => undefined}
+          onReconnectStart={(_event, edge) => startDrag(edge.source)}
+          onReconnectEnd={(event, edge) => endReconnect(event, edge)}
           // Deleting a Node is a code edit, not a canvas gesture; without this Backspace would hide the selected Node.
           deleteKeyCode={null}
           fitView
@@ -714,10 +958,13 @@ export function App() {
           </button>
         )}
         {draft ? <DraftBar draft={draft} busy={view.synthing || saving} blockers={view.problems.filter((p) => p.blocking)} held={!!error && error.kind !== 'draft'} onUndo={undo} onRedo={redo} onSave={() => void save()} onDiscard={discard} onShowProblem={showProblem} /> : null}
-        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onDuplicate={() => void request({ type: 'duplicate', id: selected.id })} onRemove={() => void request({ type: 'removeNode', id: selected.id })} onOpen={openInEditor} /> : null}
+        {selected ? <NodePanel node={selected} nodes={shown?.nodes ?? []} props={panelState} paused={error !== undefined} pick={pickFor(selected.id)} onSave={(note) => void request({ type: 'note', id: selected.id, note })} onSet={stage(selected.id)} onRename={rename(selected.id, (path) => path)} onDuplicate={() => void request({ type: 'duplicate', id: selected.id })} onRemove={() => void request({ type: 'removeNode', id: selected.id })} onOpen={openInEditor} /> : null}
         {asking ? <AddForm key={asking.fqn} name={asking.name} props={asking.props} onAdd={(values) => void add(asking.scope, asking.fqn, asking.name, values)} onCancel={() => setAsking(undefined)} /> : null}
         {openStack ? <StackPanel stack={openStack} props={panelState} onSet={stage(openStack.id)} onRename={rename(openStack.id, stackNodeId)} onOpen={openInEditor} /> : null}
         {selectedLayer ? <LayerPanel child={selectedLayer.child} node={selectedLayer.node} /> : null}
+        {selectedEdge ? <EdgePanel edge={selectedEdge} names={names} paused={error !== undefined} onRemove={() => void request({ type: 'disconnect', from: selectedEdge.from, to: selectedEdge.to, prop: selectedEdge.prop })} onOpen={openInEditor} /> : null}
+        {tip ? <RefusalTip tip={tip} onOpen={openInEditor} onClose={() => setTip(undefined)} /> : null}
+        {choice ? <ConnectMenu choice={choice} onPick={(prop, replace) => void submit({ type: 'connect', from: choice.fromId, to: choice.toId, prop, ...(replace ? { replace: true } : {}) }, { x: choice.x, y: choice.y })} onClose={() => setChoice(undefined)} /> : null}
       </div>
     </div>
   );

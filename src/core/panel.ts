@@ -1,6 +1,7 @@
 import type { TreeNode } from './assembly.ts';
 import { constructIdProblem, siblingIds } from './construct-id.ts';
 import { entryFor, type Catalog, type CatalogEntry, type CatalogProp, type PropInput } from './catalog.ts';
+import { canConnect, type ConnectContext } from './connect.ts';
 import { nodeEditability } from './editability.ts';
 import type { Facts, NodeFacts, PropFacts } from './facts.ts';
 import { withIntents, type Intent, type PropValue } from './intents.ts';
@@ -14,6 +15,16 @@ export type WrittenValue =
   | { kind: 'literal'; value: string | number | boolean | null; text: string }
   | { kind: 'expression'; text: string; member?: { type: string; name: string }; quantity?: { type: 'Duration' | 'Size'; unit: string; amount: number } }
   | { kind: 'object'; text: string; fields: Array<{ name: string; written: WrittenValue }> };
+
+/** For a prop that takes Nodes (a Reference), what it points at and what it could. */
+export interface PropNodesView {
+  /** The prop takes several Nodes, in order; otherwise one. */
+  many: boolean;
+  /** What the code points it at now, in order. */
+  current: Array<{ id: string; label: string; readOnly?: string }>;
+  /** The Nodes of the Design it could point at, besides those it does. */
+  choices: Array<{ id: string; label: string }>;
+}
 
 export interface PropRowView {
   name: string;
@@ -29,6 +40,8 @@ export interface PropRowView {
   written?: WrittenValue;
   /** What to edit the prop with. Absent when Truss won't write it: the panel is read-only, the type has no input, or the code gives the prop something Truss can't edit. */
   input?: PropInput;
+  /** The Node picker, for a prop that takes Nodes and can be edited. The same value a drag on the canvas edits. */
+  nodes?: PropNodesView;
 }
 
 /** What the panel shows for one Node or Stack. */
@@ -83,7 +96,7 @@ export function editableAs(input: PropInput, written: WrittenValue | undefined):
   }
 }
 
-function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefined, editing: boolean): PropRowView {
+function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefined, editing: boolean, nodes?: PropNodesView): PropRowView {
   const value = written && writtenOf(written);
   return {
     name: prop.name,
@@ -94,6 +107,7 @@ function rowOf(prop: CatalogProp, featured: boolean, written: PropFacts | undefi
     ...(featured ? { featured: true as const } : {}),
     ...(value ? { written: value } : {}),
     ...(editing && prop.input && editableAs(prop.input, value) ? { input: prop.input } : {}),
+    ...(editing && nodes ? { nodes } : {}),
   };
 }
 
@@ -133,18 +147,18 @@ function describeEntry(entry: CatalogEntry): Described {
 }
 
 /** The rows for the described props. A prop the code sets is never left on demand, and what is written but not described follows as written. */
-function rowsOf(described: Described | undefined, props: readonly PropFacts[], editing: boolean): { rows: PropRowView[]; more: PropRowView[] } {
+function rowsOf(described: Described | undefined, props: readonly PropFacts[], editing: boolean, nodesFor: (prop: CatalogProp) => PropNodesView | undefined): { rows: PropRowView[]; more: PropRowView[] } {
   const written = new Map(props.map((p) => [p.name, p]));
   const rows: PropRowView[] = [];
   const more: PropRowView[] = [];
   const known = new Set<string>();
   for (const p of described?.first ?? []) {
     known.add(p.name);
-    rows.push(rowOf(p, described!.featured.has(p.name), written.get(p.name), editing));
+    rows.push(rowOf(p, described!.featured.has(p.name), written.get(p.name), editing, nodesFor(p)));
   }
   for (const p of described?.rest ?? []) {
     known.add(p.name);
-    (written.has(p.name) ? rows : more).push(rowOf(p, false, written.get(p.name), editing));
+    (written.has(p.name) ? rows : more).push(rowOf(p, false, written.get(p.name), editing, nodesFor(p)));
   }
   for (const p of props) if (!known.has(p.name)) rows.push({ name: p.name, written: writtenOf(p) });
   return { rows, more };
@@ -185,7 +199,8 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
   // The Draft's edits to this construct, and to any other made by the same `new`: a Stack or Stage class created more than once.
   const mine = nodeFacts && editing ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts)) : [];
   const props = withIntents(nodeFacts?.props, mine);
-  const { rows, more } = rowsOf(described, props?.form === 'object' ? props.props : [], editing !== undefined && readOnly === undefined);
+  const nodesFor = (prop: CatalogProp) => (node && editing && readOnly === undefined && prop.accepts ? nodesOf(id, prop, { view, facts, catalog, ...(editing.blocked ? { blocked: editing.blocked } : {}), ...(editing.added ? { added: editing.added } : {}) }) : undefined);
+  const { rows, more } = rowsOf(described, props?.form === 'object' ? props.props : [], editing !== undefined && readOnly === undefined, nodesFor);
   return {
     id,
     kind: isStack ? 'stack' : 'node',
@@ -199,6 +214,23 @@ export function buildPanel(id: string, view: ViewBody, facts: Facts, catalog: Ca
     ...(nodeFacts?.props?.form === 'other' ? { propsSource: nodeFacts.props.text } : {}),
     ...(nodeFacts ? { source: sourceOf(nodeFacts) } : {}),
   };
+}
+
+/** The Node picker of a prop that takes Nodes. Absent when the code gives the prop something the picker can't show and replace. */
+function nodesOf(id: string, prop: CatalogProp, ctx: ConnectContext): PropNodesView | undefined {
+  const label = (path: string) => ctx.view.nodes.find((n) => n.id === path)?.label ?? path.split('/').at(-1)!;
+  const refs = (ctx.facts.references ?? []).filter((r) => r.from === id && r.prop === prop.name).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const written = ctx.facts.nodes[id]?.props;
+  const writtenAs = written?.form === 'object' ? written.props.find((p) => p.name === prop.name) : undefined;
+  // Written as something that isn't a Node (a parameter, a call), or as a list with more in it than Nodes: the picker has nothing to show.
+  if (writtenAs && refs.length === 0 && !/^\[\s*\]$/.test(writtenAs.text.trim())) return undefined;
+  const many = prop.accepts?.many === true;
+  const choices = ctx.view.nodes.flatMap((n) => {
+    if (n.id === id || refs.some((r) => r.to === n.id)) return [];
+    const check = canConnect(ctx, id, n.id);
+    return check.ok && check.options.some((o) => o.prop === prop.name) ? [{ id: n.id, label: n.label }] : [];
+  });
+  return { many, current: refs.map((r) => ({ id: r.to, label: label(r.to), ...(r.editable ? {} : { readOnly: r.reason ?? 'Truss leaves this alone' }) })), choices };
 }
 
 const errorOf = (e: ReturnType<typeof nodeEditability>) => (e.editable ? undefined : e.reason);

@@ -60,7 +60,37 @@ export interface NodeFacts {
   external?: true;
 }
 
+/**
+ * How the code writes a Reference. The first four are the Node's own binding and can be edited; an `accessor` is a
+ * property read off the Node (`network.vpc`) and is drawn to the Node that owns it; a `call` and a `conditional`
+ * hold the Node in an expression Truss doesn't take apart.
+ */
+export type ReferenceForm = 'identifier' | 'field' | 'shorthand' | 'alias' | 'accessor' | 'call' | 'conditional';
+
+/** One prop of a construct that points at another Node. */
+export interface ReferenceFacts {
+  /** The construct path of the Node whose prop holds it. */
+  from: string;
+  /** The construct path of the Node it points at; for an accessor, the Node that owns what is read. */
+  to: string;
+  /** The prop of the `new` call's props object. */
+  prop: string;
+  form: ReferenceForm;
+  /** Whether Truss can re-point or remove it. */
+  editable: boolean;
+  /** Why not, when it can't be. */
+  reason?: string;
+  /** Which element of an array prop it is. */
+  index?: number;
+  /** The expression as written. */
+  text: string;
+  /** Where the expression is. */
+  span: Span;
+}
+
 /** Facts per construct path. Nothing in here is a syntax tree. */
 export interface Facts {
   nodes: Record<string, NodeFacts>;
+  /** The Nodes the props of each construct point at. Absent when none do. */
+  references?: ReferenceFacts[];
 }

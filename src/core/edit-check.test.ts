@@ -182,3 +182,41 @@ describe('judgeEdit for a removed Node', () => {
     expect(run({ intents: [renamed, removed] })).toEqual([]);
   });
 });
+
+describe('judgeEdit on a Reference', () => {
+  const resource = (path: string): TreeNode => ({ id: path.split('/').at(-1)!, path, fqn: 'x', cfnType: 'AWS::X::Y', children: [] });
+  const withResources = (): TreeNode => ({
+    id: '',
+    path: '',
+    fqn: 'App',
+    children: [
+      { id: 'S/A', path: 'S/A', fqn: 'x', children: [resource('S/A/Resource')] },
+      { id: 'S/B', path: 'S/B', fqn: 'x', children: [resource('S/B/Resource')] },
+      { id: 'T/A', path: 'T/A', fqn: 'x', children: [] },
+    ],
+  });
+  const add: Extract<Intent, { type: 'addReference' }> = { type: 'addReference', path: 'S/A', expect: { className: 'X', literalId: 'A' }, prop: 'p', to: { path: 'S/B', className: 'X', literalId: 'B' } };
+  const judge = (resourceRefs: Assembly['resourceRefs'], intents: Intent[] = [add]) =>
+    judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents, before: assembly(withResources()), after: { ...assembly(withResources()), resourceRefs } });
+
+  it('holds when a resource of the source points at a resource of the target', () => {
+    expect(judge([{ from: 'S/A/Resource', to: 'S/B/Resource' }])).toEqual([]);
+  });
+
+  it('fails an added Reference the template does not show', () => {
+    expect(judge([])).toEqual(['S/A does not point at S/B after the edit']);
+  });
+
+  it('checks a re-point the same way, and not a removal', () => {
+    const repoint: Intent = { type: 'repointReference', path: 'S/A', expect: add.expect, prop: 'p', was: { path: 'S/C', className: 'X', literalId: 'C' }, to: { path: 'S/B', className: 'X', literalId: 'B' } };
+    expect(judge([], [repoint])).toEqual(['S/A does not point at S/B after the edit']);
+    const remove: Intent = { type: 'removeReference', path: 'S/A', expect: add.expect, prop: 'p', to: { path: 'S/B', className: 'X', literalId: 'B' } };
+    expect(judge([], [remove])).toEqual([]);
+  });
+
+  it('does not check a Reference to a Node with no resource, or one made in another Stack', () => {
+    const bare: TreeNode = { id: '', path: '', fqn: 'App', children: [{ id: 'S/A', path: 'S/A', fqn: 'x', children: [resource('S/A/Resource')] }, { id: 'S/B', path: 'S/B', fqn: 'x', children: [] }, { id: 'T/A', path: 'T/A', fqn: 'x', children: [] }] };
+    expect(judgeEdit({ files, changes: { 'f.ts': [inA] }, facts, intents: [add], before: assembly(bare), after: assembly(bare) })).toEqual([]);
+    expect(judge([], [{ ...add, to: { path: 'T/B', className: 'X', literalId: 'B' } }])).toEqual([]);
+  });
+});

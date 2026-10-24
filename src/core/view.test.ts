@@ -339,3 +339,67 @@ describe('buildView Layers', () => {
     expect(orphan).not.toHaveProperty('causedBy');
   });
 });
+
+describe('buildView edges', () => {
+  const refSpan = { file: 'lib/a.ts', start: { line: 12, col: 30 }, end: { line: 12, col: 34 } };
+  const reference = (extra: Partial<NonNullable<Facts['references']>[number]> = {}) => ({ from: 'Api/Jobs', to: 'Api/Site', prop: 'bucket', form: 'identifier' as const, editable: true, text: 'site', span: refSpan, ...extra });
+  const tree: TreeNode = {
+    id: 'App',
+    path: '',
+    fqn: 'aws-cdk-lib.App',
+    children: [
+      {
+        id: 'Api',
+        path: 'Api',
+        fqn: 'aws-cdk-lib.Stack',
+        children: [
+          { id: 'Jobs', path: 'Api/Jobs', fqn: 'aws-cdk-lib.aws_sqs.Queue', children: [] },
+          { id: 'Site', path: 'Api/Site', fqn: 'aws-cdk-lib.aws_s3.Bucket', children: [{ id: 'Resource', path: 'Api/Site/Resource', fqn: 'aws-cdk-lib.aws_s3.CfnBucket', children: [] }] },
+        ],
+      },
+    ],
+  };
+  const edgeFacts = (references: NonNullable<Facts['references']>): Facts => ({
+    nodes: {
+      Api: facts.nodes['Api']!,
+      'Api/Jobs': facts.nodes['Api/Jobs']!,
+      'Api/Site': { span: span(20), className: 's3.Bucket', literalId: 'Site', pathsOnSpan: 1, binding: 'const' },
+    },
+    references,
+  });
+  const edges = (references: NonNullable<Facts['references']>, changed: ReadonlySet<string> = new Set()) =>
+    buildView(edgeFacts(references), { ...assembly, tree, stacks: [{ path: 'Api' }] }, emptySidecar(), changed).edges;
+
+  it('draws a Reference as an edge from the Node that holds it to the Node it points at, with where the code writes it', () => {
+    expect(edges([reference()])).toEqual([{ id: 'Api/Jobs->Api/Site:bucket', kind: 'reference', from: 'Api/Jobs', to: 'Api/Site', prop: 'bucket', text: 'site', source: { file: 'lib/a.ts', line: 12, col: 30 } }]);
+  });
+
+  it('numbers the edges of an array prop, and says why a read-only one is', () => {
+    const [first, second] = edges([reference({ index: 0 }), reference({ index: 1, form: 'call', editable: false, reason: 'Passed through a call' })]);
+    expect(first).toMatchObject({ id: 'Api/Jobs->Api/Site:bucket[0]', index: 0 });
+    expect(first).not.toHaveProperty('readOnly');
+    expect(second).toMatchObject({ index: 1, readOnly: 'Passed through a call' });
+  });
+
+  it('draws a Reference to something inside a Node to the Node', () => {
+    expect(edges([reference({ to: 'Api/Site/Resource' })])).toMatchObject([{ to: 'Api/Site' }]);
+  });
+
+  it('leaves out a Reference whose end is not a Node on screen, or that points at its own Node', () => {
+    expect(edges([reference({ to: 'Elsewhere/Thing' }), reference({ to: 'Api/Jobs/Child' })])).toEqual([]);
+  });
+
+  it('marks the edges of a Node the Draft changes', () => {
+    expect(edges([reference()], new Set(['Api/Jobs']))[0]).toMatchObject({ changed: true });
+    expect(edges([reference()], new Set(['Api/Site']))[0]).not.toHaveProperty('changed');
+  });
+
+  it('says the arrow runs the other way for a prop the Overlay marks as flowing in', () => {
+    const view = buildView(edgeFacts([reference({ prop: 'role' }), reference({ prop: 'vpc' })]), { ...assembly, tree, stacks: [{ path: 'Api' }] }, emptySidecar(), new Set(), new Set(), (fqn, prop) => fqn === 'aws-cdk-lib.aws_sqs.Queue' && prop === 'role');
+    expect(view.edges.map((e) => [e.prop, e.flow])).toEqual([['role', 'in'], ['vpc', undefined]]);
+  });
+
+  it('has none for an app without References', () => {
+    expect(buildView(facts, assembly, emptySidecar()).edges).toEqual([]);
+  });
+});

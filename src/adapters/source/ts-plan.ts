@@ -1,10 +1,10 @@
 // Turns intents into text changes in the file's own style (ADR 0007). It edits the text and leaves everything else alone.
 import ts from '@typescript/typescript6';
 import { applyChanges, offsetOf, type TextChange } from '../../core/diff.ts';
-import type { Facts, NodeFacts } from '../../core/facts.ts';
+import type { Facts, NodeFacts, ReferenceFacts } from '../../core/facts.ts';
 import { constructIdProblem, parentPath } from '../../core/construct-id.ts';
 import { nodeEditability } from '../../core/editability.ts';
-import { onBase, type AddNodeIntent, type AddedProp, type DuplicateIntent, type Intent, type PropValue, type RemoveNodeIntent } from '../../core/intents.ts';
+import { isReferenceIntent, onBase, type AddNodeIntent, type AddedProp, type DuplicateIntent, type Intent, type NodeRef, type PropValue, type ReferenceIntent, type RemoveNodeIntent } from '../../core/intents.ts';
 import type { FileSet, PlanResult, SourceUse } from '../../core/ports.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 import { languageServiceOver, referencesTo, useAt } from './uses.ts';
@@ -23,8 +23,8 @@ class Refusal extends Error {
   }
 }
 
-/** The value to set at a path of props, or the props to set inside one. */
-type Assign = { leaf: PropValue; intent: number } | { fields: Map<string, Assign>; intent: number };
+/** The value to set at a path of props, the props to set inside one, or the Nodes a prop is to point at. */
+type Assign = { leaf: PropValue; intent: number } | { fields: Map<string, Assign>; intent: number } | { refs: RefEdit; intent: number };
 
 function assign(into: Map<string, Assign>, prop: readonly string[], value: PropValue, intent: number): void {
   const [name, ...rest] = prop;
@@ -45,6 +45,10 @@ interface Target {
   rename?: { id: string; intent: number };
   /** The first intent that edits this construct, which a refusal is blamed on. */
   intent: number;
+  /** The Reference edits to its props, by prop, in the order they were made. */
+  refs: Map<string, { many: boolean; ops: RefOp[]; intent: number; from: string }>;
+  /** What the source said about the whole app, which a Reference is written against. */
+  world: Facts;
 }
 
 /** Everything the planner learns about one file, and the changes it has made to it so far. */
@@ -57,6 +61,8 @@ class FileEdit {
   /** The imports this plan adds, by module: one line each, however many of its names are used. */
   private readonly newImports = new Map<string, { named: string[] } | { alias: string }>();
   private readonly refs = new Map<string, string>();
+  /** Statements that move to follow another, each with the statement it goes after. */
+  private readonly moves = new Map<ts.Statement, { after: ts.Statement; note: string }>();
 
   constructor(
     readonly file: string,
@@ -71,8 +77,32 @@ class FileEdit {
     this.changes.push({ start, end, text, ...(purpose ? { purpose } : {}) });
   }
 
+  /** Moves `statement` to follow `after`, or further down if it was already to move below a statement past that one. */
+  moveBelow(statement: ts.Statement, after: ts.Statement, note: string): void {
+    const there = this.moves.get(statement);
+    // The note says where it ends up, so it follows the statement it moves below.
+    if (!there || there.after.getEnd() < after.getEnd()) this.moves.set(statement, { after, note });
+  }
+
+  /** Turns each move into the deletion of the statement and its insertion, with the edits made inside it carried along. */
+  private finishMoves(): void {
+    for (const [statement, { after, note }] of this.moves) {
+      const r = removalRange(this, statement);
+      const inside = this.changes.filter((c) => c.start >= r.start && c.end <= r.end);
+      for (const c of inside) this.changes.splice(this.changes.indexOf(c), 1);
+      let text = this.text.slice(r.start, r.end);
+      for (const c of inside.sort((a, b) => b.start - a.start)) text = text.slice(0, c.start - r.start) + c.text + text.slice(c.end - r.start);
+      const body = text.replace(/^[ \t]+/, '').replace(/(\r?\n)+[ \t]*$/, '');
+      this.changes.push({ start: r.start, end: r.end, text: '', purpose: 'move', note });
+      const end = after.getEnd();
+      const at = ts.getTrailingCommentRanges(this.text, end)?.at(-1)?.end ?? end;
+      this.change(at, at, `${this.newline}${this.indentOf(after)}${body}`, 'move');
+    }
+  }
+
   /** The text after the changes so far, with imports. */
   finish(): TextChange[] {
+    this.finishMoves();
     for (const [decl, names] of this.namedAdds) {
       const elements = (decl.importClause!.namedBindings as ts.NamedImports).elements;
       const last = elements[elements.length - 1]!;
@@ -259,10 +289,11 @@ function emit(edit: FileEdit, intent: number, value: PropValue, existing: ts.Exp
 }
 
 function render(edit: FileEdit, name: string, a: Assign): string {
+  if ('refs' in a) return renderRefs(name, a.refs) ?? '';
   return `${name}: ${'leaf' in a ? emit(edit, a.intent, a.leaf, undefined) : renderObject(edit, a.fields)}`;
 }
 
-const renderObject = (edit: FileEdit, fields: Map<string, Assign>): string => `{ ${[...fields].map(([name, a]) => render(edit, name, a)).join(', ')} }`;
+const renderObject = (edit: FileEdit, fields: Map<string, Assign>): string => `{ ${[...fields].map(([name, a]) => render(edit, name, a)).filter((r) => r !== '').join(', ')} }`;
 
 /** What may be replaced by a value from the canvas: a value of the same kind as the ones the canvas writes. */
 const isReplaceable = (e: ts.Expression) => literalValue(e) !== undefined || memberOf(e) !== undefined || quantityOf(e) !== undefined;
@@ -275,6 +306,11 @@ function editObject(edit: FileEdit, obj: ts.ObjectLiteralExpression, fields: Map
   const added: string[] = [];
   for (const [name, a] of fields) {
     const existing = propNamed(obj, name);
+    if ('refs' in a) {
+      const text = editRefs(edit, obj, name, existing, a);
+      if (text) added.push(text);
+      continue;
+    }
     if (!existing) {
       added.push(render(edit, name, a));
       continue;
@@ -294,11 +330,12 @@ function editObject(edit: FileEdit, obj: ts.ObjectLiteralExpression, fields: Map
 }
 
 /** Adds props after the last one (so after any spread, where they win), laid out the way the object is. */
-function append(edit: FileEdit, obj: ts.ObjectLiteralExpression, entries: string[]): void {
+function append(edit: FileEdit, obj: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression, entries: string[]): void {
   const { sf, text, newline } = edit;
-  const props = obj.properties;
+  const props: ts.NodeArray<ts.Node> = ts.isObjectLiteralExpression(obj) ? obj.properties : obj.elements;
   const last = props.at(-1);
-  if (!last) return edit.change(obj.getStart(sf), obj.getEnd(), `{ ${entries.join(', ')} }`);
+  const [opening, closing] = ts.isObjectLiteralExpression(obj) ? ['{ ', ' }'] : ['[', ']'];
+  if (!last) return edit.change(obj.getStart(sf), obj.getEnd(), `${opening}${entries.join(', ')}${closing}`);
   const open = sf.getLineAndCharacterOfPosition(obj.getStart(sf)).line;
   const multiline = sf.getLineAndCharacterOfPosition(props[0]!.getStart(sf)).line !== open;
   const comma = props.hasTrailingComma ? obj.getChildren(sf).find((c) => c.kind === ts.SyntaxKind.SyntaxList)!.getChildren(sf).at(-1)! : undefined;
@@ -334,6 +371,7 @@ function editNew(edit: FileEdit, target: Target): void {
     edit.change(id.getStart(edit.sf), id.getEnd(), quoted(target.rename.id, quote));
   }
   const props = found.arguments![2];
+  for (const [prop, r] of target.refs) target.assigns.set(prop, { refs: refEdit(edit, found, target, prop, r), intent: r.intent });
   if (target.assigns.size === 0) return;
   if (!props) return edit.change(id.getEnd(), id.getEnd(), `, ${renderObject(edit, target.assigns)}`);
   if (!ts.isObjectLiteralExpression(props)) throw new Refusal(intent, `The props are passed as ${props.getText(edit.sf)}, not written out in the call`);
@@ -640,6 +678,257 @@ function removeNode(r: Removal, edits: (file: string, intent: number) => FileEdi
   for (const g of gone) edit.change(g.start, g.end, '', 'remove');
 }
 
+// --- References ---------------------------------------------------------------------------------------
+
+/** One change to the Nodes a prop points at, in the order the Draft made them. */
+type RefOp = { kind: 'add'; to: NodeRef; intent: number } | { kind: 'remove'; to: NodeRef; intent: number } | { kind: 'repoint'; was: NodeRef; to: NodeRef; intent: number };
+
+/** What the Draft does to one prop that points at Nodes, and how to write a Node there. */
+interface RefEdit {
+  many: boolean;
+  ops: RefOp[];
+  /** How the code names `to` where the Reference is written; moves the source statement below it when that is needed and safe. */
+  write(to: NodeRef, intent: number): string;
+  /** The Nodes the prop points at now, by position. */
+  existing: ReferenceFacts[];
+  intent: number;
+}
+
+/** An entry of a prop that points at Nodes: one the code has, or one the Draft adds. */
+interface RefEntry {
+  target: string;
+  /** The code of a Reference the Draft writes; absent for one that stays as it is. */
+  text?: string;
+  /** The element of the code it was; absent for one the Draft adds. */
+  at?: number;
+  removed?: true;
+}
+
+const refOpOf = (intent: ReferenceIntent, index: number): RefOp =>
+  intent.type === 'addReference' ? { kind: 'add', to: intent.to, intent: index } : intent.type === 'removeReference' ? { kind: 'remove', to: intent.to, intent: index } : { kind: 'repoint', was: intent.was, to: intent.to, intent: index };
+
+/** Applies the Draft's changes to what a prop points at now, and says where each Node ends up. */
+function settle(r: RefEdit, prop: string): RefEntry[] {
+  const entries: RefEntry[] = r.existing.map((e, i) => ({ target: e.to, at: i }));
+  const live = () => entries.filter((e) => !e.removed);
+  const named = (n: NodeRef) => n.literalId || n.path;
+  for (const op of r.ops) {
+    if (op.kind === 'add') {
+      if (live().some((e) => e.target === op.to.path)) throw new Refusal(op.intent, `${prop} already points at ${named(op.to)}`);
+      if (!r.many && live().length > 0) throw new Refusal(op.intent, `${prop} already points at another Node, and takes one`);
+      entries.push({ target: op.to.path, text: r.write(op.to, op.intent) });
+      continue;
+    }
+    const gone = op.kind === 'remove' ? op.to : op.was;
+    const entry = live().find((e) => e.target === gone.path);
+    if (!entry) throw new Refusal(op.intent, `${prop} doesn't point at ${named(gone)} in the code`);
+    if (op.kind === 'remove') entry.removed = true;
+    else {
+      if (live().some((e) => e.target === op.to.path)) throw new Refusal(op.intent, `${prop} already points at ${named(op.to)}`);
+      entry.target = op.to.path;
+      entry.text = r.write(op.to, op.intent);
+    }
+  }
+  return entries;
+}
+
+/** The prop as it is written when the code doesn't have it yet; undefined when it comes to nothing. */
+function renderRefs(name: string, r: RefEdit): string | undefined {
+  const texts = settle(r, name).flatMap((e) => (e.removed || e.text === undefined ? [] : [e.text]));
+  if (texts.length === 0) return undefined;
+  if (r.many) return `${name}: [${texts.join(', ')}]`;
+  return texts[0] === name ? name : `${name}: ${texts[0]}`;
+}
+
+/**
+ * Deletes `items[indices]` from a list, with the commas around them. A run that ends before the last item goes up to the
+ * next item; one that includes the last goes from the end of the item before it. All of them go: the list is left empty.
+ */
+function removeItems(edit: FileEdit, container: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression, indices: readonly number[]): void {
+  const { sf } = edit;
+  const items: ts.NodeArray<ts.Node> = ts.isObjectLiteralExpression(container) ? container.properties : container.elements;
+  const gone = new Set(indices);
+  if (gone.size === items.length) {
+    edit.change(container.getStart(sf) + 1, container.getEnd() - 1, '');
+    return;
+  }
+  for (let i = 0; i < items.length; i++) {
+    if (!gone.has(i) || gone.has(i - 1)) continue;
+    let j = i;
+    while (gone.has(j + 1)) j++;
+    if (j < items.length - 1) edit.change(items[i]!.getStart(sf), items[j + 1]!.getStart(sf), '');
+    else edit.change(items[i - 1]!.getEnd(), items[j]!.getEnd(), '');
+  }
+}
+
+/** Edits the code of one prop that points at Nodes. Returns the prop to add to the object when the code doesn't have it. */
+function editRefs(edit: FileEdit, obj: ts.ObjectLiteralExpression, name: string, existing: ts.ObjectLiteralElementLike | undefined, a: { refs: RefEdit; intent: number }): string | undefined {
+  const r = a.refs;
+  if (!existing) return renderRefs(name, r);
+  const entries = settle(r, name);
+  const at = obj.properties.indexOf(existing);
+  const live = entries.filter((e) => !e.removed);
+  if (!r.many) {
+    const entry = entries[0];
+    if (!entry || entry.removed) {
+      removeItems(edit, obj, [at]);
+    } else if (entry.text !== undefined) {
+      if (ts.isShorthandPropertyAssignment(existing)) edit.change(existing.getStart(edit.sf), existing.getEnd(), entry.text === name ? name : `${name}: ${entry.text}`);
+      else if (ts.isPropertyAssignment(existing)) {
+        const init = existing.initializer;
+        if (entry.text === name) edit.change(existing.getStart(edit.sf), existing.getEnd(), name);
+        else edit.change(init.getStart(edit.sf), init.getEnd(), entry.text);
+      }
+    }
+    return undefined;
+  }
+  if (!ts.isPropertyAssignment(existing) || !ts.isArrayLiteralExpression(existing.initializer)) throw new Refusal(a.intent, `${name} is not written as \`${name}: [...]\` in the code`);
+  const list = existing.initializer;
+  if (live.length === 0) {
+    removeItems(edit, obj, [at]);
+    return undefined;
+  }
+  const removed = entries.flatMap((e) => (e.removed && e.at !== undefined ? [e.at] : []));
+  if (removed.length > 0) removeItems(edit, list, removed);
+  for (const e of entries) {
+    if (e.removed || e.at === undefined || e.text === undefined) continue;
+    const el = list.elements[e.at]!;
+    edit.change(el.getStart(edit.sf), el.getEnd(), e.text);
+  }
+  const fresh = entries.flatMap((e) => (!e.removed && e.at === undefined && e.text !== undefined ? [e.text] : []));
+  if (fresh.length > 0) append(edit, list, fresh);
+  return undefined;
+}
+
+const isMakingCall = (n: ts.Node): n is ts.NewExpression | ts.CallExpression => ts.isNewExpression(n) || ts.isCallExpression(n);
+
+/** The `new` or `fromXxx` call that starts where `f` says. */
+function madeAt(edit: FileEdit, f: NodeFacts): ts.NewExpression | ts.CallExpression | undefined {
+  const start = offsetOf(edit.text, f.span.start.line, f.span.start.col);
+  let found: ts.NewExpression | ts.CallExpression | undefined;
+  const visit = (n: ts.Node) => {
+    if (isMakingCall(n) && n.getStart(edit.sf) === start && (ts.isNewExpression(n) || f.external)) found = n;
+    if (!found) ts.forEachChild(n, visit);
+  };
+  visit(edit.sf);
+  return found;
+}
+
+/** What a Node is called in the code that made it, and the statement or member that holds it. */
+interface Holder {
+  /** `vpc` or `this.vpc`. */
+  text: string;
+  /** The statement or class member the Node is made in. */
+  site: ts.Statement | ts.ClassElement;
+  /** The block, source file or class the site is in. */
+  container: ts.Node;
+}
+
+function holderOf(made: ts.Expression): Holder | undefined {
+  let top: ts.Expression = made;
+  while (ts.isParenthesizedExpression(top.parent) || ts.isAsExpression(top.parent) || ts.isSatisfiesExpression(top.parent) || ts.isNonNullExpression(top.parent)) top = top.parent;
+  const parent = top.parent;
+  if (ts.isVariableDeclaration(parent) && parent.initializer === top && ts.isIdentifier(parent.name)) {
+    const statement = parent.parent.parent;
+    return ts.isVariableStatement(statement) ? { text: parent.name.text, site: statement, container: statement.parent } : undefined;
+  }
+  if (ts.isBinaryExpression(parent) && parent.right === top && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(parent.left) && parent.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    const statement = parent.parent;
+    return ts.isExpressionStatement(statement) ? { text: `this.${parent.left.name.text}`, site: statement, container: statement.parent } : undefined;
+  }
+  if (ts.isPropertyDeclaration(parent) && parent.initializer === top && ts.isIdentifier(parent.name)) return { text: `this.${parent.name.text}`, site: parent, container: parent.parent };
+  return undefined;
+}
+
+/** The statement that holds `n` in `container`'s list of statements or members, however deep inside it `n` is. */
+function sitIn(n: ts.Node, container: ts.Node): ts.Node | undefined {
+  for (let at: ts.Node | undefined = n; at?.parent; at = at.parent) if (at.parent === container) return at;
+  return undefined;
+}
+
+/** The name the statement that makes the source gives it, when the statement is nothing but that. Undefined if the statement does more. */
+function ownStatement(statement: ts.Node, made: ts.Expression): { statement: ts.Statement; name?: string } | undefined {
+  if (ts.isVariableStatement(statement)) {
+    const [only, ...more] = statement.declarationList.declarations;
+    return only && more.length === 0 && ts.isIdentifier(only.name) && only.initializer && bareExpression(only.initializer) === made ? { statement, name: only.name.text } : undefined;
+  }
+  if (ts.isExpressionStatement(statement)) {
+    const e = statement.expression;
+    if (bareExpression(e) === made) return { statement };
+    if (ts.isBinaryExpression(e) && bareExpression(e.right) === made && ts.isPropertyAccessExpression(e.left) && e.left.expression.kind === ts.SyntaxKind.ThisKeyword) return { statement, name: e.left.name.text };
+  }
+  return undefined;
+}
+
+function bareExpression(e: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e)) e = e.expression;
+  return e;
+}
+
+/**
+ * How the code writes the Node `to` where the source `new` is, or why it can't: the Node has to be kept in a variable or a
+ * field that is in scope there. A Node made after the source, in the same block, is made before it by moving the source's
+ * statement below it, when nothing in between uses the source.
+ */
+function writeReference(edit: FileEdit, source: ts.NewExpression, sourceFacts: NodeFacts, to: NodeFacts, label: string, intent: number): string {
+  const source_ = sourceFacts.literalId ?? sourceFacts.className;
+  if (to.span.file !== edit.file) throw new Refusal(intent, `${label} is made in ${to.span.file}, and ${source_} in ${edit.file}, so they have no scope in common`);
+  const made = madeAt(edit, to);
+  const holder = made && holderOf(made);
+  if (!made || !holder) throw new Refusal(intent, `${label} isn't kept in a variable or a field, so there is nothing to point at`);
+  const site = sitIn(source, holder.container);
+  if (!site) throw new Refusal(intent, `${source_} and ${label} have no scope in common: ${label} is declared in a block ${source_} is not in`);
+  if (site === holder.site) throw new Refusal(intent, `${source_} is made in the same statement as ${label}, so it can't point at it`);
+
+  if (ts.isClassLike(holder.container)) {
+    // A field set by a property initializer is there for the constructor and every method; for another initializer only when it comes first.
+    const members = holder.container.members;
+    if (ts.isPropertyDeclaration(site) && members.indexOf(site) < members.indexOf(holder.site as ts.ClassElement)) {
+      throw new Refusal(intent, `${source_} is declared before ${label} in the class, so it can't point at it`);
+    }
+    return holder.text;
+  }
+  const list = (holder.container as ts.Block | ts.SourceFile | ts.ModuleBlock).statements;
+  const from = list.indexOf(site as ts.Statement);
+  const at = list.indexOf(holder.site as ts.Statement);
+  if (from > at) return holder.text;
+
+  // The source comes first, so its statement moves below the Node's.
+  const own = ownStatement(site, source);
+  if (!own) throw new Refusal(intent, `${source_} is made in a statement that does more than make it, so Truss can't move it below ${label}`);
+  if (own.name !== undefined) {
+    const used = list.slice(from + 1, at + 1).find((s) => mentions(s, own.name!));
+    if (used) {
+      const line = edit.sf.getLineAndCharacterOfPosition(used.getStart(edit.sf)).line + 1;
+      throw new Refusal(intent, `${source_} is used on line ${line}, before ${label} is made, so it can't move below ${label}`);
+    }
+  }
+  edit.moveBelow(own.statement, holder.site as ts.Statement, `${source_} moves below ${label}`);
+  return holder.text;
+}
+
+/** The Reference edit of one prop of `target`: where it points now, and how a Node is written there. */
+function refEdit(edit: FileEdit, source: ts.NewExpression, target: Target, prop: string, r: { many: boolean; ops: RefOp[]; intent: number; from: string }): RefEdit {
+  // One instance of a Stack class created several times stands for them all.
+  const mine = (target.world.references ?? []).filter((e) => e.prop === prop && target.world.nodes[e.from] && key(target.world.nodes[e.from]!) === key(target.facts));
+  const first = mine.filter((e) => e.from === r.from).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const all = mine;
+  if (all.some((e) => !e.editable)) throw new Refusal(r.intent, `${prop} is set by ${all.find((e) => !e.editable)!.text}, which Truss leaves alone`);
+  const propText = target.facts.props?.form === 'object' ? target.facts.props.props.find((p) => p.name === prop) : undefined;
+  if (propText && all.length === 0 && !(r.many && /^\[\s*\]$/.test(propText.text.trim()))) throw new Refusal(r.intent, `${prop} is written as ${propText.text} in the code, not as a Node Truss can point elsewhere`);
+  return {
+    many: r.many,
+    ops: r.ops,
+    intent: r.intent,
+    existing: first,
+    write: (to, intent) => {
+      const toFacts = target.world.nodes[to.path];
+      if (!toFacts) throw new Refusal(intent, `There is no construct at ${to.path} in the code`);
+      return writeReference(edit, source, target.facts, toFacts, to.literalId || to.path, intent);
+    },
+  };
+}
+
 const key = (f: NodeFacts) => `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
 /** Plans `intents` against `files`, which `facts` were read from. Every intent is checked, and the changes it makes are confined to the `new` call it names (and the file's imports). */
@@ -677,8 +966,23 @@ export function planIntents(files: FileSet, facts: Facts, intents: readonly Inte
         creations.push({ index: i, intent, scopePath, scope, source: f });
         continue;
       }
-      const target = targets.get(key(f)) ?? { file: f.span.file, facts: f, assigns: new Map<string, Assign>(), intent: i };
-      if (intent.type === 'renameId') {
+      const target: Target = targets.get(key(f)) ?? { file: f.span.file, facts: f, assigns: new Map<string, Assign>(), refs: new Map(), world: facts, intent: i };
+      if (isReferenceIntent(intent)) {
+        if (!intent.prop || !IDENTIFIER.test(intent.prop)) throw new Refusal(i, `${intent.prop} is not a prop name`);
+        const nodeProblem = nodeEditability(intent.path, f);
+        if (!nodeProblem.editable) throw new Refusal(i, nodeProblem.reason);
+        if (f.props?.form === 'other') throw new Refusal(i, `The props are passed as ${f.props.text}, not written out in the call`);
+        for (const n of intent.type === 'repointReference' ? [intent.was, intent.to] : [intent.to]) {
+          const t = facts.nodes[n.path];
+          if (!t) throw new Refusal(i, `There is no construct at ${n.path} in the code`);
+          if (t.className !== n.className || (t.literalId ?? '') !== n.literalId) throw new Refusal(i, `${n.path} is no longer ${n.className} "${n.literalId}" in the code`);
+        }
+        const there = target.refs.get(intent.prop) ?? { many: false, ops: [], intent: i, from: intent.path };
+        if (intent.type === 'addReference' && intent.many) there.many = true;
+        if (!(intent.type === 'addReference') && (facts.references ?? []).some((e) => e.from === intent.path && e.prop === intent.prop && e.index !== undefined)) there.many = true;
+        there.ops.push(refOpOf(intent, i));
+        target.refs.set(intent.prop, there);
+      } else if (intent.type === 'renameId') {
         // Only the literal is rewritten, so a construct that is one of several made by the same `new` would be renamed in all of them.
         if (f.pathsOnSpan > 1) throw new Refusal(i, `${intent.path} is one of ${f.pathsOnSpan} constructs made by the same \`new\` call, so its ID can't be changed for it alone`);
         const problem = constructIdProblem(intent.newId, []);

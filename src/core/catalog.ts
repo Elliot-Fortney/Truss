@@ -32,6 +32,8 @@ export interface CatalogProp {
   /** The `@default` doc, as display text only: `- Assigned by CloudFormation.` */
   default?: string;
   input?: PropInput;
+  /** Set when the prop takes a construct, or an array of them: the jsii FQN of the class or interface it is typed as. A Node that is assignable to it can be this prop's Reference. */
+  accepts?: { fqn: string; many?: true };
 }
 
 export interface CatalogEntry {
@@ -51,6 +53,8 @@ export interface CatalogEntry {
   deprecated?: true;
   /** Every prop the construct takes, including those its props struct inherits; required ones are flagged. */
   props: CatalogProp[];
+  /** The construct's own FQN and those of every class and interface it inherits from, so a prop typed as one of them takes it. */
+  assignableTo: string[];
   /** The hand-written presentation data for this construct, with the items that don't resolve in the app's libraries left out. */
   overlay?: ResolvedOverlay;
 }
@@ -63,7 +67,7 @@ export interface Catalog {
 }
 
 /** An entry as the palette lists it: everything but the props, with the Overlay's friendly name and whether it is featured. */
-export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay'> & { displayName?: string; featured?: true };
+export type SearchHit = Omit<CatalogEntry, 'props' | 'overlay' | 'assignableTo'> & { displayName?: string; featured?: true };
 
 // --- Digest ---------------------------------------------------------------------------------------------
 
@@ -304,6 +308,20 @@ function inputs(structs: ReadonlyMap<string, DigestStruct>, enumMembers: Readonl
   };
 }
 
+/** What a prop that holds constructs is typed as: a class or interface that a construct could be, alone or as an array. Undefined for any other type. */
+function acceptsOf(t: TypeRef, accepted: (fqn: string) => boolean): CatalogProp['accepts'] {
+  if ('union' in t) {
+    const shown = t.union.types.filter((m) => !('fqn' in m && m.fqn.startsWith(REF_INTERFACES)));
+    return shown.length === 1 ? acceptsOf(shown[0]!, accepted) : undefined;
+  }
+  if ('fqn' in t) return accepted(t.fqn) ? { fqn: t.fqn } : undefined;
+  if ('collection' in t && t.collection.kind === 'array') {
+    const element = acceptsOf(t.collection.elementtype, accepted);
+    return element ? { fqn: element.fqn, many: true } : undefined;
+  }
+  return undefined;
+}
+
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const moduleKey = (namespace: string) => namespace.replace(/^aws_/, '').replace(/_patterns$/, '');
@@ -328,6 +346,7 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
     for (const [fqn, names] of Object.entries(d.enumMembers)) enumMembers.set(fqn, names);
   }
   const inputOf = inputs(structs, enumMembers);
+  const interfaceFqns = new Set(digests.flatMap((d) => d.interfaces.map((i) => i.fqn)));
 
   /** The class's base classes, nearest first. The last one may be a class no loaded library defines, such as `constructs.Construct`. */
   const ancestors = (fqn: string): string[] => {
@@ -339,6 +358,9 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
     }
     return out;
   };
+
+  /** An interface, or a class that is a construct: what a Reference could point at. Not `Duration`, `Size` or the like. */
+  const takesConstruct = (fqn: string) => interfaceFqns.has(fqn) || (classes.has(fqn) && ancestors(fqn).includes(CONSTRUCT));
 
   const entries: CatalogEntry[] = [];
   for (const [fqn, { c, library }] of classes) {
@@ -352,16 +374,18 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
     const tier: Tier = above.includes(CFN_RESOURCE) ? 'L1' : c.namespace?.endsWith('_patterns') ? 'L3' : 'L2';
     const key = c.namespace ? moduleKey(c.namespace) : undefined;
     const service = key ? (serviceName(key) ?? key.replace(/_/g, ' ')) : undefined;
-    const props = [...flatten(c.propsFqn ?? '', structs).values()].map(
-      (p): CatalogProp => ({
+    const props = [...flatten(c.propsFqn ?? '', structs).values()].map((p): CatalogProp => {
+      const accepts = acceptsOf(p.type, takesConstruct);
+      return {
         name: p.name,
         type: renderType(p.type),
         required: p.optional !== true,
         ...(p.summary ? { summary: p.summary } : {}),
         ...(p.default ? { default: p.default } : {}),
         ...inputOf(p.type, 0),
-      }),
-    );
+        ...(accepts ? { accepts } : {}),
+      };
+    });
     entries.push({
       fqn,
       name: c.name,
@@ -373,6 +397,7 @@ export function buildCatalog(digests: readonly AssemblyDigest[], overlays: reado
       ...(c.summary ? { summary: c.summary } : {}),
       ...(c.deprecated ? { deprecated: true as const } : {}),
       props,
+      assignableTo: supertypes(members, fqn),
     });
   }
 
@@ -511,7 +536,13 @@ function resolveOverlay(o: Overlay, entry: CatalogEntry, world: World, drop: (wh
     (a) => follows(world, entry.fqn, a.path, (fqn, name) => world.propertyType(fqn, name) !== undefined) || (drop(`accessor ${named(a.path)}`, `${entry.name} has no such property`), false),
   );
 
-  return { displayName: o.displayName, featuredProps, defaults: snippets('default', o.defaults), fixtures: snippets('fixture', o.fixtures), connections, accessors };
+  const referenceFlows: Record<string, 'in'> = {};
+  for (const [prop, flow] of Object.entries(o.referenceFlows ?? {})) {
+    if (propNames.has(prop)) referenceFlows[prop] = flow;
+    else drop(`reference flow "${prop}"`, noProp(prop));
+  }
+
+  return { displayName: o.displayName, featuredProps, defaults: snippets('default', o.defaults), fixtures: snippets('fixture', o.fixtures), connections, accessors, referenceFlows };
 }
 
 const indexes = new WeakMap<Catalog, Map<string, CatalogEntry>>();
@@ -576,5 +607,5 @@ export function searchCatalog(catalog: Catalog, query: string, limit = 50): Sear
       compare(a.e.name, b.e.name) ||
       compare(a.e.fqn, b.e.fqn),
   );
-  return scored.slice(0, limit).map(({ e: { props: _props, overlay, ...hit } }) => (overlay ? { ...hit, displayName: overlay.displayName, featured: true as const } : hit));
+  return scored.slice(0, limit).map(({ e: { props: _props, assignableTo: _assignableTo, overlay, ...hit } }) => (overlay ? { ...hit, displayName: overlay.displayName, featured: true as const } : hit));
 }

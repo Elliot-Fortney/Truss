@@ -35,6 +35,7 @@ describe('showStage', () => {
     stages,
     stacks: [stack('Pipeline'), stack('Dev/Core', { stageId: 'Dev' }), stack('Dev/Core/Worker', { stageId: 'Dev', parentId: 'Dev/Core' }), stack('Prod/Core', { stageId: 'Prod' })],
     nodes: [node('Pipeline/a', 'Pipeline'), node('Dev/Core/b', 'Dev/Core'), node('Dev/Core/Worker/c', 'Dev/Core/Worker'), node('Prod/Core/d', 'Prod/Core')],
+    edges: [],
     problems: [],
   };
 
@@ -42,6 +43,12 @@ describe('showStage', () => {
     const shown = showStage(view, 'Dev');
     expect(shown.stacks.map((s) => s.id)).toEqual(['Pipeline', 'Dev/Core', 'Dev/Core/Worker']);
     expect(shown.nodes.map((n) => n.id)).toEqual(['Pipeline/a', 'Dev/Core/b', 'Dev/Core/Worker/c']);
+  });
+
+  it('keeps the edges between the Nodes it shows, and drops those that reach one it does not', () => {
+    const edge = (from: string, to: string) => ({ id: `${from}->${to}`, kind: 'reference' as const, from, to, prop: 'p', text: 'x', source: { file: 'a.ts', line: 1, col: 1 } });
+    const withEdges = { ...view, edges: [edge('Dev/Core/b', 'Pipeline/a'), edge('Dev/Core/b', 'Prod/Core/d')] };
+    expect(showStage(withEdges, 'Dev').edges.map((e) => e.id)).toEqual(['Dev/Core/b->Pipeline/a']);
   });
 
   it('shows the other Stage when asked for it', () => {

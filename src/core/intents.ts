@@ -76,7 +76,53 @@ export interface RemoveNodeIntent {
   expect: { className: string; literalId: string };
 }
 
-export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent | RemoveNodeIntent;
+/** A Node as the user saw it when an edit names it: its path, and the class and literal ID the code gave it. */
+export interface NodeRef {
+  path: string;
+  className: string;
+  literalId: string;
+}
+
+/** Points a prop of a Node at another Node (a Reference). On a prop that holds several, the Node goes last. */
+export interface AddReferenceIntent {
+  type: 'addReference';
+  /** The construct path of the Node whose prop it is, as the Draft shows it when the edit is made. */
+  path: string;
+  expect: { className: string; literalId: string };
+  prop: string;
+  /** The prop takes an array of Nodes, which matters when the code doesn't pass it yet. */
+  many?: true;
+  to: NodeRef;
+}
+
+/** Takes a Node out of a prop of another: the prop goes with it, or the element does when the prop holds several. */
+export interface RemoveReferenceIntent {
+  type: 'removeReference';
+  path: string;
+  expect: { className: string; literalId: string };
+  prop: string;
+  /** The Node the prop points at now. */
+  to: NodeRef;
+}
+
+/** Points a prop that now points at one Node, at another instead; in an array prop, in the same place. */
+export interface RepointReferenceIntent {
+  type: 'repointReference';
+  path: string;
+  expect: { className: string; literalId: string };
+  prop: string;
+  /** The Node the prop points at now. */
+  was: NodeRef;
+  /** The Node it should point at. */
+  to: NodeRef;
+}
+
+export type ReferenceIntent = AddReferenceIntent | RemoveReferenceIntent | RepointReferenceIntent;
+
+export type Intent = SetPropIntent | RenameIdIntent | AddNodeIntent | DuplicateIntent | RemoveNodeIntent | ReferenceIntent;
+
+/** Whether an intent changes a Reference. */
+export const isReferenceIntent = (intent: Intent): intent is ReferenceIntent => intent.type === 'addReference' || intent.type === 'removeReference' || intent.type === 'repointReference';
 
 /** The path a construct made by `intent` has, in the paths as they are once the intents before it have been made. Undefined for an intent that makes none. */
 export const createdPath = (intent: Intent): string | undefined => (intent.type === 'addNode' ? `${intent.path}/${intent.id}` : intent.type === 'duplicate' ? withId(intent.path, intent.newId) : undefined);
@@ -108,11 +154,22 @@ export const beforeMoves = (moves: readonly Move[], path: string): string => mov
  */
 export function onBase(intents: readonly Intent[]): Intent[] {
   return intents.map((intent, i) => {
-    const path = beforeMoves(movesOf(intents.slice(0, i)), intent.path);
-    if (path === intent.path) return intent;
+    const moves = movesOf(intents.slice(0, i));
+    const path = beforeMoves(moves, intent.path);
+    const onDisk = isReferenceIntent(intent) ? referencesOnBase(intent, moves) : intent;
+    if (path === intent.path) return onDisk;
     const literalId = path.split('/').at(-1)!;
-    return { ...intent, path, expect: { ...intent.expect, literalId: intent.path.split('/').at(-1) === intent.expect.literalId ? literalId : intent.expect.literalId } };
+    return { ...onDisk, path, expect: { ...intent.expect, literalId: intent.path.split('/').at(-1) === intent.expect.literalId ? literalId : intent.expect.literalId } };
   });
+}
+
+/** A Reference intent with the Nodes it names given the paths and IDs the Base has. */
+function referencesOnBase(intent: ReferenceIntent, moves: readonly Move[]): ReferenceIntent {
+  const base = (n: NodeRef): NodeRef => {
+    const path = beforeMoves(moves, n.path);
+    return path === n.path ? n : { ...n, path, literalId: n.path.split('/').at(-1) === n.literalId ? path.split('/').at(-1)! : n.literalId };
+  };
+  return intent.type === 'repointReference' ? { ...intent, was: base(intent.was), to: base(intent.to) } : { ...intent, to: base(intent.to) };
 }
 
 /** The history of the Draft (CONTEXT.md): intents in the order they were made, and the undone ones that redo can bring back. */
@@ -136,7 +193,25 @@ export function stage(draft: DraftHistory, intent: Intent): DraftHistory {
   if (last?.type === 'renameId' && intent.type === 'renameId' && afterMoves(movesOf([last]), last.path) === intent.path) {
     return { intents: intent.newId === last.expect.literalId ? rest : [...rest, { ...intent, path: last.path, expect: last.expect }], redo: [] };
   }
+  if (last && isReferenceIntent(last) && isReferenceIntent(intent) && last.path === intent.path && last.prop === intent.prop) {
+    const merged = mergeReferences(last, intent);
+    if (merged !== undefined) return { intents: merged ? [...rest, merged] : rest, redo: [] };
+  }
   return { intents: [...draft.intents, intent], redo: [] };
+}
+
+/**
+ * Two Reference edits in a row to one prop as the one edit they come to: undefined when they are separate edits,
+ * null when they cancel out. Removing what was just added, or pointing it somewhere else, never reaches the code.
+ */
+function mergeReferences(last: ReferenceIntent, next: ReferenceIntent): ReferenceIntent | null | undefined {
+  if (last.type === 'addReference' && next.type === 'removeReference' && next.to.path === last.to.path) return null;
+  if (last.type === 'addReference' && next.type === 'repointReference' && next.was.path === last.to.path) return { ...last, to: next.to };
+  if (last.type === 'repointReference' && next.type === 'repointReference' && next.was.path === last.to.path) {
+    return next.to.path === last.was.path ? null : { ...last, to: next.to };
+  }
+  if (last.type === 'repointReference' && next.type === 'removeReference' && next.to.path === last.to.path) return { type: 'removeReference', path: last.path, expect: last.expect, prop: last.prop, to: last.was };
+  return undefined;
 }
 
 export function undo(draft: DraftHistory): DraftHistory {
@@ -178,6 +253,12 @@ export function describeIntent(intent: Intent): string {
       return `Duplicate as ${JSON.stringify(intent.newId)}`;
     case 'setProp':
       return `${intent.prop.join('.')} → ${valueText(intent.value)}`;
+    case 'addReference':
+      return `${intent.prop} → ${intent.many ? 'add ' : ''}${intent.to.literalId}`;
+    case 'removeReference':
+      return `${intent.prop} → remove ${intent.to.literalId}`;
+    case 'repointReference':
+      return `${intent.prop} → ${intent.to.literalId} (was ${intent.was.literalId})`;
   }
 }
 

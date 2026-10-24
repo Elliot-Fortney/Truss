@@ -14,6 +14,7 @@ const bucket: CatalogEntry = {
   library: 'aws-cdk-lib',
   tier: 'L2',
   summary: 'An S3 bucket.',
+  assignableTo: ['aws-cdk-lib.aws_s3.Bucket'],
   props: [
     { name: 'bucketName', type: 'string', required: false, summary: 'Physical name of this bucket.', default: '- Assigned by CloudFormation.' },
     { name: 'versioned', type: 'boolean', required: false, summary: 'Whether versioning is on.', default: 'false' },
@@ -21,13 +22,13 @@ const bucket: CatalogEntry = {
     { name: 'encryption', type: 'BucketEncryption', required: false },
     { name: 'accessControl', type: 'BucketAccessControl', required: true, summary: 'Who may read it.' },
   ],
-  overlay: { displayName: 'S3 Bucket', featuredProps: ['versioned', 'removalPolicy'], defaults: {}, fixtures: {}, connections: [], accessors: [] },
+  overlay: { displayName: 'S3 Bucket', featuredProps: ['versioned', 'removalPolicy'], defaults: {}, fixtures: {}, connections: [], accessors: [], referenceFlows: {} },
 };
 const catalog: Catalog = { entries: [bucket], dropped: [] };
 
 const node = (id: string, fqn: string, extra: Partial<NodeView> = {}): NodeView => ({ id, stackId: 'App', label: id, subtitle: '', fqn, icon: '', ...extra });
 const stack: StackBoxView = { id: 'App', label: 'App', env: 'env-agnostic' };
-const body = (...nodes: NodeView[]): ViewBody => ({ stages: [], stacks: [stack], nodes });
+const body = (...nodes: NodeView[]): ViewBody => ({ stages: [], stacks: [stack], nodes, edges: [] });
 const facts = (nodes: Record<string, Partial<NodeFacts>>): Facts => ({
   nodes: Object.fromEntries(Object.entries(nodes).map(([path, f]) => [path, { span, className: 'x', pathsOnSpan: 1, binding: 'none' as const, ...f }])),
 });
@@ -329,5 +330,68 @@ describe('editableAs', () => {
     expect(editableAs({ kind: 'enum', fqn: 'aws-cdk-lib.aws_s3.BucketEncryption', members: [] }, { kind: 'expression', text: 'RemovalPolicy.DESTROY', member: { type: 'RemovalPolicy', name: 'DESTROY' } })).toBe(false);
     expect(editableAs({ kind: 'size' }, { kind: 'expression', text: 'Duration.days(1)', quantity: { type: 'Duration', unit: 'days', amount: 1 } })).toBe(false);
     expect(editableAs({ kind: 'struct', fields: [] }, { kind: 'expression', text: 'attr' })).toBe(false);
+  });
+});
+
+describe('buildPanel Node picker', () => {
+  const key: CatalogEntry = { fqn: 'aws-cdk-lib.aws_kms.Key', name: 'Key', library: 'aws-cdk-lib', tier: 'L2', props: [], assignableTo: ['aws-cdk-lib.aws_kms.Key', 'aws-cdk-lib.aws_kms.IKey'] };
+  const logs: CatalogEntry = {
+    ...bucket,
+    props: [
+      { name: 'encryptionKey', type: 'IKey', required: false, accepts: { fqn: 'aws-cdk-lib.aws_kms.IKey' } },
+      { name: 'replicas', type: 'IKey[]', required: false, accepts: { fqn: 'aws-cdk-lib.aws_kms.IKey', many: true } },
+    ],
+  };
+  const withKeys: Catalog = { entries: [logs, key], dropped: [] };
+  const nodes = () => body(node('App/Logs', bucket.fqn), node('App/Key', key.fqn, { label: 'Key' }), node('App/Spare', key.fqn, { label: 'Spare' }), node('App/Other', bucket.fqn, { label: 'Other' }));
+  const world = (extra: Partial<NodeFacts> = {}, references: Facts['references'] = []): Facts => ({
+    ...facts({
+      'App/Logs': { className: 's3.Bucket', literalId: 'Logs', ...extra },
+      'App/Key': { className: 'kms.Key', literalId: 'Key', binding: 'const' },
+      'App/Spare': { className: 'kms.Key', literalId: 'Spare', binding: 'const' },
+      'App/Other': { className: 's3.Bucket', literalId: 'Other', binding: 'const' },
+    }),
+    references,
+  });
+  const ref = (to: string, prop: string, extra: Partial<NonNullable<Facts['references']>[number]> = {}) => ({ from: 'App/Logs', to: `App/${to}`, prop, form: 'identifier' as const, editable: true, text: to.toLowerCase(), span, ...extra });
+  const rowsOf = (f: Facts, editing: Parameters<typeof buildPanel>[4] = { intents: [] }) => {
+    const p = buildPanel('App/Logs', nodes(), f, withKeys, editing)!;
+    return Object.fromEntries([...p.rows, ...p.more].map((r) => [r.name, r.nodes]));
+  };
+
+  it('lists the Nodes a prop could point at, those that fit its type', () => {
+    expect(rowsOf(world({ props: object() }))['encryptionKey']).toEqual({
+      many: false,
+      current: [],
+      choices: [
+        { id: 'App/Key', label: 'Key' },
+        { id: 'App/Spare', label: 'Spare' },
+      ],
+    });
+  });
+
+  it('shows what the prop points at now, and does not offer it again', () => {
+    const picker = rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'key' }) }, [ref('Key', 'encryptionKey')]))['encryptionKey'];
+    expect(picker).toMatchObject({ current: [{ id: 'App/Key', label: 'Key' }], choices: [{ id: 'App/Spare', label: 'Spare' }] });
+  });
+
+  it('takes several Nodes for an array prop, in order', () => {
+    const picker = rowsOf(world({ props: object({ name: 'replicas', kind: 'expression', text: '[spare, key]' }) }, [ref('Spare', 'replicas', { index: 0 }), ref('Key', 'replicas', { index: 1 })]))['replicas'];
+    expect(picker).toMatchObject({ many: true, current: [{ id: 'App/Spare' }, { id: 'App/Key' }], choices: [] });
+  });
+
+  it('marks a Reference the code writes as a call as one it only shows', () => {
+    const picker = rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'pick(key)' }) }, [ref('Key', 'encryptionKey', { form: 'call', editable: false, reason: 'Passed through a call' })]))['encryptionKey'];
+    expect(picker?.current).toEqual([{ id: 'App/Key', label: 'Key', readOnly: 'Passed through a call' }]);
+  });
+
+  it('has no picker for a prop written as an expression that is no Node', () => {
+    expect(rowsOf(world({ props: object({ name: 'encryptionKey', kind: 'expression', text: 'props.key' }) }))['encryptionKey']).toBeUndefined();
+  });
+
+  it('has none while the panel is read-only', () => {
+    expect(rowsOf(world({ props: object() }), { intents: [], blocked: 'Editing is paused' })['encryptionKey']).toBeUndefined();
+    const readOnly = buildPanel('App/Logs', nodes(), world({ props: object() }), withKeys)!;
+    expect([...readOnly.rows, ...readOnly.more].every((r) => r.nodes === undefined)).toBe(true);
   });
 });

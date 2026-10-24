@@ -51,14 +51,22 @@ function Review({ draft }: { draft: DraftView }) {
     <section className="review" aria-label="Review changes">
       {draft.diffs.length === 0 ? <p className="lock-reason">The Draft changes no code.</p> : null}
       {draft.diffs.map((d) => (
-        <pre key={d.file} className="diff" aria-label={`Changes to ${d.file}`}>
-          {d.diff
-            .split('\n')
-            .slice(0, -1)
-            .map((line, i) => (
-              <DiffLine key={i} line={line} />
-            ))}
-        </pre>
+        <div key={d.file}>
+          {/* A moved statement shows as removed lines and the same lines added; say that is what it is. */}
+          {d.moves?.map((move) => (
+            <p key={move} className="diff-move">
+              ↕ {move}
+            </p>
+          ))}
+          <pre className="diff" aria-label={`Changes to ${d.file}`}>
+            {d.diff
+              .split('\n')
+              .slice(0, -1)
+              .map((line, i) => (
+                <DiffLine key={i} line={line} />
+              ))}
+          </pre>
+        </div>
       ))}
     </section>
   );

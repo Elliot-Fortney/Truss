@@ -3,8 +3,10 @@ export interface TextChange {
   start: number;
   end: number;
   text: string;
-  /** `import` for a line added to the file's imports; `add` for a statement or field that makes a new construct; `remove` for the statement (and field) of a construct that is deleted; every other change belongs to the construct an intent names. */
-  purpose?: 'import' | 'add' | 'remove';
+  /** `import` for a line added to the file's imports; `add` for a statement or field that makes a new construct; `remove` for the statement (and field) of a construct that is deleted; `move` for a statement that moves below another, both where it leaves and where it lands; every other change belongs to the construct an intent names. */
+  purpose?: 'import' | 'add' | 'remove' | 'move';
+  /** For the deletion half of a `move`: what moves, in words, for the diff to say beside the lines. */
+  note?: string;
 }
 
 /** Applies changes made against `text`. They must not overlap; insertions at one offset keep the order given. */
@@ -35,6 +37,8 @@ export interface FileDiff {
   file: string;
   /** Unified diff with three lines of context. */
   diff: string;
+  /** Statements that move rather than change, which the diff shows as lines removed and added again. */
+  moves?: string[];
 }
 
 const CONTEXT = 3;

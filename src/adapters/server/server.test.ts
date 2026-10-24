@@ -6,7 +6,7 @@ import type { ClientMessage, Reply } from '../../core/protocol.ts';
 import type { View } from '../../core/view.ts';
 import { startServer, type RunningServer, type ViewSource } from './server.ts';
 
-const view = (version: number): View => ({ version, synthing: false, hasDesign: false, stages: [], stacks: [], nodes: [], problems: [] });
+const view = (version: number): View => ({ version, synthing: false, hasDesign: false, stages: [], stacks: [], nodes: [], edges: [], problems: [] });
 
 function fakeSource(initial: View): ViewSource & { push(v: View): void; handled: ClientMessage[] } {
   let current = initial;

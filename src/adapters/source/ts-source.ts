@@ -5,6 +5,7 @@ import type { Assembly, Frame, TreeNode } from '../../core/assembly.ts';
 import type { Binding, EnclosingClass, Facts, NodeFacts, PropFacts, PropsFacts, Span, Surround } from '../../core/facts.ts';
 import type { Intent } from '../../core/intents.ts';
 import type { Diagnostic, FileSet, PlanResult, Source } from '../../core/ports.ts';
+import { ReferenceReader } from './references.ts';
 import { planIntents } from './ts-plan.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
 import { NESTED_STACK_FQN, STAGE_FQN, withoutNestedStackPlumbing } from '../../core/tree.ts';
@@ -54,7 +55,8 @@ export class TsSource implements Source {
       if (facts) facts.pathsOnSpan = perSpan.get(frameKey(frame)) ?? 1;
     }
     this.addExternals(files, assembly.tree, nodes);
-    return { nodes };
+    const references = new ReferenceReader(nodes, (file) => this.parse(files, file), new Set(assembly.stacks.map((s) => s.path))).read();
+    return { nodes, ...(references.length > 0 ? { references } : {}) };
   }
 
   plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult {

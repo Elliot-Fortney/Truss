@@ -1,4 +1,6 @@
+import type { SourceLocation } from './assembly.ts';
 import type { CatalogProp, SearchHit } from './catalog.ts';
+import type { ConnectCheck } from './connect.ts';
 import { MAX_ID_LENGTH } from './construct-id.ts';
 import { DURATION_UNITS, SIZE_UNITS, type PropValue } from './intents.ts';
 import type { PanelView } from './panel.ts';
@@ -16,6 +18,9 @@ export type SearchMessage = { type: 'search'; requestId: string; query: string }
 /** The property panel of one Node or Stack, named by its construct path. */
 export type PanelMessage = { type: 'panel'; requestId: string; id: string };
 
+/** Asks what dragging from the Node at `id` could end on: whether each other Node takes a Reference from it, and through which props. */
+export type ConnectableMessage = { type: 'connectable'; requestId: string; id: string };
+
 /** A change to the Draft (ADR 0006). `prop` is the prop, then the field inside it for an object-literal prop. */
 export type DraftMessage =
   | { type: 'setProp'; requestId: string; id: string; prop: string[]; value: PropValue }
@@ -27,13 +32,19 @@ export type DraftMessage =
   | { type: 'duplicate'; requestId: string; id: string }
   /** Deletes the Node at `id` from the code. */
   | { type: 'removeNode'; requestId: string; id: string }
+  /** Points `prop` of the Node `from` at the Node `to`. A prop that points at another Node already is replaced only with `replace`. */
+  | { type: 'connect'; requestId: string; from: string; to: string; prop: string; replace?: boolean }
+  /** Takes the Node `to` out of `prop` of the Node `from`. */
+  | { type: 'disconnect'; requestId: string; from: string; to: string; prop: string }
+  /** Moves the end of a Reference of `prop` from the Node `was` to the Node `to`. */
+  | { type: 'repoint'; requestId: string; from: string; was: string; to: string; prop: string }
   | { type: 'undo'; requestId: string }
   | { type: 'redo'; requestId: string }
   | { type: 'save'; requestId: string }
   | { type: 'discard'; requestId: string };
 
 /** Messages the browser sends. Each carries a client request ID that the reply echoes. */
-export type ClientMessage = EditMessage | SearchMessage | PanelMessage | DraftMessage;
+export type ClientMessage = EditMessage | SearchMessage | PanelMessage | ConnectableMessage | DraftMessage;
 
 /** A request as the caller writes it; the transport adds the request ID. */
 export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ? Omit<M, 'requestId'> : never) : never;
@@ -42,11 +53,13 @@ export type ClientRequest = ClientMessage extends infer M ? (M extends unknown ?
 export type Reply =
   | { type: 'ack'; requestId: string }
   /** `uses` are the places in the code that keep a Node from being removed. */
-  | { type: 'refused'; requestId: string; reason: string; uses?: SourceUse[] }
+  | { type: 'refused'; requestId: string; reason: string; uses?: SourceUse[]; /** The code the refusal is about, which the user can open in their editor. */ at?: SourceLocation }
   | { type: 'results'; requestId: string; hits: SearchHit[] }
   /** Nothing was staged: the construct needs these props, which only the user can give. */
   | { type: 'form'; requestId: string; fqn: string; props: CatalogProp[] }
-  | { type: 'panel'; requestId: string; panel: PanelView };
+  | { type: 'panel'; requestId: string; panel: PanelView }
+  /** For each other Node, whether it takes a Reference from the one asked about. */
+  | { type: 'connectable'; requestId: string; targets: Record<string, ConnectCheck> };
 
 export const MAX_NOTE_LENGTH = 10_000;
 /** A string prop is a name, a description or a pattern, not a document. */
@@ -55,6 +68,9 @@ export const MAX_STRING_VALUE_LENGTH = 4_000;
 export const MAX_PROP_DEPTH = 4;
 /** Bounds the work of one search: no construct name or CloudFormation type comes near this long. */
 export const MAX_QUERY_LENGTH = 200;
+
+/** A construct path is a few IDs, each at most `MAX_ID_LENGTH` long, so this is generous. */
+const MAX_PATH_LENGTH = 2_000;
 
 /** A construct has a handful of required props, not hundreds. */
 const MAX_FORM_PROPS = 50;
@@ -117,6 +133,19 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
   if (raw['type'] === 'undo' || raw['type'] === 'redo' || raw['type'] === 'save' || raw['type'] === 'discard') {
     return { ok: true, message: { type: raw['type'], requestId } };
   }
+  if (raw['type'] === 'connect' || raw['type'] === 'disconnect' || raw['type'] === 'repoint') {
+    const { from, to, prop } = raw;
+    const path = (v: unknown): v is string => typeof v === 'string' && v !== '' && v.length <= MAX_PATH_LENGTH;
+    if (!path(from) || !path(to)) return refuse(`A ${raw['type']} needs the construct paths as "from" and "to"`);
+    if (typeof prop !== 'string' || !IDENTIFIER.test(prop)) return refuse(`A ${raw['type']} needs the prop as "prop"`);
+    if (raw['type'] === 'repoint') {
+      const was = raw['was'];
+      if (!path(was)) return refuse('A repoint needs the Node the Reference points at now as "was"');
+      return { ok: true, message: { type: 'repoint', requestId, from, was, to, prop } };
+    }
+    if (raw['type'] === 'disconnect') return { ok: true, message: { type: 'disconnect', requestId, from, to, prop } };
+    return { ok: true, message: { type: 'connect', requestId, from, to, prop, ...(raw['replace'] === true ? { replace: true } : {}) } };
+  }
   if (raw['type'] === 'addNode') {
     const { scope, fqn } = raw;
     if (typeof scope !== 'string' || scope === '') return refuse('An addNode needs the Stack path as "scope"');
@@ -151,6 +180,8 @@ export function parseClientMessage(text: string): { ok: true; message: ClientMes
     }
     case 'panel':
       return { ok: true, message: { type: 'panel', requestId, id } };
+    case 'connectable':
+      return { ok: true, message: { type: 'connectable', requestId, id } };
     case 'duplicate':
       return { ok: true, message: { type: 'duplicate', requestId, id } };
     case 'removeNode':

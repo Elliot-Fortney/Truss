@@ -79,6 +79,11 @@ export interface Overlay {
   fixtures?: Record<string, Snippet>;
   connections?: ConnectionHint[];
   accessors?: Accessor[];
+  /**
+   * Props that point at a Node whose data or permissions flow into this one, such as a Function's `role`, so the arrow of
+   * the Reference runs from that Node to this. Every other Reference's arrow runs from the Node whose prop it is to the Node it names.
+   */
+  referenceFlows?: Record<string, 'in'>;
 }
 
 /** An Overlay as the Catalog holds it: only the items that resolved in the app's libraries, with nothing left optional. */
@@ -89,4 +94,5 @@ export interface ResolvedOverlay {
   fixtures: Record<string, Snippet>;
   connections: ConnectionHint[];
   accessors: Accessor[];
+  referenceFlows: Record<string, 'in'>;
 }

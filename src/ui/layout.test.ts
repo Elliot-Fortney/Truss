@@ -19,6 +19,7 @@ const view = (nodes: NodeView[], stackIds: string[], nested: Record<string, stri
   stages: [],
   stacks: stackIds.map((id) => ({ id, label: id, env: 'env-agnostic', ...(nested[id] ? { parentId: nested[id] } : {}) })),
   nodes,
+  edges: [],
   problems: [],
 });
 
@@ -51,6 +52,28 @@ describe('layoutView', () => {
     const l = layoutView(view([], ['Empty']));
     expect(l.stacks[0]!.width).toBeGreaterThan(0);
     expect(l.stacks[0]!.height).toBeGreaterThan(0);
+  });
+});
+
+describe('layoutView with References', () => {
+  const edge = (from: string, to: string) => ({ id: `${from}->${to}`, kind: 'reference' as const, from, to, prop: 'p', text: 'x', source: { file: 'a.ts', line: 1, col: 1 } });
+  const nodes = [node('A/fn', 'A'), node('A/other', 'A'), node('A/vpc', 'A')];
+  const laid = layoutView({ ...view(nodes, ['A']), edges: [edge('A/fn', 'A/vpc')] });
+
+  it('puts a Node to the left of the Node it points at, so the arrow runs left to right', () => {
+    const [fn, vpc] = ['A/fn', 'A/vpc'].map((id) => laid.nodes.find((n) => n.id === id)!);
+    expect(fn!.x + NODE_WIDTH).toBeLessThanOrEqual(vpc!.x);
+  });
+
+  it('puts it to the right when what it points at flows into it', () => {
+    const l = layoutView({ ...view(nodes, ['A']), edges: [{ ...edge('A/fn', 'A/vpc'), flow: 'in' as const }] });
+    const [fn, vpc] = ['A/fn', 'A/vpc'].map((id) => l.nodes.find((n) => n.id === id)!);
+    expect(vpc!.x + NODE_WIDTH).toBeLessThanOrEqual(fn!.x);
+  });
+
+  it('copes with References that go in a circle, and with one to a Node that is not in the Stack', () => {
+    const l = layoutView({ ...view(nodes, ['A']), edges: [edge('A/fn', 'A/vpc'), edge('A/vpc', 'A/fn'), edge('A/fn', 'B/gone'), edge('A/fn', 'A/fn')] });
+    expect(l.nodes).toHaveLength(3);
   });
 });
 

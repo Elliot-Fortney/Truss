@@ -186,3 +186,43 @@ describe('adding and copying', () => {
     expect(onBase([rename, { ...add, path: 'T', expect: { className: 'Stack', literalId: 'T' } }])[1]).toMatchObject({ path: 'S', expect: { literalId: 'S' } });
   });
 });
+
+describe('Reference intents', () => {
+  const ref = (id: string) => ({ path: `A/${id}`, className: 'kms.Key', literalId: id });
+  const expectB = { className: 's3.Bucket', literalId: 'B' };
+  const add = (to: string, prop = 'encryptionKey'): Intent => ({ type: 'addReference', path: 'A/B', expect: expectB, prop, to: ref(to) });
+  const remove = (to: string, prop = 'encryptionKey'): Intent => ({ type: 'removeReference', path: 'A/B', expect: expectB, prop, to: ref(to) });
+  const repoint = (was: string, to: string, prop = 'encryptionKey'): Intent => ({ type: 'repointReference', path: 'A/B', expect: expectB, prop, was: ref(was), to: ref(to) });
+
+  it('words each of them for the Draft list', () => {
+    expect(describeIntent(add('Key'))).toBe('encryptionKey → Key');
+    expect(describeIntent({ ...(add('Key') as Extract<Intent, { type: 'addReference' }>), many: true })).toBe('encryptionKey → add Key');
+    expect(describeIntent(remove('Key'))).toBe('encryptionKey → remove Key');
+    expect(describeIntent(repoint('Key', 'Other'))).toBe('encryptionKey → Other (was Key)');
+  });
+
+  it('drops an added Reference that is then removed: it never reaches the code', () => {
+    expect(stage(stage(emptyDraftHistory, add('Key')), remove('Key')).intents).toEqual([]);
+  });
+
+  it('keeps a removal of another Node, and of another prop, as an edit of its own', () => {
+    expect(stage(stage(emptyDraftHistory, add('Key')), remove('Other')).intents).toHaveLength(2);
+    expect(stage(stage(emptyDraftHistory, add('Key')), remove('Key', 'other')).intents).toHaveLength(2);
+  });
+
+  it('folds a re-point of a Reference just added into the add, and a run of re-points into one', () => {
+    expect(stage(stage(emptyDraftHistory, add('Key')), repoint('Key', 'Other')).intents).toEqual([add('Other')]);
+    expect(stage(stage(emptyDraftHistory, repoint('Key', 'Other')), repoint('Other', 'Third')).intents).toEqual([repoint('Key', 'Third')]);
+  });
+
+  it('drops a re-point that is pointed back, and turns a re-point then removal into the removal of the first Node', () => {
+    expect(stage(stage(emptyDraftHistory, repoint('Key', 'Other')), repoint('Other', 'Key')).intents).toEqual([]);
+    expect(stage(stage(emptyDraftHistory, repoint('Key', 'Other')), remove('Other')).intents).toEqual([remove('Key')]);
+  });
+
+  it('names the Nodes by their paths on the Base, after a rename', () => {
+    const rename: Intent = { type: 'renameId', path: 'A/Key', expect: { className: 'kms.Key', literalId: 'Key' }, newId: 'Vault' };
+    const [, onDisk] = onBase([rename, { ...(add('Vault') as Extract<Intent, { type: 'addReference' }>), to: { path: 'A/Vault', className: 'kms.Key', literalId: 'Vault' } }]);
+    expect(onDisk).toMatchObject({ type: 'addReference', to: { path: 'A/Key', literalId: 'Key' } });
+  });
+});
