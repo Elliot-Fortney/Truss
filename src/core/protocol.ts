@@ -8,7 +8,8 @@ import type { SourceUse } from './ports.ts';
 
 /** A change to one Node, named by its construct path. */
 export type EditMessage =
-  | { type: 'move'; requestId: string; id: string; x: number; y: number }
+  /** `into` is the Stack box the Node was dropped in, which differs from its own when the drag crossed Stacks. */
+  | { type: 'move'; requestId: string; id: string; x: number; y: number; into?: string }
   /** An empty `note` clears the note. */
   | { type: 'note'; requestId: string; id: string; note: string };
 
@@ -255,7 +256,9 @@ export function parseClientMessage(
       if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
         return refuse('A move needs numeric x and y');
       }
-      return { ok: true, message: { type: 'move', requestId, id, x, y } };
+      const into = raw.into;
+      if (into !== undefined && typeof into !== 'string') return refuse('A move into a Stack needs its construct path');
+      return { ok: true, message: { type: 'move', requestId, id, x, y, ...(into !== undefined ? { into } : {}) } };
     }
     case 'note': {
       const note = raw['note'];

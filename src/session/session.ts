@@ -1,7 +1,8 @@
 import type { Assembly, SourceLocation, SynthError, SynthResult } from '../core/assembly.ts';
 import { entryFor, searchCatalog, type Catalog, type SearchHit } from '../core/catalog.ts';
 import type { TextChange } from '../core/diff.ts';
-import { removedPaths, targetPaths } from '../core/edit-check.ts';
+import { nodeEditability } from '../core/editability.ts';
+import { removedPaths, targetPaths, targetPathsOfSpan } from '../core/edit-check.ts';
 import type { Facts } from '../core/facts.ts';
 import { beforeMoves, movesOf, afterMoves, type Intent } from '../core/intents.ts';
 import type { CatalogLoad, Diagnostic, FileSet, Files, Source, Synth } from '../core/ports.ts';
@@ -574,8 +575,15 @@ export class Session {
         reason: `Editing is paused until the app synths again: ${this.current.error.message}`,
       };
     }
-    if (!this.current.nodes.some((n) => n.id === message.id)) {
-      return { type: 'refused', requestId, reason: `No Node at ${message.id}` };
+    const dragged = this.current.nodes.find((n) => n.id === message.id);
+    if (!dragged) return { type: 'refused', requestId, reason: `No Node at ${message.id}` };
+    if (message.type === 'move' && message.into !== undefined && message.into !== dragged.stackId) {
+      return {
+        type: 'refused',
+        requestId,
+        reason: 'Truss does not move a Node between Stacks; do it in your code.',
+        ...(dragged.source ? { at: dragged.source } : {}),
+      };
     }
     let next: Sidecar;
     try {
@@ -585,11 +593,12 @@ export class Session {
         text === undefined ? { ok: true as const, sidecar: emptySidecar() } : parseSidecar(text, this.migrations);
       if (!parsed.ok) return { type: 'refused', requestId, reason: parsed.message };
       // The file holds paths as the code on disk has them, so a Node renamed in the Draft is kept under its old one until Save.
-      const path = beforeMoves(movesOf(this.draft.intents), message.id);
-      next =
-        message.type === 'move'
-          ? withPosition(parsed.sidecar, path, message)
-          : withNote(parsed.sidecar, path, message.note);
+      const moves = movesOf(this.draft.intents);
+      // A Node in a Stack or Stage class created several times is one Node to edit, so the instances look alike (ADR 0008).
+      const paths = this.instancePaths(message.id).map((p) => beforeMoves(moves, p));
+      next = parsed.sidecar;
+      for (const path of paths)
+        next = message.type === 'move' ? withPosition(next, path, message) : withNote(next, path, message.note);
       await this.deps.files.writeText(SIDECAR_FILE, serializeSidecar(next, currentFormatVersion(this.migrations)));
     } catch (err) {
       return {
@@ -601,6 +610,15 @@ export class Session {
     this.sidecar = next;
     this.push(this.body());
     return { type: 'ack', requestId };
+  }
+
+  /** The path of the Node and of its other instances, when it is in a Stack or Stage class that is created more than once (ADR 0008). */
+  private instancePaths(id: string): string[] {
+    const facts = this.snapshot?.facts;
+    const f = facts?.nodes[id];
+    if (!facts || !f || f.pathsOnSpan < 2 || !f.enclosingClass || f.enclosingClass.kind === 'construct') return [id];
+    if (!nodeEditability(id, f).editable) return [id];
+    return targetPathsOfSpan(facts, id);
   }
 
   /** Stages an edit of a prop or a Construct ID: checked against the panel the user edited it in, planned, and then synthed in a shadow copy. */
@@ -627,6 +645,18 @@ export class Session {
     if (!this.draft.base || !this.snapshot) return refuse('There is no Design to edit yet.');
     const { blocked } = this.editBlock();
     if (blocked) return refuse(blocked);
+    // Stacks and Stages are the code's to arrange: Truss edits what is in them (ADR 0008).
+    if (message.type === 'addNode' && (message.fqn === 'aws-cdk-lib.Stack' || message.fqn === 'aws-cdk-lib.Stage'))
+      return refuse('Truss does not add a Stack or Stage; do it in your code.');
+    if (message.type === 'removeNode' && this.current.stacks.some((s) => s.id === message.id)) {
+      const span = this.snapshot.facts.nodes[message.id]?.span;
+      return {
+        type: 'refused',
+        requestId,
+        reason: 'Truss does not delete a Stack; do it in your code.',
+        ...(span ? { at: { file: span.file, line: span.start.line, col: span.start.col } } : {}),
+      };
+    }
     let intent: Intent;
     if (message.type === 'addNode') {
       const scope = message.scope;
