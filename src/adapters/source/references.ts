@@ -170,16 +170,21 @@ export class ReferenceReader {
     return init !== undefined && !ts.isNewExpression(bare(init)) && !ts.isCallExpression(bare(init));
   }
 
+  /** What an identifier or `this.field` is set to, when it is a `const`/`let` or a field of the class around it. */
+  initOf(e: ts.Expression): ts.Expression | undefined {
+    if (ts.isIdentifier(e)) return this.declaredAs(e, e.text);
+    return ts.isPropertyAccessExpression(e) && e.expression.kind === ts.SyntaxKind.ThisKeyword
+      ? this.fieldAs(e, e.name.text)
+      : undefined;
+  }
+
   /** The span key of the Node an identifier, `this.field` or alias stands for. */
   valueOf(e: ts.Expression, depth: number): string | undefined {
     if (depth > MAX_ALIAS_DEPTH) return undefined;
     e = bare(e);
     // A `new` written in the prop itself is the Node, not a Reference to it.
     if (depth > 0 && (ts.isNewExpression(e) || ts.isCallExpression(e))) return this.keyOf(e);
-    let init: ts.Expression | undefined;
-    if (ts.isIdentifier(e)) init = this.declaredAs(e, e.text);
-    else if (ts.isPropertyAccessExpression(e) && e.expression.kind === ts.SyntaxKind.ThisKeyword)
-      init = this.fieldAs(e, e.name.text);
+    const init = this.initOf(e);
     if (!init) return undefined;
     const value = bare(init);
     return ts.isNewExpression(value) || ts.isCallExpression(value) ? this.keyOf(value) : this.valueOf(value, depth + 1);

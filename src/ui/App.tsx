@@ -52,6 +52,8 @@ interface TrussNodeData extends Record<string, unknown> {
   icon: string;
   note?: string;
   lock?: string;
+  /** The code changes this Node's CloudFormation through an escape hatch. */
+  overridden?: boolean;
   /** The Draft changes this Node's code. */
   changed?: boolean;
   /** The Draft adds this Node. */
@@ -228,6 +230,11 @@ function TrussNode({ id, data }: NodeProps<Node<TrussNodeData>>) {
           added
         </span>
       ) : null}
+      {data.overridden ? (
+        <span className="overridden-badge" title="The code overrides the CloudFormation this Node makes">
+          overridden
+        </span>
+      ) : null}
       <ProblemBadge badge={data.badge} />
     </div>
   );
@@ -321,6 +328,7 @@ function toFlowNodes(
         icon: n.icon,
         ...(n.note ? { note: n.note } : {}),
         ...(n.lock ? { lock: n.lock } : {}),
+        ...(n.overridden ? { overridden: true } : {}),
         ...(n.changed ? { changed: true } : {}),
         ...(n.added ? { added: true } : {}),
         ...(n.removed ? { removed: true } : {}),
@@ -509,7 +517,7 @@ function NodePanel({
         </button>
       ) : null}
       {/* Keyed by Node so the disclosure of "more props" starts closed for each. */}
-      <PropertyPanel key={node.id} state={props} onSet={onSet} onRename={onRename} pick={pick} />
+      <PropertyPanel key={node.id} state={props} onSet={onSet} onRename={onRename} onOpen={onOpen} pick={pick} />
       <label>
         Note
         {/* Keyed by Node so switching Nodes starts from that Node's note; saved when the field loses focus. */}

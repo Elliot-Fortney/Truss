@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MAX_ID_LENGTH } from '../core/construct-id.ts';
+import type { SourceLocation } from '../core/assembly.ts';
 import type { PropValue } from '../core/intents.ts';
 import type { PanelView, PropRowView } from '../core/panel.ts';
 import { idFieldState, literalText, moreLabel, propsNotice, unsetText } from './panel-format.ts';
@@ -118,16 +119,49 @@ function OtherEffects({ title, effects }: { title: string; effects: PanelView['o
   );
 }
 
+/** The Overrides the code makes on this Node, as the source text they are. Read-only: Truss never edits them. */
+function Overrides({
+  overrides,
+  onOpen,
+}: {
+  overrides: PanelView['overrides'];
+  onOpen: ((at: SourceLocation) => void) | undefined;
+}) {
+  if (!overrides?.length) return null;
+  return (
+    <section className="overrides" aria-label="Overrides">
+      <h3>Overrides</h3>
+      <p className="lock-reason">
+        The code changes the CloudFormation this Node makes. Truss shows these and leaves them alone.
+      </p>
+      <ul>
+        {overrides.map((o, i) => (
+          <li key={`${i}:${o.source.line}`}>
+            <code>{o.text}</code>
+            {onOpen ? (
+              <button type="button" className="open-in-editor" onClick={() => onOpen(o.source)}>
+                Open in editor
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** The props of a Node or Stack: required and featured first, the rest one click away. */
 export function PropertyPanel({
   state,
   onSet,
   onRename,
+  onOpen,
   pick,
 }: {
   state: PanelState;
   onSet(prop: string[], value: PropValue): Promise<boolean>;
   onRename(newId: string): Promise<boolean>;
+  onOpen?: (at: SourceLocation) => void;
   pick?: PickNodes;
 }) {
   const [showMore, setShowMore] = useState(false);
@@ -155,6 +189,7 @@ export function PropertyPanel({
         </ul>
       ) : null}
       {notice ? <p className="lock-reason">{notice}</p> : null}
+      <Overrides overrides={panel.overrides} onOpen={onOpen} />
       <OtherEffects title="Other permissions" effects={panel.otherPermissions} />
       <OtherEffects title="Other integrations" effects={panel.otherIntegrations} />
       {panel.rows.length === 0 && panel.more.length === 0 ? (

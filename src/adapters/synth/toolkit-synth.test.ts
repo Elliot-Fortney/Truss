@@ -95,6 +95,47 @@ describe('ToolkitSynth', () => {
     });
   });
 
+  describe('context lookups (ADR 0011)', () => {
+    const lookupApp = (): string => {
+      const dir = mkdtempSync(join(tmpdir(), 'truss-lookup-'));
+      writeFileSync(join(dir, 'cdk.json'), JSON.stringify({ app: 'node app.js' }));
+      writeFileSync(
+        join(dir, 'app.js'),
+        `const cdk = require('aws-cdk-lib'); const ec2 = require('aws-cdk-lib/aws-ec2');
+const stack = new cdk.Stack(new cdk.App(), 'S', { env: { account: '123456789012', region: 'us-east-1' } });
+ec2.Vpc.fromLookup(stack, 'Vpc', { isDefault: true });`,
+      );
+      symlinkSync(join(fixtureDir('straight-line'), 'node_modules'), join(dir, 'node_modules'));
+      return dir;
+    };
+
+    it('keeps the dummy value for a missing value, names it, and writes no cdk.context.json', async () => {
+      const dir = lookupApp();
+      const result = await new ToolkitSynth().synth(dir);
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.assembly.tree.children.find((c) => c.path === 'S')?.children.map((c) => c.path)).toContain('S/Vpc');
+      expect(result.assembly.missingContext).toEqual([
+        { key: expect.stringMatching(/^vpc-provider:/), provider: 'vpc-provider' },
+      ]);
+      expect(existsSync(join(dir, 'cdk.context.json'))).toBe(false);
+    });
+
+    it('uses a value that cdk.context.json holds, and leaves the file as it was', async () => {
+      const dir = lookupApp();
+      const first = await new ToolkitSynth().synth(dir);
+      if (!first.ok) throw new Error(first.error.message);
+      const key = first.assembly.missingContext![0]!.key;
+      const committed = JSON.stringify({
+        [key]: { vpcId: 'vpc-0abc', vpcCidrBlock: '10.0.0.0/16', availabilityZones: [], subnetGroups: [] },
+      });
+      writeFileSync(join(dir, 'cdk.context.json'), committed);
+      const result = await new ToolkitSynth().synth(dir);
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.assembly.missingContext).toEqual([]);
+      expect(readFileSync(join(dir, 'cdk.context.json'), 'utf8')).toBe(committed);
+    });
+  });
+
   it('returns a synth error, not a throw, when the app fails', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'truss-bad-'));
     writeFileSync(

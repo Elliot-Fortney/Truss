@@ -75,6 +75,14 @@ export interface ImportRef {
   prop: string;
 }
 
+/** A context value the app asked the framework for (a `fromLookup`) that `cdk.context.json` doesn't hold, so the construct carries the framework's dummy value (ADR 0011). */
+export interface MissingContext {
+  /** The context key, e.g. `vpc-provider:account=123456789012:filter.isDefault=true:region=us-east-1`. */
+  key: string;
+  /** The context provider that would answer it, e.g. `vpc-provider`, `hosted-zone`, `ssm`. */
+  provider: string;
+}
+
 export interface Assembly {
   /** Cloud assembly manifest version. */
   schemaVersion: string;
@@ -90,6 +98,8 @@ export interface Assembly {
   effects?: Effect[];
   /** What crosses from one Stack to another through exports. Absent in an assembly recorded before Truss read them. */
   importRefs?: ImportRef[];
+  /** The context lookups the app made that `cdk.context.json` can't answer. Absent in an assembly recorded before Truss read them. */
+  missingContext?: MissingContext[];
 }
 
 export type SynthResult = { ok: true; assembly: Assembly } | { ok: false; error: SynthError };

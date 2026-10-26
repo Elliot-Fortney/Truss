@@ -79,6 +79,8 @@ export interface NodeView {
   otherPermissions?: EffectView[];
   /** Triggers and subscriptions of this Node whose other end is not a Node. Read-only. */
   otherIntegrations?: EffectView[];
+  /** The code changes this Node's CloudFormation through an escape hatch (CONTEXT.md: Override). The panel lists them. */
+  overridden?: true;
   /** The Draft changes this Node's code, so the Node shows as changed. */
   changed?: true;
   /** The Draft adds this Node: its code is not on disk yet. */
@@ -380,6 +382,9 @@ export function buildView(
     const source = byId.get(causers[0]!)?.source;
     if (source) node.source = source;
   }
+
+  const overridden = new Set((facts.overrides ?? []).map((o) => o.node));
+  for (const node of nodes) if (overridden.has(node.id)) node.overridden = true;
 
   const references = edgesOf(facts, nodes, changed, flowsIn);
   const connections = connectionsOf(assembly, facts, nodes, references);

@@ -7,7 +7,7 @@ import { describeIntent } from './intents.ts';
 export type Severity = 'error' | 'warning' | 'info';
 
 /** Where a Problem comes from (CONTEXT.md). `truss` is a check that the edit Truss planned isn't the edit the intents mean: a bug in Truss, not in the user's code. */
-export type ProblemSource = 'synth' | 'annotation' | 'typescript' | 'cycle' | 'truss';
+export type ProblemSource = 'synth' | 'annotation' | 'typescript' | 'cycle' | 'context' | 'truss';
 
 /** An error or warning Truss shows on a Design. */
 export interface Problem {
@@ -50,6 +50,52 @@ export function annotationProblems(assembly: Assembly, base?: Assembly): Problem
       blocking: draft && a.level === 'error',
     };
   });
+}
+
+/** The `fromLookup`-style calls that ask each context provider for a value. */
+const LOOKUP_CALLS: Record<string, RegExp> = {
+  'vpc-provider': /\.Vpc\.fromLookup$/,
+  'hosted-zone': /\.HostedZone\.fromLookup$/,
+  'security-group': /\.SecurityGroup\.fromLookup\w*$/,
+  'key-provider': /\.Key\.fromLookup$/,
+  'load-balancer': /\.\w*LoadBalancer\.fromLookup$/,
+  'load-balancer-listener': /\.\w*Listener\.fromLookup$/,
+};
+const ANY_LOOKUP = /\.\w*[lL]ookup\w*$/;
+
+const MISSING_CONTEXT = 'Context missing: run `cdk synth` once with AWS credentials';
+
+/** Lookups the app made that `cdk.context.json` can't answer (ADR 0011), as a warning on the External Node that made each; a lookup no External Node made has no Node. */
+function missingContext(assembly: Assembly, facts: Facts): Problem[] {
+  const externals = Object.entries(facts.nodes).filter(([, f]) => f.external);
+  const out = new Map<string, Problem>();
+  for (const { provider } of assembly.missingContext ?? []) {
+    const pattern = LOOKUP_CALLS[provider] ?? ANY_LOOKUP;
+    const paths = externals.filter(([, f]) => pattern.test(f.className)).map(([path]) => path);
+    for (const path of paths.length > 0 ? paths : [undefined]) {
+      const id = `context:${path ?? provider}`;
+      out.set(id, {
+        id,
+        severity: 'warning',
+        source: 'context',
+        message: MISSING_CONTEXT,
+        ...(path !== undefined ? { path } : {}),
+        draft: false,
+        blocking: false,
+      });
+    }
+  }
+  return [...out.values()];
+}
+
+/** The missing context of `assembly`. Never blocking: the canvas shows the dummy value. With `base`, one that `base` did not have is the Draft's. */
+export function contextProblems(
+  assembly: Assembly,
+  facts: Facts,
+  base?: { assembly: Assembly; facts: Facts },
+): Problem[] {
+  const had = new Set(base ? missingContext(base.assembly, base.facts).map((p) => p.id) : []);
+  return missingContext(assembly, facts).map((p) => ({ ...p, draft: base !== undefined && !had.has(p.id) }));
 }
 
 /** Strongly connected sets of two or more resources in the graph of what each resource points at (Tarjan). */

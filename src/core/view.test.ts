@@ -572,4 +572,17 @@ describe('buildView with synth effects', () => {
     ]);
     expect(view.nodes.find((n) => n.id === 'Web/Site')!.otherPermissions).toBeUndefined();
   });
+
+  it('marks the Node that an Override is made on, and no other', () => {
+    const overridden = buildView(
+      {
+        ...facts,
+        overrides: [{ node: 'Api/Jobs', method: 'addOverride', text: "cfn.addOverride('A', 1);", span: span(30) }],
+      },
+      assembly,
+      emptySidecar(),
+    );
+    expect(overridden.nodes.find((n) => n.id === 'Api/Jobs')!.overridden).toBe(true);
+    expect(overridden.nodes.find((n) => n.id === 'Web/Site')!.overridden).toBeUndefined();
+  });
 });

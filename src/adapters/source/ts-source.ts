@@ -16,6 +16,7 @@ import type { Intent } from '../../core/intents.ts';
 import type { Diagnostic, FileSet, PlanResult, Source } from '../../core/ports.ts';
 import type { Catalog } from '../../core/catalog.ts';
 import { CallReader } from './calls.ts';
+import { readOverrides } from './overrides.ts';
 import { ReferenceReader } from './references.ts';
 import { planIntents } from './ts-plan.ts';
 import { isStringLike, literalValue, memberOf, quantityOf } from './syntax.ts';
@@ -89,7 +90,13 @@ export class TsSource implements Source {
     const calls = catalog
       ? new CallReader(nodes, fqns, files.keys(), (file) => this.parse(files, file), reader, catalog).read()
       : [];
-    return { nodes, ...(references.length > 0 ? { references } : {}), ...(calls.length > 0 ? { calls } : {}) };
+    const overrides = readOverrides(nodes, files.keys(), (file) => this.parse(files, file), reader);
+    return {
+      nodes,
+      ...(references.length > 0 ? { references } : {}),
+      ...(calls.length > 0 ? { calls } : {}),
+      ...(overrides.length > 0 ? { overrides } : {}),
+    };
   }
 
   plan(files: FileSet, facts: Facts, intents: readonly Intent[]): PlanResult {

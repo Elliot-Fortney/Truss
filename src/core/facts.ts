@@ -124,6 +124,18 @@ export interface CallFacts {
   reason?: string;
 }
 
+/** A call in the code that changes the CloudFormation a Node's L1 child makes, through a CDK escape hatch (CONTEXT.md: Override, ADR 0011). Truss shows it and never edits it. */
+export interface OverrideFacts {
+  /** The construct path of the Node whose default child, or Layer child, the call is made on. */
+  node: string;
+  /** `addPropertyOverride`, `addOverride` or `addDeletionOverride`. */
+  method: string;
+  /** The statement as written. */
+  text: string;
+  /** The statement. */
+  span: Span;
+}
+
 /** Facts per construct path. Nothing in here is a syntax tree. */
 export interface Facts {
   nodes: Record<string, NodeFacts>;
@@ -131,4 +143,6 @@ export interface Facts {
   calls?: CallFacts[];
   /** The Nodes the props of each construct point at. Absent when none do. */
   references?: ReferenceFacts[];
+  /** The escape-hatch calls on the Nodes' L1 children. Absent when there are none. */
+  overrides?: OverrideFacts[];
 }

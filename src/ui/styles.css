@@ -588,6 +588,27 @@ body,
   border-color: var(--ok, var(--accent));
   color: var(--ok, var(--accent));
 }
+.overridden-badge {
+  position: absolute;
+  bottom: -8px;
+  right: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 11px;
+}
+.overrides ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 12px;
+}
+.overrides code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .stack-header .changed-badge {
   position: static;
   align-self: flex-start;

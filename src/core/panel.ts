@@ -49,6 +49,14 @@ export interface PropRowView {
   nodes?: PropNodesView;
 }
 
+/** One Override of a Node, as the panel lists it: source text, never edited. */
+export interface OverrideView {
+  method: string;
+  /** The statement as written. */
+  text: string;
+  source: { file: string; line: number; col: number };
+}
+
 /** What the panel shows for one Node or Stack. */
 export interface PanelView {
   /** The construct path. */
@@ -77,11 +85,17 @@ export interface PanelView {
   otherPermissions?: EffectView[];
   /** Triggers and subscriptions of this Node with no Node at the other end. Read-only. */
   otherIntegrations?: EffectView[];
+  /** The Overrides the code makes on this Node's L1 child. Absent when there are none. */
+  overrides?: OverrideView[];
   /** What Truss found on this construct, of every severity: info shows nowhere else. */
   problems?: Array<{ severity: 'error' | 'warning' | 'info'; message: string; draft: boolean }>;
 }
 
-const sourceOf = ({ span }: NodeFacts) => ({ file: span.file, line: span.start.line, col: span.start.col });
+const sourceOf = ({ span }: Pick<NodeFacts, 'span'>) => ({
+  file: span.file,
+  line: span.start.line,
+  col: span.start.col,
+});
 
 function writtenOf(p: PropFacts): WrittenValue {
   if (p.kind === 'literal' && p.value !== undefined) return { kind: 'literal', value: p.value, text: p.text };
@@ -303,6 +317,9 @@ export function buildPanel(
       ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts))
       : [];
   const instances = nodeFacts ? instancesOf(id, nodeFacts, facts) : undefined;
+  const overrides = (facts.overrides ?? [])
+    .filter((o) => o.node === id)
+    .map(({ method, text, span }): OverrideView => ({ method, text, source: sourceOf({ span }) }));
   const props = withIntents(nodeFacts?.props, mine);
   const nodesFor = (prop: CatalogProp) =>
     node && editing && readOnly === undefined && prop.accepts
@@ -337,6 +354,7 @@ export function buildPanel(
     ...(nodeFacts ? { source: sourceOf(nodeFacts) } : {}),
     ...(node?.otherPermissions ? { otherPermissions: node.otherPermissions } : {}),
     ...(node?.otherIntegrations ? { otherIntegrations: node.otherIntegrations } : {}),
+    ...(overrides.length > 0 ? { overrides } : {}),
   };
 }
 

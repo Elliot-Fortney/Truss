@@ -43,7 +43,14 @@ import {
   type Migration,
   type Sidecar,
 } from '../core/sidecar.ts';
-import { annotationProblems, cycleProblems, nodeAt, sourcePosition, type Problem } from '../core/problems.ts';
+import {
+  annotationProblems,
+  contextProblems,
+  cycleProblems,
+  nodeAt,
+  sourcePosition,
+  type Problem,
+} from '../core/problems.ts';
 import { locateError } from '../core/synth-error.ts';
 import { commit } from './commit.ts';
 import { Draft } from './draft.ts';
@@ -373,6 +380,7 @@ export class Session {
     this.draft.checked(shown.intents, [
       ...annotationProblems(result.assembly, shown.base.assembly),
       ...cycleProblems(result.assembly, shown.base.assembly),
+      ...contextProblems(result.assembly, facts, shown.base),
       ...this.editProblems(shown, files, result),
     ]);
     this.push({ synthing: false, hasDesign: true, error: undefined, ...this.body(), ...this.draftFields() });
@@ -428,7 +436,13 @@ export class Session {
   /** The Problems of the app on disk, which are the ones that are not the Draft's. */
   private baseProblems(): Problem[] {
     const base = this.draft.base;
-    return base ? [...annotationProblems(base.assembly), ...cycleProblems(base.assembly)] : [];
+    return base
+      ? [
+          ...annotationProblems(base.assembly),
+          ...cycleProblems(base.assembly),
+          ...contextProblems(base.assembly, base.facts),
+        ]
+      : [];
   }
 
   /** The Problem that a synth error is. */

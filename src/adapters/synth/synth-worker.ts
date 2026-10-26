@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { Toolkit } from '@aws-cdk/toolkit-lib';
+import { Toolkit, ToolkitError } from '@aws-cdk/toolkit-lib';
 import type { SynthResult } from '../../core/assembly.ts';
 import { readAssembly } from './read-assembly.ts';
 
@@ -49,10 +49,17 @@ async function synth({ appDir, build: shouldBuild }: WorkerRequest): Promise<Syn
       // Creation stacks are how a construct path is traced back to the line that made it.
       synthOptions: { debug: true },
     });
-    const cached = await toolkit.synth(source);
-    const assembly = readAssembly(outdir, appDir);
-    await cached.dispose?.();
-    return { ok: true, assembly };
+    try {
+      const cached = await toolkit.synth(source);
+      const assembly = readAssembly(outdir, appDir);
+      await cached.dispose?.();
+      return { ok: true, assembly };
+    } catch (err) {
+      // ADR 0011: with lookups off the toolkit refuses an app whose context is missing, but the app has
+      // already written an assembly that holds the framework's dummy values, and that is what Truss shows.
+      if (!ToolkitError.isContextLookupsDisabledError(err)) throw err;
+      return { ok: true, assembly: readAssembly(outdir, appDir) };
+    }
   } catch (err) {
     return {
       ok: false,

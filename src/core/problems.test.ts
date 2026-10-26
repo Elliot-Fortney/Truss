@@ -5,6 +5,7 @@ import {
   annotationProblems,
   badgesFor,
   buildReport,
+  contextProblems,
   cycleProblems,
   findCycles,
   nodeAt,
@@ -155,5 +156,62 @@ describe('the report', () => {
     expect(report).toContain('+  fifo: true,');
     expect(report).toContain('S/Z, which it should not touch');
     expect(report).not.toContain('secret');
+  });
+});
+
+describe('missing context (ADR 0011)', () => {
+  const external = (className: string): Facts['nodes'][string] => ({
+    span: { file: 'lib/s.ts', start: { line: 1, col: 1 }, end: { line: 1, col: 2 } },
+    className,
+    pathsOnSpan: 1,
+    binding: 'const',
+    external: true,
+  });
+  const facts = (nodes: Facts['nodes']): Facts => ({ nodes });
+  const missing = (...providers: string[]) =>
+    assembly({ missingContext: providers.map((provider) => ({ key: `${provider}:x`, provider })) });
+  const WARNING = 'Context missing: run `cdk synth` once with AWS credentials';
+
+  it('is a warning on the External Node that the lookup made', () => {
+    const f = facts({
+      'S/Vpc': external('ec2.Vpc.fromLookup'),
+      'S/Zone': external('route53.HostedZone.fromLookup'),
+      'S/Bucket': external('s3.Bucket.fromBucketName'),
+    });
+    const found = contextProblems(missing('vpc-provider'), f);
+    expect(found).toMatchObject([
+      { severity: 'warning', source: 'context', message: WARNING, path: 'S/Vpc', draft: false, blocking: false },
+    ]);
+  });
+
+  it('is on every External Node that could have made it when the lookup is not told apart', () => {
+    const f = facts({ 'S/A': external('ec2.Vpc.fromLookup'), 'S/B': external('ec2.Vpc.fromLookup') });
+    expect(contextProblems(missing('vpc-provider'), f).map((p) => p.path)).toEqual(['S/A', 'S/B']);
+  });
+
+  it('is on a Node of any lookup for a provider Truss does not know', () => {
+    const f = facts({ 'S/Thing': external('x.Thing.fromLookup') });
+    expect(contextProblems(missing('brand-new-provider'), f).map((p) => p.path)).toEqual(['S/Thing']);
+  });
+
+  it('is still reported, with no Node, when no External Node made the lookup', () => {
+    const found = contextProblems(missing('availability-zones'), facts({}));
+    expect(found).toHaveLength(1);
+    expect(found[0]!.path).toBeUndefined();
+  });
+
+  it('is never blocking, and is the Draft’s only when the base did not have it', () => {
+    const f = facts({ 'S/Vpc': external('ec2.Vpc.fromLookup') });
+    const base = { assembly: assembly(), facts: f };
+    expect(contextProblems(missing('vpc-provider'), f, base).map((p) => [p.draft, p.blocking])).toEqual([
+      [true, false],
+    ]);
+    expect(contextProblems(missing('vpc-provider'), f, { assembly: missing('vpc-provider'), facts: f })[0]!.draft).toBe(
+      false,
+    );
+  });
+
+  it('says nothing for an assembly with no missing context', () => {
+    expect(contextProblems(assembly(), facts({}))).toEqual([]);
   });
 });

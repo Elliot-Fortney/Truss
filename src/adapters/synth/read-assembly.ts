@@ -2,7 +2,15 @@ import { readFileSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { templateEffects, type EffectTemplate } from './effects.ts';
-import type { Annotation, Assembly, Frame, ResourceRef, StackInfo, TreeNode } from '../../core/assembly.ts';
+import type {
+  Annotation,
+  Assembly,
+  Frame,
+  MissingContext,
+  ResourceRef,
+  StackInfo,
+  TreeNode,
+} from '../../core/assembly.ts';
 
 interface RawTreeNode {
   id: string;
@@ -64,7 +72,8 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
   const resourceRefs: ResourceRef[] = [];
   const annotations: Annotation[] = [];
   const templates: EffectTemplate[] = [];
-  collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs, annotations, templates);
+  const missing = new Map<string, MissingContext>();
+  collectStacks(assemblyDir, appDir, stacks, creation, resourceRefs, annotations, templates, missing);
   const { effects, importRefs } = templateEffects(templates);
   return {
     schemaVersion: String(manifest.version),
@@ -75,6 +84,7 @@ export function readAssembly(assemblyDir: string, appDir: string): Assembly {
     annotations,
     effects,
     importRefs,
+    missingContext: [...missing.values()],
   };
 }
 
@@ -87,8 +97,12 @@ function collectStacks(
   resourceRefs: ResourceRef[],
   annotations: Annotation[],
   templates: EffectTemplate[],
+  missing: Map<string, MissingContext>,
 ): void {
   const manifest = readJson(join(dir, 'manifest.json'));
+  for (const m of manifest.missing ?? [])
+    if (typeof m?.key === 'string' && typeof m.provider === 'string')
+      missing.set(m.key, { key: m.key, provider: m.provider });
   for (const [id, artifact] of Object.entries<RawArtifact>(manifest.artifacts ?? {})) {
     if (artifact.type === 'cdk:cloud-assembly' && artifact.properties?.directoryName) {
       collectStacks(
@@ -99,6 +113,7 @@ function collectStacks(
         resourceRefs,
         annotations,
         templates,
+        missing,
       );
       continue;
     }

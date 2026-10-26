@@ -786,4 +786,25 @@ describe('buildPanel for a construct in a Stack or Stage class created more than
     expect(panel.readOnly).toBeUndefined();
     expect(panel.rows.find((r) => r.name === 'description')?.input).toEqual({ kind: 'string' });
   });
+
+  it('lists the Overrides made on the Node as source text, each with where it is', () => {
+    const f = facts({ 'App/Uploads': { className: 's3.Bucket', literalId: 'Uploads' } });
+    f.overrides = [
+      {
+        node: 'App/Uploads',
+        method: 'addOverride',
+        text: "cfn.addOverride('A', 1);",
+        span: { ...span, start: { line: 9, col: 5 } },
+      },
+      { node: 'App/Other', method: 'addOverride', text: 'x', span },
+    ];
+    const panel = buildPanel('App/Uploads', body(node('App/Uploads', bucket.fqn)), f, catalog);
+    expect(panel!.overrides).toEqual([
+      { method: 'addOverride', text: "cfn.addOverride('A', 1);", source: { file: 'lib/a.ts', line: 9, col: 5 } },
+    ]);
+    expect(
+      buildPanel('App/Uploads', body(node('App/Uploads', bucket.fqn)), facts({ 'App/Uploads': {} }), catalog)!
+        .overrides,
+    ).toBeUndefined();
+  });
 });
