@@ -410,6 +410,23 @@ function canvasPosition(node: Node, all: Node[]): { x: number; y: number } {
   return { x, y };
 }
 
+/** The construct path of the innermost Stack box that holds the middle of a dragged Node, if any. */
+function stackAt(node: Node, all: Node[]): string | undefined {
+  const { x, y } = canvasPosition(node, all);
+  const cx = x + (node.measured?.width ?? Number(node.style?.width ?? 0)) / 2;
+  const cy = y + (node.measured?.height ?? Number(node.style?.height ?? 0)) / 2;
+  const holding = all.filter((n) => {
+    if (n.type !== 'stack') return false;
+    const at = canvasPosition(n, all);
+    const w = Number(n.style?.width ?? 0);
+    const h = Number(n.style?.height ?? 0);
+    return cx >= at.x && cx <= at.x + w && cy >= at.y && cy <= at.y + h;
+  });
+  // Nested boxes are smaller than the one they sit in.
+  const inner = holding.sort((a, b) => Number(a.style?.width ?? 0) - Number(b.style?.width ?? 0))[0];
+  return inner?.id.startsWith('stack:') ? inner.id.slice('stack:'.length) : undefined;
+}
+
 function StagePicker({
   stages,
   value,
@@ -945,7 +962,8 @@ export function App() {
       // A multi-select drag moves every selected Node, so every one is saved.
       for (const node of dragged) {
         const { x, y } = canvasPosition(node, nodes);
-        void request({ type: 'move', id: node.id, x, y });
+        const into = stackAt(node, nodes);
+        void request({ type: 'move', id: node.id, x, y, ...(into ? { into } : {}) });
       }
     },
     [nodes, request],

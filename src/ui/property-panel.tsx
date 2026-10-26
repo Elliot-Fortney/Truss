@@ -139,6 +139,11 @@ export function PropertyPanel({
   return (
     <section className="props" aria-label="Properties">
       {panel.summary ? <p className="prop-doc">{panel.summary}</p> : null}
+      {panel.instances ? (
+        <p className="lock-reason">
+          Applies to {panel.instances.length} instances: {panel.instances.join(', ')}
+        </p>
+      ) : null}
       {panel.idEdit ? <ConstructIdField panel={panel} onRename={onRename} /> : null}
       {panel.problems?.length ? (
         <ul className="panel-problems" aria-label="Problems">

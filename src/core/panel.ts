@@ -62,6 +62,8 @@ export interface PanelView {
   readOnly?: string;
   /** The class as written in the code, e.g. `s3.Bucket`. */
   className: string;
+  /** When a Stack or Stage class is created more than once and this construct is in it: the instances an edit applies to, e.g. `Dev`, `Prod` (ADR 0008). */
+  instances?: string[];
   /** The construct's docs summary. */
   summary?: string;
   /** The props shown first: required, featured, and any the code sets. */
@@ -240,6 +242,22 @@ export interface PanelEditing {
 const sameSpan = (a: NodeFacts, b: NodeFacts) =>
   a.span.file === b.span.file && a.span.start.line === b.span.start.line && a.span.start.col === b.span.start.col;
 
+/** Names the instances of a repeated Stack or Stage class by the leading part of their paths that differs: `Dev/Alerts` and `Prod/Alerts` are `Dev` and `Prod`. */
+function instancesOf(id: string, nodeFacts: NodeFacts, facts: Facts): string[] | undefined {
+  if (nodeFacts.pathsOnSpan < 2 || !nodeFacts.enclosingClass || nodeFacts.enclosingClass.kind === 'construct')
+    return undefined;
+  const paths = Object.entries(facts.nodes).flatMap(([path, f]) => (sameSpan(f, nodeFacts) ? [path] : []));
+  if (!paths.includes(id) || paths.length < 2) return undefined;
+  const segments = paths.map((p) => p.split('/'));
+  let shared = 0;
+  while (
+    segments.every((s) => s.length - shared > 1) &&
+    segments.every((s) => s.at(-1 - shared) === segments[0]!.at(-1 - shared))
+  )
+    shared++;
+  return segments.map((s) => s.slice(0, s.length - shared).join('/'));
+}
+
 /**
  * The property panel of the Node or Stack at `id`: its props from the Catalog, with what the app's code
  * says about each. A construct the Catalog can't describe, such as a class of the app's own, shows only
@@ -284,6 +302,7 @@ export function buildPanel(
     nodeFacts && editing
       ? editing.intents.filter((i) => facts.nodes[i.path] && sameSpan(facts.nodes[i.path]!, nodeFacts))
       : [];
+  const instances = nodeFacts ? instancesOf(id, nodeFacts, facts) : undefined;
   const props = withIntents(nodeFacts?.props, mine);
   const nodesFor = (prop: CatalogProp) =>
     node && editing && readOnly === undefined && prop.accepts
@@ -306,6 +325,7 @@ export function buildPanel(
     kind: isStack ? 'stack' : 'node',
     className: nodeFacts?.className ?? node?.subtitle ?? '',
     ...(nodeFacts?.literalId !== undefined ? { literalId: nodeFacts.literalId } : {}),
+    ...(instances ? { instances } : {}),
     ...(readOnly !== undefined ? { readOnly } : {}),
     ...(editing?.tree && readOnly === undefined && nodeFacts?.literalId !== undefined && nodeFacts.pathsOnSpan === 1
       ? { idEdit: { siblings: siblingIds(editing.tree, id) } }

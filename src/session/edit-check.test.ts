@@ -227,3 +227,52 @@ describe('assertEditHolds on the references fixture', () => {
     });
   });
 });
+
+const shapesDir = fixtureDir('shapes');
+const shapes = (): EditApp => ({
+  appDir: shapesDir,
+  synth: new ToolkitSynth(),
+  files: new NodeFiles(shapesDir),
+  source: new TsSource(),
+});
+
+/** ADR 0008: one edit in the body of a Stack or Stage class created twice has to show up in every instance and nowhere else. */
+describe('assertEditHolds on the shapes fixture, where a Stage and a Stack class are each created twice', () => {
+  it('holds for a prop set in a Stage created twice', async () => {
+    const { diffs } = await assertEditHolds(shapes(), [
+      {
+        type: 'setProp',
+        path: 'StageDev/Core/Events',
+        expect: { className: 'sns.Topic', literalId: 'Events' },
+        prop: ['displayName'],
+        value: { kind: 'string', value: 'Events' },
+      },
+    ]);
+    expect(diffs.map((d) => d.file)).toEqual(['lib/app-stage.ts']);
+  });
+
+  it('holds for a prop set in a Stack class created twice', async () => {
+    const { diffs } = await assertEditHolds(shapes(), [
+      {
+        type: 'setProp',
+        path: 'Prod/Alerts',
+        expect: { className: 'sns.Topic', literalId: 'Alerts' },
+        prop: ['displayName'],
+        value: { kind: 'string', value: 'Alerts' },
+      },
+    ]);
+    expect(diffs.map((d) => d.file)).toEqual(['lib/repeated-stack.ts']);
+  });
+
+  it('holds for a prop of the Stack created inside a Stage created twice', async () => {
+    await assertEditHolds(shapes(), [
+      {
+        type: 'setProp',
+        path: 'StageProd/Core',
+        expect: { className: 'cdk.Stack', literalId: 'Core' },
+        prop: ['description'],
+        value: { kind: 'string', value: 'Core' },
+      },
+    ]);
+  });
+});

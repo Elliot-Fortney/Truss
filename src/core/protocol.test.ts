@@ -15,6 +15,14 @@ describe('parseClientMessage', () => {
     });
   });
 
+  it('reads the Stack a move was dropped in, and refuses one that is not a path', () => {
+    expect(parse({ type: 'move', requestId: '1', id: 'A/B', x: 1, y: 2, into: 'A' })).toMatchObject({
+      ok: true,
+      message: { into: 'A' },
+    });
+    expect(parse({ type: 'move', requestId: '1', id: 'A/B', x: 1, y: 2, into: 3 })).toMatchObject({ ok: false });
+  });
+
   it('refuses an edit without a construct path, saying which request it was', () => {
     expect(parse({ type: 'move', requestId: '1', x: 1, y: 2 })).toMatchObject({ ok: false, requestId: '1' });
   });

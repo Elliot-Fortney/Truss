@@ -717,3 +717,73 @@ describe('buildPanel Node picker', () => {
     expect([...readOnly.rows, ...readOnly.more].every((r) => r.nodes === undefined)).toBe(true);
   });
 });
+
+describe('buildPanel for a construct in a Stack or Stage class created more than once (ADR 0008)', () => {
+  const tree: TreeNode = { id: 'App', path: '', fqn: 'x', children: [] };
+  const twice = (extra: Partial<NodeFacts> = {}) =>
+    facts({
+      'Dev/Alerts': {
+        className: 's3.Bucket',
+        literalId: 'Alerts',
+        pathsOnSpan: 2,
+        enclosingClass: { name: 'ApiStack', kind: 'stack' },
+        ...extra,
+      },
+      'Prod/Alerts': {
+        className: 's3.Bucket',
+        literalId: 'Alerts',
+        pathsOnSpan: 2,
+        enclosingClass: { name: 'ApiStack', kind: 'stack' },
+        ...extra,
+      },
+    });
+  const panelAt = (id: string, f: Facts) =>
+    buildPanel(id, body(node(id, bucket.fqn)), f, { entries: [bucket], dropped: [] }, { intents: [], tree })!;
+
+  it('says which instances an edit applies to', () => {
+    expect(panelAt('Dev/Alerts', twice()).instances).toEqual(['Dev', 'Prod']);
+  });
+
+  it('names a Stage instance by the part of the path that differs', () => {
+    const f = facts({
+      'StageDev/Core/Events': {
+        literalId: 'Events',
+        pathsOnSpan: 2,
+        enclosingClass: { name: 'AppStage', kind: 'stage' },
+      },
+      'StageProd/Core/Events': {
+        literalId: 'Events',
+        pathsOnSpan: 2,
+        enclosingClass: { name: 'AppStage', kind: 'stage' },
+      },
+    });
+    expect(panelAt('StageProd/Core/Events', f).instances).toEqual(['StageDev', 'StageProd']);
+  });
+
+  it('says nothing for a construct made once', () => {
+    const f = facts({ 'App/Logs': { className: 's3.Bucket', literalId: 'Logs' } });
+    expect(panelAt('App/Logs', f).instances).toBeUndefined();
+  });
+
+  it('offers no rename, because a Construct ID can only change in every instance at once', () => {
+    expect(panelAt('Dev/Alerts', twice()).idEdit).toBeUndefined();
+  });
+
+  it('lets the props of a Stack inside a repeated Stage be edited, as they are for any Stack', () => {
+    const stage = { name: 'AppStage', kind: 'stage' as const };
+    const f = facts({
+      'StageDev/Core': { className: 'cdk.Stack', literalId: 'Core', pathsOnSpan: 2, enclosingClass: stage },
+      'StageProd/Core': { className: 'cdk.Stack', literalId: 'Core', pathsOnSpan: 2, enclosingClass: stage },
+    });
+    const view: ViewBody = {
+      stages: [],
+      stacks: [{ id: 'StageDev/Core', label: 'Core', env: 'env-agnostic' }],
+      nodes: [],
+      edges: [],
+    };
+    const panel = buildPanel('StageDev/Core', view, f, { entries: [bucket], dropped: [] }, { intents: [], tree })!;
+    expect(panel.instances).toEqual(['StageDev', 'StageProd']);
+    expect(panel.readOnly).toBeUndefined();
+    expect(panel.rows.find((r) => r.name === 'description')?.input).toEqual({ kind: 'string' });
+  });
+});

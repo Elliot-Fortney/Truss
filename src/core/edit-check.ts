@@ -10,7 +10,7 @@ const spanKey = (f: { span: { file: string; start: { line: number; col: number }
   `${f.span.file}:${f.span.start.line}:${f.span.start.col}`;
 
 /** Every path on the span of the construct at `path`: more than one for a Stack class created several times. */
-const targetPathsOfSpan = (facts: Facts, path: string): string[] => {
+export const targetPathsOfSpan = (facts: Facts, path: string): string[] => {
   const f = facts.nodes[path];
   return f ? Object.entries(facts.nodes).flatMap(([p, other]) => (spanKey(other) === spanKey(f) ? [p] : [])) : [];
 };
